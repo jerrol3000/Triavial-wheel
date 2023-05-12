@@ -126,18 +126,22 @@ const Wheel = () => {
         onRest: () => {
           // calculate selected segment
           const segmentAngle = (2 * Math.PI) / segments.length;
+          console.log("animationProps.value", animationProps.value);
           const normalizedAngle =
             ((animationProps.rotate % (2 * Math.PI)) + 2 * Math.PI) %
             (2 * Math.PI);
+          console.log("animationProps.rotate", animationProps.rotate);
           const selectedSegmentIndex = Math.floor(
             normalizedAngle / segmentAngle
           );
           setSelectedSegment(segments[selectedSegmentIndex]);
+          console.log("selectedSegmentIndex", segments[selectedSegmentIndex]);
           setIsWheelSpinning(false);
         },
       });
     }
   };
+  console.log("selectedSegment", selectedSegment);
 
   return (
     <div>
@@ -145,7 +149,7 @@ const Wheel = () => {
         ref={canvasRef}
         width="400"
         height="400"
-        style={animationProps}
+        style={{ rotate: animationProps.rotate.to((x) => `${x}rad`) }}
       />
       <button onClick={handleSpinButtonClick}>Spin</button>
       <canvas
@@ -154,6 +158,7 @@ const Wheel = () => {
         height="400"
         style={{ position: "absolute", top: 0, left: 0 }}
       />
+
       {selectedSegment && (
         <div>
           <p>Selected segment: {selectedSegment.label}</p>

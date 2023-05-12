@@ -130,7 +130,7 @@ const Wheel = () => {
           const normalizedAngle =
             ((animationProps.rotate % (2 * Math.PI)) + 2 * Math.PI) %
             (2 * Math.PI);
-          console.log("animationProps.rotate", animationProps.rotate);
+          console.log("animationProps.rotate", animationProps.rotate.to);
           const selectedSegmentIndex = Math.floor(
             normalizedAngle / segmentAngle
           );
@@ -149,7 +149,7 @@ const Wheel = () => {
         ref={canvasRef}
         width="400"
         height="400"
-        style={{ rotate: animationProps.rotate.to((x) => `${x}rad`) }}
+        style={animationProps}
       />
       <button onClick={handleSpinButtonClick}>Spin</button>
       <canvas

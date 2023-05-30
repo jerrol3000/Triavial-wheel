@@ -1,10 +1,10 @@
 import React from "react";
-import Wheel from "./Wheel";
+import WheelComponent from "./Wheel";
 
 const App = () => {
   return (
     <div>
-      <Wheel />
+      <WheelComponent />
     </div>
   );
 };

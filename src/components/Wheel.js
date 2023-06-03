@@ -93,6 +93,7 @@ const WheelComponent = () => {
 
       {spinCompleted && (
         <div>
+          <Typography variant="h3">{data[prizeNumber].option}</Typography>
           <Typography variant="h6">{selected.question}</Typography>
           <Grid container spacing={1}>
             {answers.map((answer, index) => (

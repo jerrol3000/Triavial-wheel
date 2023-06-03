@@ -1,8 +1,23 @@
 export const data = [
-  { option: "0", style: { backgroundColor: "green", textColor: "black" } },
-  { option: "1", style: { backgroundColor: "purple" } },
-  { option: "2" },
-  { option: "3", style: { backgroundColor: "pink" } },
-  { option: "4", style: { backgroundColor: "red" } },
-  { option: "1", style: { backgroundColor: "blue" } },
+  {
+    id: 9,
+    option: "General Knowledge",
+    style: { backgroundColor: "green", textColor: "black" },
+  },
+  {
+    id: 11,
+    option: "Entertainment: Film",
+    style: { backgroundColor: "purple" },
+  },
+  { id: 14, option: "Entertainment: Television" },
+  { id: 17, option: "Science & Nature", style: { backgroundColor: "pink" } },
+  { id: 21, option: "Sports", style: { backgroundColor: "red" } },
+  { id: 22, option: "Geography", style: { backgroundColor: "blue" } },
+  {
+    id: 12,
+    option: "Entertainment: Music",
+    style: { backgroundColor: "tan" },
+  },
+  { id: 26, option: "Celebrities", style: { backgroundColor: "aqua" } },
+  { id: 18, option: "Science: Computers", style: { backgroundColor: "gray" } },
 ];

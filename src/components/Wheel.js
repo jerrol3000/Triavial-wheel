@@ -3,8 +3,16 @@ import { data } from "./data";
 import { useDispatch, useSelector } from "react-redux";
 import { Wheel } from "react-custom-roulette";
 import { fetchQuestion } from "../store/questionSlice";
-import { Typography, Button, Grid } from "@material-ui/core";
+import {
+  Typography,
+  Button,
+  Grid,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+} from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
+import { decode } from "html-entities";
 
 const useStyles = makeStyles((theme) => ({
   answerButton: {
@@ -27,10 +35,10 @@ const WheelComponent = () => {
   const [selected, setSelected] = useState({});
   const [answers, setAnswers] = useState([]);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [mode, setMode] = useState("easy");
 
   const dispatch = useDispatch();
   const { results } = useSelector((state) => state);
-
   useEffect(() => {
     if (spinCompleted && results && results.length > 0) {
       const randomIndex = Math.floor(Math.random() * results.length);
@@ -51,13 +59,13 @@ const WheelComponent = () => {
     }
   }, [spinCompleted, results]);
 
-  const handlepinClick = () => {
+  const handleSpinClick = () => {
     if (!mustSpin) {
       const newPrizeNumber = Math.floor(Math.random() * data.length);
       setPrizeNumber(newPrizeNumber);
       setMustSpin(true);
 
-      dispatch(fetchQuestion(data[newPrizeNumber].id));
+      dispatch(fetchQuestion({ id: data[newPrizeNumber].id, mode }));
 
       setSpinCompleted(false);
       setSelectedAnswer(null);
@@ -67,9 +75,24 @@ const WheelComponent = () => {
   const handleAnswerClick = (answer) => {
     setSelectedAnswer(answer);
   };
+  const handleModeChange = (event) => {
+    setMode(event.target.value);
+  };
 
   return (
     <>
+      <RadioGroup
+        row
+        aria-label="mode"
+        name="mode"
+        value={mode}
+        onChange={handleModeChange}
+        style={{ display: "flex", justifyContent: "flex-end" }}
+      >
+        <FormControlLabel value="easy" control={<Radio />} label="Easy" />
+        <FormControlLabel value="medium" control={<Radio />} label="Medium" />
+        <FormControlLabel value="hard" control={<Radio />} label="Hard" />
+      </RadioGroup>
       <Wheel
         mustStartSpinning={mustSpin}
         prizeNumber={prizeNumber}
@@ -85,7 +108,7 @@ const WheelComponent = () => {
       <Button
         variant="contained"
         color="primary"
-        onClick={handlepinClick}
+        onClick={handleSpinClick}
         disabled={mustSpin}
       >
         SPIN
@@ -94,7 +117,7 @@ const WheelComponent = () => {
       {spinCompleted && (
         <div>
           <Typography variant="h3">{data[prizeNumber].option}</Typography>
-          <Typography variant="h6">{selected.question}</Typography>
+          <Typography variant="h6">{decode(selected.question)}</Typography>
           <Grid container spacing={1}>
             {answers.map((answer, index) => (
               <Grid item xs={12} key={index}>

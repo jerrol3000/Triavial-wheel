@@ -3,10 +3,10 @@ import axios from "axios";
 
 export const fetchQuestion = createAsyncThunk(
   "question/fetchQuestion",
-  async (id) => {
+  async ({ id, mode }) => {
     try {
       const { data } = await axios.get(
-        `https://opentdb.com/api.php?amount=50&category=${id}`
+        `https://opentdb.com/api.php?amount=50&category=${id}&difficulty=${mode}`
       );
       return data;
     } catch (error) {

@@ -10,9 +10,11 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
+  Box,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import { decode } from "html-entities";
+import Players from "./Player";
 
 const useStyles = makeStyles((theme) => ({
   answerButton: {
@@ -81,18 +83,23 @@ const WheelComponent = () => {
 
   return (
     <>
-      <RadioGroup
-        row
-        aria-label="mode"
-        name="mode"
-        value={mode}
-        onChange={handleModeChange}
-        style={{ display: "flex", justifyContent: "flex-end" }}
-      >
-        <FormControlLabel value="easy" control={<Radio />} label="Easy" />
-        <FormControlLabel value="medium" control={<Radio />} label="Medium" />
-        <FormControlLabel value="hard" control={<Radio />} label="Hard" />
-      </RadioGroup>
+      <Box display="flex" justifyContent="flex-end" marginBottom={2}>
+        <RadioGroup
+          row
+          aria-label="mode"
+          name="mode"
+          value={mode}
+          onChange={handleModeChange}
+        >
+          <FormControlLabel value="easy" control={<Radio />} label="Easy" />
+          <FormControlLabel value="medium" control={<Radio />} label="Medium" />
+          <FormControlLabel value="hard" control={<Radio />} label="Hard" />
+        </RadioGroup>
+      </Box>
+      <Box display="flex" justifyContent="flex-end" marginBottom={2}>
+        <Players />
+      </Box>
+
       <Wheel
         mustStartSpinning={mustSpin}
         prizeNumber={prizeNumber}
@@ -125,8 +132,8 @@ const WheelComponent = () => {
                   className={`${classes.answerButton} ${
                     selectedAnswer === answer
                       ? answer === selected.correct_answer
-                        ? classes.correctAnswer
-                        : classes.incorrectAnswer
+                        ? decode(classes.correctAnswer)
+                        : decode(classes.incorrectAnswer)
                       : ""
                   }`}
                   fullWidth

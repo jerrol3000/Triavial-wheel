@@ -80,10 +80,16 @@ const WheelComponent = () => {
   const handleModeChange = (event) => {
     setMode(event.target.value);
   };
-
+  console.log("results", results);
   return (
-    <>
-      <Box display="flex" justifyContent="flex-end" marginBottom={2}>
+    <Box
+      display="flex"
+      flexDirection="column"
+      alignItems="center"
+      justifyContent="center"
+      height="100vh"
+    >
+      <Box marginBottom={2}>
         <RadioGroup
           row
           aria-label="mode"
@@ -96,9 +102,10 @@ const WheelComponent = () => {
           <FormControlLabel value="hard" control={<Radio />} label="Hard" />
         </RadioGroup>
       </Box>
-      <Box display="flex" justifyContent="flex-end" marginBottom={2}>
+
+      {/* <Box display="flex" justifyContent="flex-end" marginBottom={2}>
         <Players />
-      </Box>
+      </Box> */}
 
       <Wheel
         mustStartSpinning={mustSpin}
@@ -121,33 +128,39 @@ const WheelComponent = () => {
         SPIN
       </Button>
 
-      {spinCompleted && (
-        <div>
-          <Typography variant="h3">{data[prizeNumber].option}</Typography>
-          <Typography variant="h6">{decode(selected.question)}</Typography>
-          <Grid container spacing={1}>
-            {answers.map((answer, index) => (
-              <Grid item xs={12} key={index}>
-                <Button
-                  className={`${classes.answerButton} ${
-                    selectedAnswer === answer
-                      ? answer === selected.correct_answer
-                        ? decode(classes.correctAnswer)
-                        : decode(classes.incorrectAnswer)
-                      : ""
-                  }`}
-                  fullWidth
-                  variant="contained"
-                  onClick={() => handleAnswerClick(answer)}
-                >
-                  {answer}
-                </Button>
-              </Grid>
-            ))}
-          </Grid>
-        </div>
-      )}
-    </>
+      {spinCompleted ? (
+        results && results.length > 0 ? (
+          <div>
+            <Typography variant="h3">{data[prizeNumber].option}</Typography>
+            <Typography variant="h6">{decode(selected.question)}</Typography>
+            <Grid container spacing={1}>
+              {answers.map((answer, index) => (
+                <Grid item xs={12} key={index}>
+                  <Button
+                    className={`${classes.answerButton} ${
+                      selectedAnswer === answer
+                        ? answer === selected.correct_answer
+                          ? classes.correctAnswer
+                          : classes.incorrectAnswer
+                        : ""
+                    }`}
+                    fullWidth
+                    variant="contained"
+                    onClick={() => handleAnswerClick(answer)}
+                  >
+                    {decode(answer)}
+                  </Button>
+                </Grid>
+              ))}
+            </Grid>
+          </div>
+        ) : (
+          <Typography variant="h6">
+            No questions available. Spin again!
+          </Typography>
+        )
+      ) : null}
+    </Box>
   );
 };
 

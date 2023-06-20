@@ -18,7 +18,6 @@ export const data = [
     option: "Entertainment: Music",
     style: { backgroundColor: "tan" },
   },
-  { id: 26, option: "Celebrities", style: { backgroundColor: "aqua" } },
   { id: 18, option: "Science: Computers", style: { backgroundColor: "gray" } },
   { id: 20, option: "Mythology", style: { backgroundColor: "teal" } },
   { id: 27, option: "Animals", style: { backgroundColor: "orange" } },

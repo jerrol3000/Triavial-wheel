@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { data } from "./data";
 import { useDispatch, useSelector } from "react-redux";
 import { Wheel } from "react-custom-roulette";
-import { fetchQuestion } from "../store/questionSlice";
+import { fetchQuestion, resetCountdown } from "../store/questionSlice";
 import {
   Typography,
   Button,
@@ -15,6 +15,7 @@ import {
 import { makeStyles } from "@material-ui/core/styles";
 import { decode } from "html-entities";
 import Players from "./Player";
+import Countdown from "./Countdown";
 
 const useStyles = makeStyles((theme) => ({
   answerButton: {
@@ -40,7 +41,7 @@ const WheelComponent = () => {
   const [mode, setMode] = useState("easy");
 
   const dispatch = useDispatch();
-  const { results } = useSelector((state) => state);
+  const { results } = useSelector((state) => state.questions);
   useEffect(() => {
     if (spinCompleted && results && results.length > 0) {
       const randomIndex = Math.floor(Math.random() * results.length);
@@ -66,7 +67,7 @@ const WheelComponent = () => {
       const newPrizeNumber = Math.floor(Math.random() * data.length);
       setPrizeNumber(newPrizeNumber);
       setMustSpin(true);
-
+      dispatch(resetCountdown());
       dispatch(fetchQuestion({ id: data[newPrizeNumber].id, mode }));
 
       setSpinCompleted(false);
@@ -87,8 +88,9 @@ const WheelComponent = () => {
       flexDirection="column"
       alignItems="center"
       justifyContent="center"
-      height="100vh"
+      minHeight="100vh"
     >
+      {spinCompleted && <Countdown />}
       <Box marginBottom={2}>
         <RadioGroup
           row
@@ -106,7 +108,6 @@ const WheelComponent = () => {
       {/* <Box display="flex" justifyContent="flex-end" marginBottom={2}>
         <Players />
       </Box> */}
-
       <Wheel
         mustStartSpinning={mustSpin}
         prizeNumber={prizeNumber}

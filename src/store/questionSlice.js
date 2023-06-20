@@ -6,7 +6,7 @@ export const fetchQuestion = createAsyncThunk(
   async ({ id, mode }) => {
     try {
       const { data } = await axios.get(
-        `https://opentdb.com/api.php?amount=50&category=${id}&difficulty=${mode}`
+        `https://opentdb.com/api.php?amount=15&category=${id}&difficulty=${mode}`
       );
       return data;
     } catch (error) {
@@ -15,17 +15,34 @@ export const fetchQuestion = createAsyncThunk(
   }
 );
 
-const initialState = [];
+const initialState = {
+  questions: [],
+  countdown: 5,
+  revealAnswer: false,
+};
 
 const questionSlice = createSlice({
   name: "question",
   initialState,
-  reducers: {},
+  reducers: {
+    startCountdown: (state) => {
+      state.countdown -= 1;
+      state.revealAnswer = false;
+    },
+    resetCountdown: (state) => {
+      state.countdown = 5;
+    },
+    revealAnswer: (state) => {
+      state.revealAnswer = true;
+    },
+  },
   extraReducers: (builder) => {
     builder.addCase(fetchQuestion.fulfilled, (state, action) => {
-      return action.payload;
+      state.questions = action.payload;
     });
   },
 });
 
+export const { startCountdown, resetCountdown, revealAnswer } =
+  questionSlice.actions;
 export default questionSlice.reducer;

@@ -17,7 +17,7 @@ export const fetchQuestion = createAsyncThunk(
 
 const initialState = {
   questions: [],
-  countdown: 5,
+  countdown: 10,
   revealAnswer: false,
 };
 
@@ -30,7 +30,7 @@ const questionSlice = createSlice({
       state.revealAnswer = false;
     },
     resetCountdown: (state) => {
-      state.countdown = 5;
+      state.countdown = 10;
     },
     revealAnswer: (state) => {
       state.revealAnswer = true;

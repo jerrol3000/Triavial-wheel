@@ -41,7 +41,7 @@ const WheelComponent = () => {
   const [mode, setMode] = useState("easy");
 
   const dispatch = useDispatch();
-  const { results } = useSelector((state) => state.questions);
+  const { results, revealAnswer } = useSelector((state) => state.questions);
   useEffect(() => {
     if (spinCompleted && results && results.length > 0) {
       const randomIndex = Math.floor(Math.random() * results.length);
@@ -74,14 +74,29 @@ const WheelComponent = () => {
       setSelectedAnswer(null);
     }
   };
-
   const handleAnswerClick = (answer) => {
     setSelectedAnswer(answer);
+
+    if (selected && selected.correct_answer !== answer) {
+      const answerButtons = document.getElementsByClassName(
+        classes.answerButton
+      );
+      for (let i = 0; i < answerButtons.length; i++) {
+        const button = answerButtons[i];
+        const buttonText = button.textContent;
+        if (buttonText === selected.correct_answer) {
+          button.classList.add(classes.correctAnswer);
+        } else {
+          button.classList.add(classes.incorrectAnswer);
+        }
+      }
+    }
   };
+
   const handleModeChange = (event) => {
     setMode(event.target.value);
   };
-  console.log("results", results);
+
   return (
     <Box
       display="flex"
@@ -139,17 +154,25 @@ const WheelComponent = () => {
                 <Grid item xs={12} key={index}>
                   <Button
                     className={`${classes.answerButton} ${
-                      selectedAnswer === answer
-                        ? answer === selected.correct_answer
+                      answer === selected.correct_answer
+                        ? selectedAnswer === answer
                           ? classes.correctAnswer
-                          : classes.incorrectAnswer
+                          : ""
+                        : selectedAnswer === answer
+                        ? classes.incorrectAnswer
                         : ""
                     }`}
                     fullWidth
                     variant="contained"
                     onClick={() => handleAnswerClick(answer)}
                   >
-                    {decode(answer)}
+                    {revealAnswer && answer === selected.correct_answer ? (
+                      <span className={classes.correctAnswer}>
+                        {decode(answer)}
+                      </span>
+                    ) : (
+                      decode(answer)
+                    )}
                   </Button>
                 </Grid>
               ))}

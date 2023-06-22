@@ -26,9 +26,23 @@ const Countdown = () => {
   // }
 
   return (
-    <div>
-      <h2>Countdown: {countdown}</h2>
-    </div>
+    countdown > 0 && (
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          padding: "10px",
+          borderRadius: "5px",
+          backgroundColor: "rgba(0, 0, 0, 0.8)",
+          color: "#fff",
+          zIndex: 9999,
+        }}
+      >
+        <h1>Countdown: {countdown}</h1>
+      </div>
+    )
   );
 };
 

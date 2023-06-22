@@ -2,7 +2,11 @@ import React, { useEffect, useState } from "react";
 import { data } from "./data";
 import { useDispatch, useSelector } from "react-redux";
 import { Wheel } from "react-custom-roulette";
-import { fetchQuestion, resetCountdown } from "../store/questionSlice";
+import {
+  fetchQuestion,
+  resetCountdown,
+  hideAnswer,
+} from "../store/questionSlice";
 import {
   Typography,
   Button,
@@ -16,6 +20,7 @@ import { makeStyles } from "@material-ui/core/styles";
 import { decode } from "html-entities";
 import Players from "./Player";
 import Countdown from "./Countdown";
+import { Reveal } from "semantic-ui-react";
 
 const useStyles = makeStyles((theme) => ({
   answerButton: {
@@ -41,7 +46,9 @@ const WheelComponent = () => {
   const [mode, setMode] = useState("easy");
 
   const dispatch = useDispatch();
-  const { results, revealAnswer } = useSelector((state) => state.questions);
+  const { results } = useSelector((state) => state.questions);
+  const { revealAnswer } = useSelector((state) => state);
+
   useEffect(() => {
     if (spinCompleted && results && results.length > 0) {
       const randomIndex = Math.floor(Math.random() * results.length);
@@ -74,10 +81,9 @@ const WheelComponent = () => {
       setSelectedAnswer(null);
     }
   };
-  const handleAnswerClick = (answer) => {
-    setSelectedAnswer(answer);
 
-    if (selected && selected.correct_answer !== answer) {
+  const showAllAnswers = (isAnswer) => {
+    if (selected && selected.correct_answer !== isAnswer) {
       const answerButtons = document.getElementsByClassName(
         classes.answerButton
       );
@@ -92,6 +98,18 @@ const WheelComponent = () => {
       }
     }
   };
+
+  const handleAnswerClick = (answer) => {
+    setSelectedAnswer(answer);
+    showAllAnswers(answer);
+  };
+
+  if (revealAnswer) {
+    answers.map((answer) => {
+      showAllAnswers(answer);
+    });
+    dispatch(hideAnswer());
+  }
 
   const handleModeChange = (event) => {
     setMode(event.target.value);
@@ -166,13 +184,7 @@ const WheelComponent = () => {
                     variant="contained"
                     onClick={() => handleAnswerClick(answer)}
                   >
-                    {revealAnswer && answer === selected.correct_answer ? (
-                      <span className={classes.correctAnswer}>
-                        {decode(answer)}
-                      </span>
-                    ) : (
-                      decode(answer)
-                    )}
+                    {decode(answer)}
                   </Button>
                 </Grid>
               ))}

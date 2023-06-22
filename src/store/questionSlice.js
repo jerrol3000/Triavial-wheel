@@ -35,6 +35,9 @@ const questionSlice = createSlice({
     revealAnswer: (state) => {
       state.revealAnswer = true;
     },
+    hideAnswer: (state) => {
+      state.revealAnswer = false;
+    },
   },
   extraReducers: (builder) => {
     builder.addCase(fetchQuestion.fulfilled, (state, action) => {
@@ -43,6 +46,6 @@ const questionSlice = createSlice({
   },
 });
 
-export const { startCountdown, resetCountdown, revealAnswer } =
+export const { startCountdown, resetCountdown, revealAnswer, hideAnswer } =
   questionSlice.actions;
 export default questionSlice.reducer;

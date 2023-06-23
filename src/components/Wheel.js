@@ -21,6 +21,7 @@ import { decode } from "html-entities";
 import Players from "./Player";
 import Countdown from "./Countdown";
 import { Reveal } from "semantic-ui-react";
+import Confetti from "react-confetti";
 
 const useStyles = makeStyles((theme) => ({
   answerButton: {
@@ -123,6 +124,7 @@ const WheelComponent = () => {
       justifyContent="center"
       minHeight="100vh"
     >
+      {selectedAnswer === selected.correct_answer && <Confetti />}
       {spinCompleted && <Countdown />}
       <Box marginBottom={2}>
         <RadioGroup

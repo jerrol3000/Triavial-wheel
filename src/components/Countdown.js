@@ -35,12 +35,20 @@ const Countdown = () => {
           transform: "translate(-50%, -50%)",
           padding: "10px",
           borderRadius: "5px",
-          backgroundColor: "rgba(0, 0, 0, 0.8)",
+          backgroundColor: "rgba(0, 0, 0, 0)",
           color: "#fff",
           zIndex: 9999,
+          textShadow:
+            "0 0 10px #00f, 0 0 20px #00f, 0 0 30px #00f, 0 0 40px #00f, 0 0 50px #00f, 0 0 60px #00f, 0 0 70px #00f",
         }}
       >
-        <h1>Countdown: {countdown}</h1>
+        <h1
+          style={{
+            fontSize: "5em",
+          }}
+        >
+          {countdown}
+        </h1>
       </div>
     )
   );

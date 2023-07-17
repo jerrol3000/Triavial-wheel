@@ -17,8 +17,11 @@ export const fetchQuestion = createAsyncThunk(
 
 const initialState = {
   questions: [],
-  countdown: 10,
+  countdown: 30,
+  countdownOptions: [10, 15, 30, 45, 60],
   revealAnswer: false,
+  disableTimer: false,
+  timerRunning: true,
 };
 
 const questionSlice = createSlice({
@@ -30,13 +33,22 @@ const questionSlice = createSlice({
       state.revealAnswer = false;
     },
     resetCountdown: (state) => {
-      state.countdown = 10;
+      state.countdown;
     },
     revealAnswer: (state) => {
       state.revealAnswer = true;
     },
     hideAnswer: (state) => {
       state.revealAnswer = false;
+    },
+    disableTimer: (state) => {
+      state.disableTimer = true;
+    },
+    setCountdown: (state, action) => {
+      state.countdown = action.payload;
+    },
+    stopTimer: (state) => {
+      state.timerRunning = false;
     },
   },
   extraReducers: (builder) => {
@@ -46,6 +58,13 @@ const questionSlice = createSlice({
   },
 });
 
-export const { startCountdown, resetCountdown, revealAnswer, hideAnswer } =
-  questionSlice.actions;
+export const {
+  startCountdown,
+  resetCountdown,
+  revealAnswer,
+  hideAnswer,
+  disableTimer,
+  setCountdown,
+  stopTimer,
+} = questionSlice.actions;
 export default questionSlice.reducer;

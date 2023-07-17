@@ -1,29 +1,36 @@
 import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { startCountdown, revealAnswer } from "../store/questionSlice";
+import {
+  startCountdown,
+  revealAnswer,
+  disableTimer,
+  resetCountdown,
+} from "../store/questionSlice";
 
 const Countdown = () => {
   const dispatch = useDispatch();
-  const countdown = useSelector((state) => state.countdown);
+  const { countdown, timerRunning } = useSelector((state) => state);
+
   useEffect(() => {
     let timer = null;
 
-    if (countdown > 0) {
+    if (countdown > 0 && timerRunning) {
       timer = setInterval(() => {
         dispatch(startCountdown());
       }, 1000);
     } else {
       dispatch(revealAnswer());
+      dispatch(resetCountdown());
     }
 
     return () => {
       clearInterval(timer);
     };
-  }, [countdown, dispatch]);
+  }, [countdown, dispatch, timerRunning]);
 
-  // if (countdown === 0) {
-  //   return null;
-  // }
+  const handleTimerRadioBtn = () => {
+    dispatch(disableTimer());
+  };
 
   return (
     countdown > 0 && (

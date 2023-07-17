@@ -6,6 +6,8 @@ import {
   fetchQuestion,
   resetCountdown,
   hideAnswer,
+  setCountdown,
+  stopTimer,
 } from "../store/questionSlice";
 import {
   Typography,
@@ -15,12 +17,15 @@ import {
   RadioGroup,
   FormControlLabel,
   Box,
+  FormControl,
+  Select,
+  InputLabel,
+  MenuItem,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import { decode } from "html-entities";
-import Players from "./Player";
+// import Players from "./Player";
 import Countdown from "./Countdown";
-import { Reveal } from "semantic-ui-react";
 import Confetti from "react-confetti";
 
 const useStyles = makeStyles((theme) => ({
@@ -47,8 +52,10 @@ const WheelComponent = () => {
   const [mode, setMode] = useState("easy");
 
   const dispatch = useDispatch();
-  const { results } = useSelector((state) => state.questions);
-  const { revealAnswer } = useSelector((state) => state);
+  const { results } = useSelector((state) => state.questions) || [];
+  const { revealAnswer, countdownOptions, countdown } = useSelector(
+    (state) => state
+  );
 
   useEffect(() => {
     if (spinCompleted && results && results.length > 0) {
@@ -75,11 +82,10 @@ const WheelComponent = () => {
       const newPrizeNumber = Math.floor(Math.random() * data.length);
       setPrizeNumber(newPrizeNumber);
       setMustSpin(true);
-      dispatch(resetCountdown());
       dispatch(fetchQuestion({ id: data[newPrizeNumber].id, mode }));
-
       setSpinCompleted(false);
       setSelectedAnswer(null);
+      dispatch(resetCountdown());
     }
   };
 
@@ -116,6 +122,12 @@ const WheelComponent = () => {
     setMode(event.target.value);
   };
 
+  const handleCountdownChange = (event) => {
+    const selectedCountdown = parseInt(event.target.value);
+    dispatch(setCountdown(selectedCountdown));
+    dispatch(resetCountdown());
+  };
+
   return (
     <Box
       display="flex"
@@ -139,6 +151,26 @@ const WheelComponent = () => {
           <FormControlLabel value="hard" control={<Radio />} label="Hard" />
         </RadioGroup>
       </Box>
+
+      {!mustSpin && (
+        <Box marginBottom={2}>
+          <FormControl>
+            <InputLabel id="countdown-select-label">Countdown</InputLabel>
+            <Select
+              labelId="countdown-select-label"
+              id="countdown-select"
+              value={countdown}
+              onChange={handleCountdownChange}
+            >
+              {countdownOptions.map((option) => (
+                <MenuItem key={option} value={parseInt(option)}>
+                  {option} seconds
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+      )}
 
       {/* <Box display="flex" justifyContent="flex-end" marginBottom={2}>
         <Players />

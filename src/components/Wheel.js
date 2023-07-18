@@ -7,6 +7,7 @@ import {
   resetCountdown,
   hideAnswer,
   setCountdown,
+  resetTimer,
   stopTimer,
 } from "../store/questionSlice";
 import {
@@ -86,6 +87,7 @@ const WheelComponent = () => {
       setSpinCompleted(false);
       setSelectedAnswer(null);
       dispatch(resetCountdown());
+      dispatch(resetTimer());
     }
   };
 
@@ -109,6 +111,7 @@ const WheelComponent = () => {
   const handleAnswerClick = (answer) => {
     setSelectedAnswer(answer);
     showAllAnswers(answer);
+    dispatch(stopTimer());
   };
 
   if (revealAnswer) {

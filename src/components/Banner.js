@@ -21,7 +21,7 @@ export default function Banner() {
     <AppBar position="static" className={classes.appBar}>
       <Toolbar>
         <Typography variant="h1" className={classes.title}>
-          Triva Wheel
+          Trivia Wheel
         </Typography>
       </Toolbar>
     </AppBar>

@@ -170,14 +170,14 @@ const WheelComponent = () => {
                   {option} seconds
                 </MenuItem>
               ))}
+              {/* <Box display="flex" justifyContent="flex-end" marginBottom={2}>
+            <Players />
+          </Box> */}
             </Select>
           </FormControl>
         </Box>
       )}
 
-      {/* <Box display="flex" justifyContent="flex-end" marginBottom={2}>
-        <Players />
-      </Box> */}
       <Wheel
         mustStartSpinning={mustSpin}
         prizeNumber={prizeNumber}

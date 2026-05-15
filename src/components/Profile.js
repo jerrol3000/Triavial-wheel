@@ -4,16 +4,21 @@ import { fetchLeaderboard, fetchStats } from "../store/statsSlice";
 import { setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { ACHIEVEMENTS, ACHIEVEMENT_MAP } from "../data/achievements";
+import { api } from "../api/client";
 
 export default function Profile() {
   const dispatch = useDispatch();
   const stats = useSelector((s) => s.stats);
   const user = useSelector((s) => s.auth.user);
   const [tab, setTab] = useState("stats");
+  const [rank, setRank] = useState(null);
 
   useEffect(() => {
     dispatch(fetchLeaderboard());
-    if (user) dispatch(fetchStats());
+    if (user) {
+      dispatch(fetchStats());
+      api.get("/stats/my-rank").then((r) => setRank(r.data)).catch(() => setRank(null));
+    } else setRank(null);
   }, [dispatch, user]);
 
   const prog = progressToNext(stats.xp);
@@ -40,6 +45,25 @@ export default function Profile() {
         <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
           {prog.xpInLevel} / {prog.xpForNext} XP to next
         </div>
+        {rank && (
+          <div className="tw-row" style={{ justifyContent: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            {rank.rank && (
+              <span className="tw-pill" title={`Out of ${rank.total} players on the high-score leaderboard`}>
+                🏆 #{rank.rank} <span style={{ color: "var(--text-dim)" }}>of {rank.total}</span>
+              </span>
+            )}
+            {rank.online_rank && (
+              <span className="tw-pill" title="Your rank on the online VS leaderboard">
+                🌐 #{rank.online_rank} <span style={{ color: "var(--text-dim)" }}>of {rank.online_total}</span>
+              </span>
+            )}
+            {rank.high_score > 0 && (
+              <span className="tw-pill" title="Your single-game high score">
+                ⭐ best {rank.high_score}
+              </span>
+            )}
+          </div>
+        )}
         {!user && (
           <button className="tw-btn block" style={{ marginTop: 14 }} onClick={() => dispatch(setModal("auth"))}>
             Sign in to sync & climb the leaderboards
@@ -88,12 +112,24 @@ export default function Profile() {
           {stats.leaderboard.length === 0 ? (
             <div style={{ color: "var(--text-dim)" }}>No scores yet. Be the first!</div>
           ) : (
-            stats.leaderboard.map((r, i) => (
-              <div key={r.username + i} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <span>{i + 1}. {r.username} <span style={{ color: "var(--text-dim)" }}>· L{r.level}</span></span>
-                <strong>{r.high_score}</strong>
-              </div>
-            ))
+            stats.leaderboard.map((r, i) => {
+              const mine = user && r.username === user.username;
+              return (
+                <div key={r.username + i} className="tw-row"
+                  style={{
+                    justifyContent: "space-between",
+                    padding: "8px 10px",
+                    margin: "2px -10px",
+                    borderRadius: 8,
+                    borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    background: mine ? "linear-gradient(90deg, rgba(124,58,237,0.25), rgba(236,72,153,0.25))" : undefined,
+                    fontWeight: mine ? 700 : undefined,
+                  }}>
+                  <span>{i + 1}. {r.username}{mine && " (you)"} <span style={{ color: "var(--text-dim)" }}>· L{r.level}</span></span>
+                  <strong>{r.high_score}</strong>
+                </div>
+              );
+            })
           )}
         </div>
       )}

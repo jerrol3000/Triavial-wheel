@@ -73,6 +73,8 @@ const slice = createSlice({
     timeLeft: TIME_PER_QUESTION,
     paused: false,
     finished: false,
+    eliminated_out: false, // knocked out for missing too many in a row
+    wrongStreak: 0,
     loading: false,
     error: null,
     startedAt: null,
@@ -96,6 +98,8 @@ const slice = createSlice({
       s.timeLeft = TIME_PER_QUESTION;
       s.paused = false;
       s.finished = false;
+      s.eliminated_out = false;
+      s.wrongStreak = 0;
       s.startedAt = Date.now();
     },
     setMode: (s, a) => { s.mode = a.payload; },
@@ -103,10 +107,10 @@ const slice = createSlice({
       if (s.paused || s.showResult || s.finished || !s.questions.length) return;
       s.timeLeft = Math.max(0, s.timeLeft - 1);
       if (s.timeLeft === 0) {
-        // out of time → wrong
         s.showResult = true;
         s.incorrect += 1;
         s.streak = 0;
+        s.wrongStreak += 1;
         s.perQuestion.push(false);
       }
     },
@@ -122,24 +126,34 @@ const slice = createSlice({
       const isRight = ans === correctDecoded;
       if (isRight) {
         const timeBonus = Math.round((s.timeLeft / TIME_PER_QUESTION) * 50);
-        const streakMul = 1 + Math.min(s.streak, 9) * 0.1; // up to 1.9x at 9-streak
+        const streakMul = 1 + Math.min(s.streak, 9) * 0.1;
         const diffMul = s.mode === "easy" ? 1 : s.mode === "medium" ? 1.5 : 2;
         const doubleMul = s.doubleArmed ? 2 : 1;
         const mysteryMul = s.isMystery ? 1.5 : 1;
         const gained = Math.round((BASE_POINTS + timeBonus) * streakMul * diffMul * doubleMul * mysteryMul);
         s.score += gained;
+        s.lastScoreDelta = gained; // for the floating "+150" popup
         s.correct += 1;
         s.streak += 1;
+        s.wrongStreak = 0;
         s.bestStreakRun = Math.max(s.bestStreakRun, s.streak);
         s.perQuestion.push(true);
       } else {
         s.incorrect += 1;
         s.streak = 0;
+        s.wrongStreak += 1;
         s.perQuestion.push(false);
+        s.lastScoreDelta = null;
       }
       s.doubleArmed = false;
     },
     nextQuestion: (s) => {
+      // 3 wrong in a row = knocked out, round ends early.
+      if (s.wrongStreak >= 3) {
+        s.finished = true;
+        s.eliminated_out = true;
+        return;
+      }
       if (s.index + 1 >= s.questions.length) {
         s.finished = true;
         return;

@@ -10,6 +10,7 @@ const dailyRoutes = require("./routes/daily");
 const proRoutes = require("./routes/pro");
 const questionRoutes = require("./routes/questions");
 const adminRoutes = require("./routes/admin");
+const paymentRoutes = require("./routes/payments");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
 const realtime = require("./realtime");
@@ -39,6 +40,7 @@ app.use("/api/daily", dailyRoutes);
 app.use("/api/pro", proRoutes);
 app.use("/api/questions", questionRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/pay", paymentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

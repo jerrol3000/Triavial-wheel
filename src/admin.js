@@ -118,6 +118,10 @@ function Sidebar({ view, setView, me, onLogout }) {
         <img src="/logo-no-background.png" alt="" />
         Trivia Admin
       </div>
+      <a className="adm-nav-btn" href="/" title="Return to the player-facing game"
+         style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))", border: "1px solid rgba(124,58,237,0.4)", marginBottom: 8 }}>
+        🎡 Back to the game
+      </a>
       {items.map((it) => (
         <button
           key={it.id}

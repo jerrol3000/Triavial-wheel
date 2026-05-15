@@ -11,6 +11,7 @@ import Profile from "./Profile";
 import Online from "./Online";
 import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
+import AdRewardModal from "./AdRewardModal";
 import Toasts from "./Toasts";
 import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
@@ -53,6 +54,7 @@ export default function App() {
       <BottomNav />
       {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
       {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
+      {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
       <Toasts />
     </div>
   );

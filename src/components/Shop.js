@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { addCoins, grantPowerup, grantTheme, setActiveTheme, setPro, spendCoins, refillLives } from "../store/statsSlice";
@@ -6,6 +6,7 @@ import { pushToast, setModal } from "../store/uiSlice";
 import { THEME_LIST } from "../data/themes";
 import { POWERUP_LIST } from "../data/powerups";
 import { sfx } from "../utils/sound";
+import PayPalButton from "./PayPalButton";
 
 const COIN_PACKS = [
   { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
@@ -23,6 +24,10 @@ export default function Shop() {
   const stats = useSelector((s) => s.stats);
   const user = useSelector((s) => s.auth.user);
   const [busy, setBusy] = useState(false);
+  const [payCfg, setPayCfg] = useState(null);
+  useEffect(() => {
+    api.get("/pay/config").then((r) => setPayCfg(r.data)).catch(() => setPayCfg({ paypal_enabled: false }));
+  }, []);
 
   const requireAuth = () => {
     if (!user) {
@@ -173,9 +178,55 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Coin packs (real-money via Stripe checkout in prod; dev grants instantly) */}
+      {/* Real-money packs via PayPal (and PayPal-managed credit card / mobile pay) */}
+      {payCfg && payCfg.paypal_enabled && (
+        <div className="tw-card">
+          <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy with real money</div>
+          <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
+            PayPal · credit card · Apple/Google Pay · Venmo (via PayPal). {payCfg.paypal_mode === "sandbox" && <em>(Sandbox mode)</em>}
+          </div>
+          {[
+            { id: "freespins_10", label: "10 Free Spins", price: "$1.99", desc: "Skip the wait — 10 spins of the wheel" },
+            { id: "coins_small", label: "Small coin bag · 200 🪙", price: "$0.99", desc: "Power-up some power-ups" },
+            { id: "coins_medium", label: "Coin stack · 600 🪙", price: "$2.99", desc: "Best value for coins" },
+            { id: "powerups_starter", label: "Starter Pack · 5 of each", price: "$0.99", desc: "5× each power-up" },
+            { id: "powerups_mega", label: "Mega Pack · 20 of each", price: "$2.99", desc: "Stock up for the week" },
+            { id: "freespins_30", label: "30 Free Spins", price: "$4.99", desc: "A month's worth of spins" },
+            { id: "coins_large", label: "Coin vault · 1500 🪙", price: "$5.99", desc: "Whale tier 🐳" },
+          ].map((p) => (
+            <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 200px" }}>
+                <div style={{ fontWeight: 600 }}>{p.label}</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.desc}</div>
+              </div>
+              <div style={{ minWidth: 200, flex: "0 0 auto" }}>
+                {user ? (
+                  <PayPalButton productId={p.id} clientId={payCfg.paypal_client_id} />
+                ) : (
+                  <button className="tw-btn block" onClick={() => dispatch(setModal("auth"))}>
+                    Sign in to buy
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {payCfg && !payCfg.paypal_enabled && (
+        <div className="tw-card" style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)" }}>
+          <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700 }}>💳 Real-money packs (admin)</div>
+          <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+            Set <code>PAYPAL_CLIENT_ID</code> + <code>PAYPAL_CLIENT_SECRET</code> in <code>server/.env</code> to enable
+            PayPal · credit card · Apple/Google Pay · Venmo.
+          </div>
+        </div>
+      )}
+
+      {/* Coin packs — coin-purchased dev convenience (instant grant, no real money) */}
       <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Coin packs</div>
+        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Coin packs (dev)</div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>Instant dev grants — use the real-money packs above when ready.</div>
         {COIN_PACKS.map((p) => (
           <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div>

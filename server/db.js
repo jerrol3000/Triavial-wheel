@@ -164,6 +164,11 @@ ensureColumn("stats", "online_wins", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "online_losses", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "online_rating", "INTEGER NOT NULL DEFAULT 1000");
 ensureColumn("stats", "win_streak", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "last_ad_at", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "ads_today_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "ads_today_date", "TEXT");
+ensureColumn("stats", "quests_date", "TEXT");
+ensureColumn("stats", "quests_json", "TEXT NOT NULL DEFAULT '[]'");
 
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")

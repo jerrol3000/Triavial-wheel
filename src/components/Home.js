@@ -9,6 +9,7 @@ import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
 import { api } from "../api/client";
+import QuestsPanel from "./QuestsPanel";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -162,10 +163,24 @@ export default function Home() {
       </button>
 
       {!stats.pro && (
-        <div className="tw-ad-slot" style={{ maxWidth: 380, width: "100%" }}>
-          {/* Replace with real AdSense / Carbon Ads markup in production. */}
-          ad slot · upgrade to Pro to remove
-        </div>
+        <button
+          className="tw-btn ghost block"
+          style={{ maxWidth: 380 }}
+          onClick={() => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } })}
+          title="Watch a short ad to earn one free spin (cooldown applies)"
+        >
+          📺 Watch ad → +1 Free Spin
+        </button>
+      )}
+      {!stats.pro && stats.lives === 0 && (
+        <button
+          className="tw-btn ghost block"
+          style={{ maxWidth: 380 }}
+          onClick={() => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "life_refill" } } })}
+          title="Watch a short ad to refill your lives"
+        >
+          📺 Watch ad → Refill Lives
+        </button>
       )}
 
       <div className="tw-card" style={{ width: "100%", maxWidth: 380, textAlign: "center" }}>
@@ -180,6 +195,8 @@ export default function Home() {
           {daily.alreadyPlayed ? "See leaderboard" : "Play daily"}
         </button>
       </div>
+
+      <QuestsPanel />
     </div>
   );
 }

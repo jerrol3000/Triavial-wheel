@@ -7,14 +7,19 @@ export default function GameOver({ onPlayAgain, onHome }) {
   const pct = total ? Math.round((game.correct / total) * 100) : 0;
 
   let title = "Nice try!";
-  if (pct === 100) title = "🏆 Perfect!";
+  if (game.eliminated_out) title = "💥 Knocked out!";
+  else if (pct === 100) title = "🏆 Perfect!";
   else if (pct >= 80) title = "🔥 Crushed it!";
   else if (pct >= 50) title = "👍 Not bad!";
 
   return (
     <div className="tw-card tw-fade-in" style={{ textAlign: "center" }}>
       <div style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: 700 }}>{title}</div>
-      <div style={{ color: "var(--text-dim)" }}>You got {game.correct} of {total} right</div>
+      <div style={{ color: "var(--text-dim)" }}>
+        {game.eliminated_out
+          ? "Three wrong in a row — round over. Try a 50/50 next time!"
+          : `You got ${game.correct} of ${total} right`}
+      </div>
 
       <div className="tw-grid-2" style={{ marginTop: 14 }}>
         <div className="tw-stat"><div className="tw-stat-value">{game.score}</div><div className="tw-stat-label">Score</div></div>

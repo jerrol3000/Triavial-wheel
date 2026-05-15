@@ -64,27 +64,61 @@ export default function Online() {
 function Lobby() {
   const dispatch = useDispatch();
   const [joinCode, setJoinCode] = useState("");
+  const [creatingRoom, setCreatingRoom] = useState(false);
   const stats = useSelector((s) => s.stats);
+  const connected = useSelector((s) => s.online.connected);
 
-  const quickMatch = () => { sfx.click(); rt.send({ type: "quick_match" }); dispatch(setWaiting(true)); };
-  const createRoom = () => { sfx.click(); rt.send({ type: "create_room" }); };
-  const join = (e) => { e.preventDefault(); const c = joinCode.trim().toUpperCase(); if (c.length === 6) rt.send({ type: "join_room", code: c }); };
+  const quickMatch = () => {
+    if (!connected) return;
+    sfx.click(); rt.send({ type: "quick_match" }); dispatch(setWaiting(true));
+  };
+  const createRoom = () => {
+    if (!connected) return;
+    sfx.click();
+    setCreatingRoom(true);
+    rt.send({ type: "create_room" });
+    // Server replies with room_state; once that lands, parent re-renders and we leave Lobby.
+    // Safety: if no reply in 5s, reset the spinner so the button is clickable again.
+    setTimeout(() => setCreatingRoom(false), 5000);
+  };
+  const join = (e) => {
+    e.preventDefault();
+    if (!connected) return;
+    const c = joinCode.trim().toUpperCase();
+    if (c.length === 6) rt.send({ type: "join_room", code: c });
+  };
 
   return (
     <div className="tw-col">
       <h1 style={{ margin: "8px 0" }}>🧑‍🤝‍🧑 Play with Friends</h1>
+      {!connected && (
+        <div className="tw-card" style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)" }}>
+          <div className="tw-row" style={{ gap: 8 }}>
+            <div className="tw-spinner" style={{ width: 18, height: 18, margin: 0, borderWidth: 2 }} />
+            <span style={{ fontSize: 13 }}>Connecting to live server…</span>
+            <button className="tw-pill" style={{ cursor: "pointer", marginLeft: "auto" }}
+              onClick={() => rt.connect()}>Retry</button>
+          </div>
+        </div>
+      )}
       <div className="tw-grid-2">
         <div className="tw-card tw-online-card">
           <div style={{ fontSize: 26 }}>⚡</div>
           <div className="tw-online-title">Quick Match</div>
           <div className="tw-online-desc">Pair you with a random player around your skill level. Best of 5.</div>
-          <button className="tw-btn block" onClick={quickMatch}>Find an opponent</button>
+          <button className="tw-btn block" onClick={quickMatch} disabled={!connected}
+            title={connected ? "Find an opponent now" : "Connecting first…"}>
+            {connected ? "Find an opponent" : "Connecting…"}
+          </button>
         </div>
         <div className="tw-card tw-online-card">
           <div style={{ fontSize: 26 }}>🔗</div>
-          <div className="tw-online-title">Private Room</div>
-          <div className="tw-online-desc">Create a room and share the 6-letter code with a friend.</div>
-          <button className="tw-btn block" onClick={createRoom}>Create room</button>
+          <div className="tw-online-title">Invite a Friend</div>
+          <div className="tw-online-desc">Generate a 6-letter code and share it. They join, you both play.</div>
+          <button className="tw-btn block" onClick={createRoom} disabled={!connected || creatingRoom}
+            title={!connected ? "Connecting first…" : "Generate a code"}>
+            {creatingRoom ? "Creating…" : "Generate code"}
+          </button>
         </div>
       </div>
 
@@ -207,6 +241,19 @@ function LiveMatch() {
             <>
               <div style={{ color: "var(--text-dim)", fontSize: 13 }}>Share this code with a friend</div>
               <div className="tw-room-code">{room.code}</div>
+              <div className="tw-row" style={{ justifyContent: "center", marginTop: 10, gap: 8 }}>
+                <button className="tw-btn ghost" title="Copy the code to your clipboard"
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(room.code); dispatch(pushToast({ icon: "📋", title: "Code copied" })); }
+                    catch (e) { dispatch(pushToast({ icon: "⚠️", title: "Copy failed — long-press to copy" })); }
+                  }}>📋 Copy code</button>
+                <button className="tw-btn ghost" title="Share via your device's share sheet"
+                  onClick={async () => {
+                    const text = `Join my Trivia Wheel match with code: ${room.code}\nhttps://triviawheel.app`;
+                    if (navigator.share) { try { await navigator.share({ title: "Trivia Wheel", text }); } catch (e) {} }
+                    else { try { await navigator.clipboard.writeText(text); dispatch(pushToast({ icon: "📋", title: "Invite copied" })); } catch (e) {} }
+                  }}>↗️ Share</button>
+              </div>
             </>
           )}
           <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700, marginTop: 12 }}>

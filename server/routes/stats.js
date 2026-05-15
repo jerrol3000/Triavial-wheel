@@ -66,12 +66,149 @@ router.post("/daily-login", requireAuth, (req, res) => {
   });
 });
 
+// Watch a rewarded ad and claim the reward.
+// Throttle: 90-second cooldown between ads, max 10 per UTC day per user.
+const AD_COOLDOWN_MS = 90 * 1000;
+const AD_DAILY_LIMIT = 10;
+
+router.post("/watch-ad-reward", requireAuth, (req, res) => {
+  const reward = String((req.body && req.body.reward) || "free_spin");
+  const row = db.prepare("SELECT last_ad_at, ads_today_count, ads_today_date FROM stats WHERE user_id = ?").get(req.user.id);
+  const now = Date.now();
+  if (row.last_ad_at && now - row.last_ad_at < AD_COOLDOWN_MS) {
+    return res.status(429).json({ error: "cooldown", wait_seconds: Math.ceil((AD_COOLDOWN_MS - (now - row.last_ad_at)) / 1000) });
+  }
+  const today = todayKey();
+  let count = row.ads_today_date === today ? row.ads_today_count : 0;
+  if (count >= AD_DAILY_LIMIT) {
+    return res.status(429).json({ error: "daily_limit", limit: AD_DAILY_LIMIT });
+  }
+
+  // Lives are client-only — server returns a flag and the client does the refill.
+  const grant = { granted_free_spins: 0, granted_coins: 0, granted_life_refill: false };
+  if (reward === "life_refill") grant.granted_life_refill = true;
+  else if (reward === "coins")  grant.granted_coins = 30;
+  else                          grant.granted_free_spins = 1;
+
+  db.prepare(`
+    UPDATE stats SET
+      free_spins = free_spins + ?,
+      coins = coins + ?,
+      last_ad_at = ?,
+      ads_today_count = ?,
+      ads_today_date = ?,
+      updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    grant.granted_free_spins,
+    grant.granted_coins,
+    now,
+    count + 1,
+    today,
+    now,
+    req.user.id
+  );
+
+  res.json({ ...grant, ads_today_count: count + 1, daily_limit: AD_DAILY_LIMIT });
+});
+
 // Spend one free spin (called when the user spins the wheel if they have any).
 router.post("/use-free-spin", requireAuth, (req, res) => {
   const row = db.prepare("SELECT free_spins FROM stats WHERE user_id = ?").get(req.user.id);
   if (!row || row.free_spins <= 0) return res.status(400).json({ error: "no_free_spins" });
   db.prepare("UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ?").run(Date.now(), req.user.id);
   res.json({ ok: true, free_spins: row.free_spins - 1 });
+});
+
+// Daily quests — 3 quests generated per UTC date, deterministic per user.
+const QUEST_TEMPLATES = [
+  { id: "win_online_1",  text: "Win 1 online match",       target: 1,  metric: "online_wins_today", reward: { coins: 50, free_spins: 1 } },
+  { id: "play_3",        text: "Play 3 rounds",            target: 3,  metric: "rounds_today",      reward: { coins: 30 } },
+  { id: "streak_5",      text: "Hit a 5-correct streak",   target: 5,  metric: "best_streak_today", reward: { coins: 60, free_spins: 1 } },
+  { id: "daily_play",    text: "Play today's Daily Challenge", target: 1, metric: "daily_played_today", reward: { coins: 40, free_spins: 1 } },
+  { id: "correct_15",    text: "Get 15 questions right",   target: 15, metric: "correct_today",     reward: { coins: 70 } },
+  { id: "perfect_round", text: "Get a perfect round",      target: 1,  metric: "perfect_rounds_today", reward: { coins: 100, free_spins: 2 } },
+  { id: "use_powerup",   text: "Use 2 power-ups",          target: 2,  metric: "powerups_used_today", reward: { coins: 25 } },
+];
+
+function ensureQuests(userId) {
+  const today = todayKey();
+  const row = db.prepare("SELECT quests_date, quests_json FROM stats WHERE user_id = ?").get(userId);
+  if (row && row.quests_date === today) {
+    try { return JSON.parse(row.quests_json); } catch (e) { /* regenerate */ }
+  }
+  // Pick 3 quests deterministically using user id + date as the seed.
+  const seedStr = `${userId}|${today}`;
+  let h = 0;
+  for (let i = 0; i < seedStr.length; i++) { h = (h * 31 + seedStr.charCodeAt(i)) >>> 0; }
+  const pool = [...QUEST_TEMPLATES];
+  const chosen = [];
+  while (chosen.length < 3 && pool.length) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const idx = h % pool.length;
+    chosen.push({ ...pool[idx], progress: 0, claimed: false });
+    pool.splice(idx, 1);
+  }
+  db.prepare("UPDATE stats SET quests_date = ?, quests_json = ?, updated_at = ? WHERE user_id = ?")
+    .run(today, JSON.stringify(chosen), Date.now(), userId);
+  return chosen;
+}
+
+router.get("/quests", requireAuth, (req, res) => {
+  const quests = ensureQuests(req.user.id);
+  res.json({ date: todayKey(), quests });
+});
+
+// Bump quest progress; client calls this after game events (correct, win, daily, etc.)
+router.post("/quests/progress", requireAuth, (req, res) => {
+  const updates = Array.isArray(req.body?.events) ? req.body.events : [];
+  const quests = ensureQuests(req.user.id);
+  for (const ev of updates) {
+    const metric = String(ev.metric || "");
+    const amount = Math.max(0, Math.floor(ev.amount || 0));
+    for (const q of quests) {
+      if (q.metric === metric && !q.claimed) {
+        q.progress = Math.min(q.target, (q.progress || 0) + amount);
+      }
+    }
+  }
+  db.prepare("UPDATE stats SET quests_json = ?, updated_at = ? WHERE user_id = ?")
+    .run(JSON.stringify(quests), Date.now(), req.user.id);
+  res.json({ quests });
+});
+
+router.post("/quests/claim", requireAuth, (req, res) => {
+  const id = String(req.body?.id || "");
+  const quests = ensureQuests(req.user.id);
+  const q = quests.find((x) => x.id === id);
+  if (!q) return res.status(404).json({ error: "no_such_quest" });
+  if (q.claimed) return res.status(400).json({ error: "already_claimed" });
+  if ((q.progress || 0) < q.target) return res.status(400).json({ error: "not_complete" });
+  q.claimed = true;
+  const reward = q.reward || {};
+  db.prepare(`
+    UPDATE stats SET
+      quests_json = ?, coins = coins + ?, free_spins = free_spins + ?, updated_at = ?
+    WHERE user_id = ?
+  `).run(JSON.stringify(quests), reward.coins || 0, reward.free_spins || 0, Date.now(), req.user.id);
+  res.json({ ok: true, reward, stats: loadStats(req.user.id) });
+});
+
+// Where am I on the global leaderboard?
+router.get("/my-rank", requireAuth, (req, res) => {
+  const me = db.prepare("SELECT high_score FROM leaderboard WHERE user_id = ?").get(req.user.id);
+  if (!me) return res.json({ rank: null, total: 0, high_score: 0 });
+  const rank = db.prepare("SELECT COUNT(*) AS n FROM leaderboard WHERE high_score > ?").get(me.high_score).n + 1;
+  const total = db.prepare("SELECT COUNT(*) AS n FROM leaderboard WHERE high_score > 0").get().n;
+  // Online rank from rating.
+  const myRating = db.prepare("SELECT online_rating, online_wins, online_losses FROM stats WHERE user_id = ?").get(req.user.id);
+  let onlineRank = null;
+  let onlineTotal = 0;
+  if (myRating && (myRating.online_wins + myRating.online_losses) > 0) {
+    onlineRank = db.prepare("SELECT COUNT(*) AS n FROM stats WHERE online_rating > ? AND (online_wins + online_losses) > 0").get(myRating.online_rating).n + 1;
+    onlineTotal = db.prepare("SELECT COUNT(*) AS n FROM stats WHERE (online_wins + online_losses) > 0").get().n;
+  }
+  res.json({ rank, total, high_score: me.high_score, online_rank: onlineRank, online_total: onlineTotal });
 });
 
 // Online vs leaderboard.

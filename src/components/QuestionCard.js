@@ -93,12 +93,21 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
     <div className="tw-col tw-fade-in" key={game.index}>
       <div className={`tw-countdown ${tCls}`}>{game.timeLeft}</div>
 
-      <div className="tw-card">
+      <div className="tw-card" style={{ position: "relative" }}>
+        {game.showResult && game.lastScoreDelta > 0 && (
+          <div className="tw-score-pop" key={`pop-${game.index}-${game.lastScoreDelta}`}>+{game.lastScoreDelta}</div>
+        )}
         <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
-          <span className="tw-pill">Q {game.index + 1} / {game.questions.length}</span>
-          <span className="tw-pill tw-streak-flame">🔥 {game.streak}</span>
-          <span className="tw-pill">★ {game.score}</span>
+          <span className="tw-pill" title="Question progress">Q {game.index + 1} / {game.questions.length}</span>
+          <span className="tw-pill tw-streak-flame" title="Correct answers in a row">🔥 {game.streak}</span>
+          <span className="tw-pill" title="Score this round">★ {game.score}</span>
         </div>
+
+        {game.wrongStreak >= 2 && !game.showResult && (
+          <div className="tw-warn-banner" title="Get one more wrong and the round ends">
+            ⚠️ One more miss ends the round
+          </div>
+        )}
         <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 600, lineHeight: 1.3, margin: "10px 0 18px" }}>
           {decode(String(q.question))}
         </div>

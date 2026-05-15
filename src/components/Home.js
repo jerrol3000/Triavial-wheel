@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Wheel } from "react-custom-roulette";
+import Wheel3D from "./Wheel3D";
 import { WHEEL_DATA, CATEGORIES } from "../data/categories";
 import { THEMES } from "../data/themes";
 import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
@@ -23,30 +23,10 @@ export default function Home() {
   const mode = useSelector((s) => s.game.mode);
 
   const [spinning, setSpinning] = React.useState(false);
-  const [prize, setPrize] = React.useState(0);
   const [flash, setFlash] = React.useState(false);
-  const tickHandleRef = useRef(null);
+  const wheelRef = useRef(null);
 
   useEffect(() => { dispatch(fetchDailyMeta()); }, [dispatch]);
-  useEffect(() => () => { if (tickHandleRef.current) clearTimeout(tickHandleRef.current); }, []);
-
-  // Self-scheduling tick loop. Starts fast (~70ms between ticks) and slows
-  // exponentially toward 500ms. Cancelled in onStopSpinning, so it tracks
-  // whatever duration the wheel ends up running for.
-  const startTicks = () => {
-    if (tickHandleRef.current) clearTimeout(tickHandleRef.current);
-    let delay = 70;
-    const tick = () => {
-      sfx.tick();
-      delay = Math.min(500, delay * 1.07);
-      tickHandleRef.current = setTimeout(tick, delay);
-    };
-    tickHandleRef.current = setTimeout(tick, delay);
-  };
-  const stopTicks = () => {
-    if (tickHandleRef.current) clearTimeout(tickHandleRef.current);
-    tickHandleRef.current = null;
-  };
 
   const theme = THEMES[stats.active_theme] || THEMES.classic;
 
@@ -75,15 +55,18 @@ export default function Home() {
       dispatch(setView("shop"));
       return;
     }
-    // If signed in and have free spins, consume one before lives.
     if (hasFreeSpins && useFreeSpinIfPossible()) {
       // free spin used — don't decrement lives
     }
-    const p = Math.floor(Math.random() * WHEEL_DATA.length);
-    setPrize(p);
     setSpinning(true);
-    sfx.spin();
-    startTicks();
+    if (wheelRef.current) wheelRef.current.spin();
+  };
+
+  const onWheelStop = (winningIdx) => {
+    setSpinning(false);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 320);
+    setTimeout(() => startWithCategory(winningIdx), 420);
   };
 
   // Returns true if we consumed a free spin (and updated server-side).
@@ -133,28 +116,13 @@ export default function Home() {
 
           <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 380, width: "100%", margin: "0 auto" }}>
             {flash && <div className="tw-wheel-flash" />}
-            <Wheel
-              mustStartSpinning={spinning}
-              prizeNumber={prize}
+            <Wheel3D
+              ref={wheelRef}
               data={WHEEL_DATA}
-              spinDuration={0.6}
-              fontSize={13}
-              outerBorderWidth={6}
-              outerBorderColor={theme.wheelColors[1] || "#ffffff22"}
-              innerBorderWidth={4}
-              innerBorderColor="#ffffff22"
-              radiusLineColor="#ffffff22"
-              radiusLineWidth={1}
-              backgroundColors={theme.wheelColors}
-              textColors={theme.wheelTextColors}
-              onStopSpinning={() => {
-                setSpinning(false);
-                stopTicks();
-                sfx.coin();
-                setFlash(true);
-                setTimeout(() => setFlash(false), 320);
-                setTimeout(() => startWithCategory(prize), 480);
-              }}
+              theme={theme}
+              onStop={onWheelStop}
+              size={360}
+              fontSize={12}
             />
           </div>
 

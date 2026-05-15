@@ -1,7 +1,7 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { setView } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
+import { safeNavigate } from "../utils/navigate";
 
 const ITEMS = [
   { id: "home",    label: "Play",   icon: "🎡" },
@@ -20,7 +20,7 @@ export default function BottomNav() {
         <button
           key={it.id}
           className={view === it.id || (it.id === "home" && view === "play") ? "active" : ""}
-          onClick={() => { sfx.click(); dispatch(setView(it.id)); }}
+          onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
         >
           <span style={{ fontSize: 22 }}>{it.icon}</span>
           <span>{it.label}</span>

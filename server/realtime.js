@@ -190,31 +190,29 @@ function recordAnswer(room, userId, answer) {
   }
 }
 
-function endMatch(room) {
+function endMatch(room, opts = {}) {
   if (room.finished) return;
   room.finished = true;
   if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
   const [p1, p2] = room.players;
   const winner = !p1 ? p2 : !p2 ? p1 : (p1.score === p2.score ? null : (p1.score > p2.score ? p1 : p2));
-  // Record match.
   if (p1 && p2) {
     db.prepare(`
       INSERT INTO matches (kind, player1_id, player2_id, player1_score, player2_score, winner_id, started_at, finished_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(room.kind, p1.id, p2.id, p1.score, p2.score, winner ? winner.id : null, room.startedAt, Date.now());
-
-    applyMatchRewards(p1, p2, winner);
+    applyMatchRewards(p1, p2, winner, opts.forfeiterId);
   }
   broadcastRoom(room, {
     type: "match_end",
     winnerId: winner ? winner.id : null,
+    forfeiterId: opts.forfeiterId || null,
     players: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct } : null),
   });
-  // Keep room around 30s so the result screen renders, then drop it.
   setTimeout(() => rooms.delete(room.code), 30 * 1000);
 }
 
-function applyMatchRewards(p1, p2, winner) {
+function applyMatchRewards(p1, p2, winner, forfeiterId) {
   const updateStats = db.prepare(`
     UPDATE stats SET
       online_wins = online_wins + ?,
@@ -229,11 +227,13 @@ function applyMatchRewards(p1, p2, winner) {
   for (const p of [p1, p2]) {
     const isWinner = winner && winner.id === p.id;
     const isTie = !winner;
+    const isForfeiter = forfeiterId && p.id === forfeiterId;
     const wonInc = isWinner ? 1 : 0;
     const lostInc = (!isWinner && !isTie) ? 1 : 0;
+    // Forfeiter eats a harsher penalty: no coins, -30 rating (vs -10 for a normal loss).
     const spinsReward = isWinner ? 2 : (isTie ? 1 : 0);
-    const coinsReward = isWinner ? 50 : (isTie ? 15 : 5); // participation reward — keeps losers engaged
-    const ratingDelta = isWinner ? 20 : (isTie ? 0 : -10);
+    const coinsReward = isWinner ? 50 : (isTie ? 15 : (isForfeiter ? 0 : 5));
+    const ratingDelta = isWinner ? 20 : (isTie ? 0 : (isForfeiter ? -30 : -10));
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
   }
 }
@@ -285,7 +285,7 @@ function setupConnection(ws, user) {
         const opponent = room2.players.find((p) => p && p.id !== user.id);
         if (opponent) {
           opponent.score += 100; // disconnect bonus
-          endMatch(room2);
+          endMatch(room2, { forfeiterId: user.id });
         } else {
           rooms.delete(room2.code);
         }
@@ -364,10 +364,10 @@ function handleMessage(ws, user, msg) {
         if (room.players.filter(Boolean).length === 0) rooms.delete(room.code);
         else broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
       } else if (!room.finished) {
-        // Mid-game: opponent wins.
+        // Mid-game forfeit: opponent gets a boost, leaver eats a harsher rating drop.
         const opponent = room.players.find((p) => p && p.id !== user.id);
         if (opponent) opponent.score += 100;
-        endMatch(room);
+        endMatch(room, { forfeiterId: user.id });
       }
       send(ws, { type: "left_room" });
       return;

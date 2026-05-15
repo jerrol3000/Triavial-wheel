@@ -4,6 +4,7 @@ import { setView, toggleSound, setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { LIVES_MAX_EXPORT, LIVES_REGEN_MS_EXPORT } from "../store/statsSlice";
 import { logout } from "../store/authSlice";
+import { safeNavigate } from "../utils/navigate";
 
 export default function Banner() {
   const dispatch = useDispatch();
@@ -12,6 +13,8 @@ export default function Banner() {
   const soundOn = useSelector((s) => s.ui.soundOn);
   const view = useSelector((s) => s.ui.view);
   const notHome = view !== "home";
+
+  const onHomeClick = () => dispatch(safeNavigate("home"));
 
   const { level, xpInLevel, xpForNext, percent } = progressToNext(stats.xp);
 
@@ -28,7 +31,7 @@ export default function Banner() {
     <header className="tw-banner">
       <button
         className={`tw-logo tw-logo-btn ${notHome ? "back" : ""}`}
-        onClick={() => dispatch(setView("home"))}
+        onClick={onHomeClick}
         title={notHome ? "Back to home" : "Trivia Wheel — home"}
       >
         {notHome && <span className="tw-logo-back-arrow" aria-hidden="true">←</span>}

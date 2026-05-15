@@ -33,7 +33,10 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 
 .tw-app { min-height: 100vh; display: flex; flex-direction: column; }
 .tw-content { flex: 1; padding: 16px; max-width: 720px; width: 100%; margin: 0 auto; padding-bottom: 96px; }
-.tw-content.wide { max-width: 1100px; }
+/* The home view uses the full screen width so the wheel can breathe and
+ * the side cards can sit out near the edges. Cap at 1500px on huge monitors
+ * so the wheel column doesn't get absurd. */
+.tw-content.wide { max-width: 1500px; }
 
 .tw-card {
   background: var(--card);
@@ -474,18 +477,29 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   transform: scale(1.05);
 }
 
-/* ─── Home layout: 3-column on desktop, single column on mobile ──────────── */
+/* ─── Home layout: 3-column on desktop, single column on mobile ─────────────
+ * The center column is `1fr` so it absorbs all the extra horizontal space,
+ * which pushes the side cards out toward the viewport edges. The wheel
+ * inside the center column has its own max-width: 380px, so it stays a
+ * comfortable size while the surrounding clearance grows with the viewport.
+ * Wide gaps (28px desktop, 36px on very large screens) keep the side cards
+ * visually separate from the wheel area. */
 .tw-home {
   display: grid;
-  grid-template-columns: minmax(0, 240px) minmax(0, 460px) minmax(0, 280px);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(220px, 280px);
   grid-template-areas: "left center right";
-  gap: 16px;
+  gap: 28px;
   width: 100%;
   align-items: start;
 }
 .tw-home-left   { grid-area: left;   display: flex; flex-direction: column; gap: 12px; }
 .tw-home-center { grid-area: center; display: flex; flex-direction: column; gap: 12px; }
 .tw-home-right  { grid-area: right;  display: flex; flex-direction: column; gap: 12px; }
+
+/* On very large screens, push side cards even further out. */
+@media (min-width: 1280px) {
+  .tw-home { gap: 36px; }
+}
 
 /* On smaller screens, stack vertically — center first, then right, then left. */
 @media (max-width: 960px) {
@@ -495,6 +509,7 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
       "center"
       "right"
       "left";
+    gap: 14px;
   }
 }
 

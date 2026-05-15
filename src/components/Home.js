@@ -9,8 +9,9 @@ import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
 
-const SPIN_DURATION_MS = 4500;
-const TICKS_PER_SPIN = WHEEL_DATA.length * 4;
+// The wheel's actual duration is set by `spinDuration` below (a multiplier on
+// react-custom-roulette's internal default). The tick schedule is self-pacing,
+// so it stays in sync regardless of what spinDuration evaluates to.
 
 export default function Home() {
   const dispatch = useDispatch();
@@ -21,10 +22,28 @@ export default function Home() {
   const [spinning, setSpinning] = React.useState(false);
   const [prize, setPrize] = React.useState(0);
   const [flash, setFlash] = React.useState(false);
-  const tickTimers = useRef([]);
+  const tickHandleRef = useRef(null);
 
   useEffect(() => { dispatch(fetchDailyMeta()); }, [dispatch]);
-  useEffect(() => () => tickTimers.current.forEach(clearTimeout), []);
+  useEffect(() => () => { if (tickHandleRef.current) clearTimeout(tickHandleRef.current); }, []);
+
+  // Self-scheduling tick loop. Starts fast (~70ms between ticks) and slows
+  // exponentially toward 500ms. Cancelled in onStopSpinning, so it tracks
+  // whatever duration the wheel ends up running for.
+  const startTicks = () => {
+    if (tickHandleRef.current) clearTimeout(tickHandleRef.current);
+    let delay = 70;
+    const tick = () => {
+      sfx.tick();
+      delay = Math.min(500, delay * 1.07);
+      tickHandleRef.current = setTimeout(tick, delay);
+    };
+    tickHandleRef.current = setTimeout(tick, delay);
+  };
+  const stopTicks = () => {
+    if (tickHandleRef.current) clearTimeout(tickHandleRef.current);
+    tickHandleRef.current = null;
+  };
 
   const theme = THEMES[stats.active_theme] || THEMES.classic;
 
@@ -56,13 +75,7 @@ export default function Home() {
     setPrize(p);
     setSpinning(true);
     sfx.spin();
-    // Schedule tick sounds — fast early, slow toward the end (ease-out).
-    tickTimers.current.forEach(clearTimeout);
-    tickTimers.current = [];
-    for (let i = 1; i <= TICKS_PER_SPIN; i++) {
-      const t = SPIN_DURATION_MS * (1 - Math.pow(1 - i / TICKS_PER_SPIN, 2));
-      tickTimers.current.push(setTimeout(() => sfx.tick(), t));
-    }
+    startTicks();
   };
 
   return (
@@ -107,8 +120,7 @@ export default function Home() {
           textColors={theme.wheelTextColors}
           onStopSpinning={() => {
             setSpinning(false);
-            tickTimers.current.forEach(clearTimeout);
-            tickTimers.current = [];
+            stopTicks();
             sfx.coin();
             setFlash(true);
             setTimeout(() => setFlash(false), 320);

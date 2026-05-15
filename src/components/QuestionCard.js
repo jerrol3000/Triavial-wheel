@@ -16,7 +16,7 @@ const POW = [
   { id: "double", icon: "✖️2", action: "double" },
 ];
 
-export default function QuestionCard({ onAnswered, hidePowerups = false }) {
+export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty }) {
   const dispatch = useDispatch();
   const game = useSelector((s) => s.game);
   const powerups = useSelector((s) => s.stats.powerups);
@@ -34,7 +34,17 @@ export default function QuestionCard({ onAnswered, hidePowerups = false }) {
   }, [game.timeLeft, game.showResult]);
 
   if (game.loading) return <div className="tw-card" style={{ textAlign: "center" }}>Loading questions...</div>;
-  if (!game.questions.length) return <div className="tw-card" style={{ textAlign: "center" }}>No questions. Spin again!</div>;
+  if (!game.questions.length) {
+    return (
+      <div className="tw-card" style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No questions available</div>
+        <div style={{ color: "var(--text-dim)", marginBottom: 14 }}>
+          The question bank couldn't be reached. Spin again to retry.
+        </div>
+        {onEmpty && <button className="tw-btn block" onClick={onEmpty}>Back to wheel</button>}
+      </div>
+    );
+  }
 
   const q = game.questions[game.index];
   if (!q) return null;

@@ -14,11 +14,25 @@ export default function Play() {
   const dispatch = useDispatch();
   const store = useStore();
   const isFinished = useSelector((s) => s.game.finished);
+  const isLoading = useSelector((s) => s.game.loading);
+  const hasQuestions = useSelector((s) => s.game.questions.length > 0);
   const [showConfetti, setShowConfetti] = useState(false);
 
   // Ref-based "handled" flag so the end-of-round logic runs exactly once per round,
   // regardless of how many re-renders the dispatches inside the effect trigger.
   const handledRef = useRef(false);
+
+  // Watchdog: if we land on the Play screen with no questions and nothing in
+  // flight (network blip, fetch failed, HMR), bounce back to the wheel after 4s
+  // rather than stranding the user on "No questions" with no clear escape.
+  useEffect(() => {
+    if (isFinished || isLoading || hasQuestions) return;
+    const t = setTimeout(() => {
+      dispatch(resetRound());
+      dispatch(setView("home"));
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [isFinished, isLoading, hasQuestions, dispatch]);
 
   useEffect(() => {
     if (!isFinished) { handledRef.current = false; return; }
@@ -107,7 +121,7 @@ export default function Play() {
               onClick={() => { dispatch(resetRound()); dispatch(setView("home")); }}>
         ← Quit
       </button>
-      <QuestionCard />
+      <QuestionCard onEmpty={() => { dispatch(resetRound()); dispatch(setView("home")); }} />
     </div>
   );
 }

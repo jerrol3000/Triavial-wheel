@@ -472,6 +472,12 @@ function handleMessage(ws, user, msg) {
   }
 }
 
+// Exposed for the friends route — list of currently-connected user IDs so
+// the friends list can show online dots without an extra DB hit.
+function getOnlineUserIds() {
+  return new Set(connections.keys());
+}
+
 function attach(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
@@ -506,4 +512,4 @@ function attach(httpServer) {
   console.log("[realtime] WebSocket server attached at /ws");
 }
 
-module.exports = { attach };
+module.exports = { attach, getOnlineUserIds };

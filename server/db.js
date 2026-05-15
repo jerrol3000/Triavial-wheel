@@ -30,7 +30,7 @@ db.exec(`
     longest_daily_streak INTEGER NOT NULL DEFAULT 0,
     current_daily_streak INTEGER NOT NULL DEFAULT 0,
     last_daily_date TEXT,
-    powerups_json TEXT NOT NULL DEFAULT '{"fifty":1,"skip":1,"freeze":1,"double":1}',
+    powerups_json TEXT NOT NULL DEFAULT '{"fifty":1,"skip":1,"freeze":1,"double":1,"streak_saver":0}',
     themes_json TEXT NOT NULL DEFAULT '["classic"]',
     active_theme TEXT NOT NULL DEFAULT 'classic',
     pro_until INTEGER,
@@ -157,6 +157,51 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_events_kind_time ON events(kind, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_events_user_time ON events(user_id, created_at DESC);
+
+  -- Admin-editable encrypted settings (PayPal/Stripe keys, etc.).
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value_encrypted TEXT NOT NULL,
+    is_secret INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+
+  -- Friendships. Always store user_a < user_b so each pair has one row.
+  CREATE TABLE IF NOT EXISTS friendships (
+    user_a INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_b INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted')),
+    requester_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    accepted_at INTEGER,
+    PRIMARY KEY (user_a, user_b)
+  );
+  CREATE INDEX IF NOT EXISTS idx_friendships_a ON friendships(user_a, status);
+  CREATE INDEX IF NOT EXISTS idx_friendships_b ON friendships(user_b, status);
+
+  -- Per-category mastery stats.
+  CREATE TABLE IF NOT EXISTS category_stats (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL,
+    games_played INTEGER NOT NULL DEFAULT 0,
+    correct INTEGER NOT NULL DEFAULT 0,
+    incorrect INTEGER NOT NULL DEFAULT 0,
+    best_score INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, category_id)
+  );
+
+  -- Audit log of admin actions. Append-only.
+  CREATE TABLE IF NOT EXISTS admin_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    meta TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_admin_audit_time ON admin_audit(created_at DESC);
 `);
 
 // Migration: add columns to users if they're missing (idempotent).
@@ -184,6 +229,11 @@ ensureColumn("stats", "ads_today_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "ads_today_date", "TEXT");
 ensureColumn("stats", "quests_date", "TEXT");
 ensureColumn("stats", "quests_json", "TEXT NOT NULL DEFAULT '[]'");
+
+// 2FA columns on users (admin TOTP).
+ensureColumn("users", "totp_secret_enc", "TEXT");
+ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("users", "totp_backup_codes_json", "TEXT");
 
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")

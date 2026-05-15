@@ -5,12 +5,48 @@ const { requireAdmin } = require("../auth");
 const { refreshAllBuckets, getTotalCount, getBucketCount, CATEGORIES, DIFFICULTIES, pickDailyQuestions } = require("../questions");
 const { muteUser, unmuteUser } = require("../moderation");
 const { countSince, sumSince, distinctUsersSince, dailyBreakdown } = require("../events");
+const settings = require("../settings");
+const audit = require("../audit");
+const cryptoEnv = require("../crypto");
 
 const router = express.Router();
 router.use(requireAdmin);
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
+
+// ─── Settings (encrypted PayPal/Stripe creds, editable in admin UI) ─────────
+router.get("/settings", (req, res) => {
+  res.json({
+    encryption_configured: settings.isEncryptionConfigured(),
+    suggest_key: settings.isEncryptionConfigured() ? null : cryptoEnv.suggestKey(),
+    settings: settings.list(),
+  });
+});
+
+router.put("/settings", (req, res) => {
+  const body = req.body || {};
+  if (!settings.isEncryptionConfigured()) {
+    return res.status(503).json({ error: "encryption_not_configured", hint: "Set ADMIN_SETTINGS_KEY in server/.env first; the response from GET /admin/settings includes a suggested key." });
+  }
+  const errors = [];
+  const applied = [];
+  for (const [key, value] of Object.entries(body)) {
+    if (!settings.isAllowedKey(key)) { errors.push({ key, error: "not_allowed" }); continue; }
+    try {
+      settings.set(key, value, req.user.id);
+      applied.push(key);
+      audit.logAdmin(req.user.id, "settings.set", key, { source: "admin_ui" });
+    } catch (e) {
+      errors.push({ key, error: e.message });
+    }
+  }
+  res.json({ applied, errors, settings: settings.list() });
+});
+
+router.get("/audit", (req, res) => {
+  res.json(audit.recent(Math.min(200, Math.max(1, Number(req.query.limit || 100)))));
+});
 
 // ─── Analytics ──────────────────────────────────────────────────────────────
 router.get("/analytics", (req, res) => {
@@ -213,6 +249,7 @@ router.get("/users/:id", (req, res) => {
 router.put("/users/:id", (req, res) => {
   const id = Number(req.params.id);
   const { is_admin, banned, grant_pro_days, set_coins, reset_stats } = req.body || {};
+  audit.logAdmin(req.user.id, "user.update", String(id), req.body);
   const u = db.prepare("SELECT id FROM users WHERE id = ?").get(id);
   if (!u) return res.status(404).json({ error: "not found" });
 
@@ -250,6 +287,7 @@ router.delete("/users/:id", (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: "cannot delete yourself" });
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  audit.logAdmin(req.user.id, "user.delete", String(id));
   res.json({ ok: true });
 });
 

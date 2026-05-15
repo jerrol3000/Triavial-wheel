@@ -60,6 +60,7 @@ export default function Home() {
     }
     setSpinning(true);
     if (wheelRef.current) wheelRef.current.spin();
+    try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
   };
 
   const onWheelStop = (winningIdx) => {

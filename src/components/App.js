@@ -14,6 +14,7 @@ import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
 import Toasts from "./Toasts";
+import InstallPrompt from "./InstallPrompt";
 import { I18nProvider } from "../i18n";
 import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
@@ -76,6 +77,7 @@ export default function App() {
         {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
         {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
         {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
+        <InstallPrompt />
         <Toasts />
       </div>
     </I18nProvider>

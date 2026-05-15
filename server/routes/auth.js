@@ -3,6 +3,8 @@ const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { sign, requireAuth } = require("../auth");
 const { logEvent } = require("../events");
+const totp = require("../totp");
+const cryptoEnv = require("../crypto");
 
 const router = express.Router();
 
@@ -45,17 +47,46 @@ router.post("/register", (req, res) => {
 });
 
 router.post("/login", (req, res) => {
-  const { emailOrUsername, password } = req.body || {};
+  const { emailOrUsername, password, totp_code } = req.body || {};
   if (!emailOrUsername || !password) return res.status(400).json({ error: "missing credentials" });
   const row = db.prepare(
-    "SELECT id, username, password_hash, is_admin, banned_at, country, language FROM users WHERE email = ? OR username = ?"
+    "SELECT id, username, password_hash, is_admin, banned_at, country, language, totp_secret_enc, totp_enabled, totp_backup_codes_json FROM users WHERE email = ? OR username = ?"
   ).get(String(emailOrUsername).toLowerCase(), emailOrUsername);
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     return res.status(401).json({ error: "wrong email/username or password" });
   }
   if (row.banned_at) return res.status(403).json({ error: "account suspended" });
+
+  // If 2FA is enabled, require a valid TOTP code or backup code.
+  if (row.totp_enabled && row.totp_secret_enc) {
+    if (!totp_code) return res.status(401).json({ error: "totp_required" });
+    let secret;
+    try { secret = cryptoEnv.decrypt(row.totp_secret_enc); }
+    catch (e) { return res.status(500).json({ error: "totp_decrypt_failed" }); }
+    const cleaned = String(totp_code).replace(/\s|-/g, "").toUpperCase();
+    const isCode = /^\d{6}$/.test(cleaned);
+    const isBackup = /^[0-9A-F]{4}-?[0-9A-F]{4}$/.test(cleaned);
+    let ok = false;
+    if (isCode && totp.verify(secret, cleaned)) ok = true;
+    if (!ok && isBackup && row.totp_backup_codes_json) {
+      try {
+        const codes = JSON.parse(row.totp_backup_codes_json);
+        const idx = codes.findIndex((c) => c.replace("-", "") === cleaned.replace("-", ""));
+        if (idx >= 0) {
+          codes.splice(idx, 1); // one-time use
+          db.prepare("UPDATE users SET totp_backup_codes_json = ? WHERE id = ?").run(JSON.stringify(codes), row.id);
+          ok = true;
+        }
+      } catch (e) {}
+    }
+    if (!ok) return res.status(401).json({ error: "totp_invalid" });
+  }
+
   logEvent("login", row.id);
-  const user = { id: row.id, username: row.username, is_admin: !!row.is_admin, country: row.country, language: row.language };
+  const user = {
+    id: row.id, username: row.username, is_admin: !!row.is_admin,
+    country: row.country, language: row.language, totp_enabled: !!row.totp_enabled,
+  };
   res.json({ token: sign(user), user });
 });
 
@@ -105,6 +136,61 @@ router.put("/me", requireAuth, (req, res) => {
   db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...values);
   const updated = db.prepare("SELECT id, email, username, is_admin, country, language FROM users WHERE id = ?").get(req.user.id);
   res.json({ ok: true, user: { ...updated, is_admin: !!updated.is_admin } });
+});
+
+// ─── 2FA (TOTP) management ───────────────────────────────────────────────
+// Two-step setup. POST /2fa/init returns a secret + otpauth URI for the
+// authenticator app. POST /2fa/verify confirms the user can read codes
+// from the app and activates 2FA + returns backup codes ONCE.
+
+router.post("/2fa/init", requireAuth, (req, res) => {
+  if (!cryptoEnv.isConfigured()) {
+    return res.status(503).json({ error: "encryption_not_configured", hint: "Set ADMIN_SETTINGS_KEY in server/.env first." });
+  }
+  const row = db.prepare("SELECT username, totp_enabled FROM users WHERE id = ?").get(req.user.id);
+  if (!row) return res.status(404).json({ error: "not_found" });
+  if (row.totp_enabled) return res.status(400).json({ error: "already_enabled" });
+  const secret = totp.generateSecret();
+  // Store the candidate secret (still encrypted) but leave totp_enabled = 0
+  // until verify succeeds, so a partial setup can't lock you out.
+  const enc = cryptoEnv.encrypt(secret);
+  db.prepare("UPDATE users SET totp_secret_enc = ? WHERE id = ?").run(enc, req.user.id);
+  res.json({
+    secret,
+    otpauth_uri: totp.otpauthUri(secret, row.username),
+  });
+});
+
+router.post("/2fa/verify", requireAuth, (req, res) => {
+  if (!cryptoEnv.isConfigured()) return res.status(503).json({ error: "encryption_not_configured" });
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: "missing_code" });
+  const row = db.prepare("SELECT totp_secret_enc, totp_enabled FROM users WHERE id = ?").get(req.user.id);
+  if (!row || !row.totp_secret_enc) return res.status(400).json({ error: "no_setup_in_progress" });
+  let secret;
+  try { secret = cryptoEnv.decrypt(row.totp_secret_enc); }
+  catch (e) { return res.status(500).json({ error: "decrypt_failed" }); }
+  if (!totp.verify(secret, code)) return res.status(401).json({ error: "invalid_code" });
+  const backup = totp.generateBackupCodes(8);
+  db.prepare("UPDATE users SET totp_enabled = 1, totp_backup_codes_json = ? WHERE id = ?")
+    .run(JSON.stringify(backup), req.user.id);
+  res.json({ ok: true, backup_codes: backup });
+});
+
+router.post("/2fa/disable", requireAuth, (req, res) => {
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: "password_required" });
+  const row = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(req.user.id);
+  if (!row || !bcrypt.compareSync(password, row.password_hash)) return res.status(401).json({ error: "wrong_password" });
+  db.prepare("UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes_json = NULL WHERE id = ?").run(req.user.id);
+  res.json({ ok: true });
+});
+
+router.get("/2fa/status", requireAuth, (req, res) => {
+  const row = db.prepare("SELECT totp_enabled, totp_backup_codes_json FROM users WHERE id = ?").get(req.user.id);
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const backup = row.totp_backup_codes_json ? JSON.parse(row.totp_backup_codes_json) : [];
+  res.json({ enabled: !!row.totp_enabled, backup_codes_remaining: backup.length });
 });
 
 module.exports = router;

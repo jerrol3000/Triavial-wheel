@@ -5,6 +5,9 @@ import { setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { ACHIEVEMENTS, ACHIEVEMENT_MAP } from "../data/achievements";
 import { api } from "../api/client";
+import FriendsPanel from "./FriendsPanel";
+import MatchHistory from "./MatchHistory";
+import CategoryMastery from "./CategoryMastery";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -72,7 +75,7 @@ export default function Profile() {
       </div>
 
       <div className="tw-row" style={{ justifyContent: "center" }}>
-        {["stats", "achievements", "leaderboard"].map((t) => (
+        {["stats", "achievements", "leaderboard", "friends", "history"].map((t) => (
           <button key={t} className="tw-pill"
                   style={{ cursor: "pointer", background: tab === t ? "rgba(124,58,237,0.4)" : undefined, textTransform: "capitalize" }}
                   onClick={() => setTab(t)}>{t}</button>
@@ -80,15 +83,20 @@ export default function Profile() {
       </div>
 
       {tab === "stats" && (
-        <div className="tw-grid-2">
-          <div className="tw-stat"><div className="tw-stat-value">{stats.games_played}</div><div className="tw-stat-label">Games played</div></div>
-          <div className="tw-stat"><div className="tw-stat-value">{winRate}%</div><div className="tw-stat-label">Accuracy</div></div>
-          <div className="tw-stat"><div className="tw-stat-value">🔥 {stats.best_streak}</div><div className="tw-stat-label">Best streak</div></div>
-          <div className="tw-stat"><div className="tw-stat-value">📅 {stats.longest_daily_streak}</div><div className="tw-stat-label">Daily record</div></div>
-          <div className="tw-stat"><div className="tw-stat-value">{stats.correct}</div><div className="tw-stat-label">Total correct</div></div>
-          <div className="tw-stat"><div className="tw-stat-value">{stats.xp}</div><div className="tw-stat-label">Total XP</div></div>
-        </div>
+        <>
+          <div className="tw-grid-2">
+            <div className="tw-stat"><div className="tw-stat-value">{stats.games_played}</div><div className="tw-stat-label">Games played</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">{winRate}%</div><div className="tw-stat-label">Accuracy</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">🔥 {stats.best_streak}</div><div className="tw-stat-label">Best streak</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">📅 {stats.longest_daily_streak}</div><div className="tw-stat-label">Daily record</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">{stats.correct}</div><div className="tw-stat-label">Total correct</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">{stats.xp}</div><div className="tw-stat-label">Total XP</div></div>
+          </div>
+          <CategoryMastery />
+        </>
       )}
+      {tab === "friends" && <FriendsPanel />}
+      {tab === "history" && <MatchHistory />}
 
       {tab === "achievements" && (
         <div className="tw-grid-2">

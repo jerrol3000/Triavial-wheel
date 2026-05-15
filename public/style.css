@@ -798,6 +798,44 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   .tw-quick-badge { font-size: 9px; padding: 2px 5px; }
 }
 
+/* Online dot for friends list */
+.tw-online-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.4);
+}
+.tw-online-dot.on {
+  background: var(--good);
+  box-shadow: 0 0 6px rgba(16,185,129,0.7);
+}
+
+/* PWA install prompt — fixed banner above the bottom nav */
+.tw-install-prompt {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 460px;
+  background: rgba(15, 12, 41, 0.95);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  z-index: 50;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  animation: installSlideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes installSlideUp {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+
+/* Small button variant for tight rows */
+.tw-btn.sm { padding: 6px 12px; font-size: 13px; }
+
 /* ─── Tooltips ──────────────────────────────────────────────────────────── */
 .tw-tip { position: relative; display: inline-flex; }
 .tw-tip::after {

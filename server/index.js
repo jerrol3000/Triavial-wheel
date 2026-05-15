@@ -11,6 +11,7 @@ const proRoutes = require("./routes/pro");
 const questionRoutes = require("./routes/questions");
 const adminRoutes = require("./routes/admin");
 const paymentRoutes = require("./routes/payments");
+const friendsRoutes = require("./routes/friends");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
 const realtime = require("./realtime");
@@ -41,6 +42,7 @@ app.use("/api/pro", proRoutes);
 app.use("/api/questions", questionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pay", paymentRoutes);
+app.use("/api/friends", friendsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -53,6 +55,14 @@ realtime.attach(httpServer);
 
 httpServer.listen(PORT, () => {
   console.log(`trivia-wheel API listening on :${PORT}`);
+  const { isConfigured, suggestKey } = require("./crypto");
+  if (!isConfigured()) {
+    const k = suggestKey();
+    console.log("[security] ADMIN_SETTINGS_KEY not set. Generate one and add to .env:");
+    console.log(`             ADMIN_SETTINGS_KEY=${k}`);
+    console.log("             (or any passphrase — server will SHA-256 derive a key)");
+    console.log("           Without this, the admin Settings panel can't store payment creds.");
+  }
   try {
     seedFromFile();
     console.log(`[questions] bank size: ${getTotalCount()}`);

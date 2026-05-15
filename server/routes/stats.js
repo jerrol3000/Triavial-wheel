@@ -39,17 +39,35 @@ function todayKey() {
 }
 router.post("/daily-login", requireAuth, (req, res) => {
   const today = todayKey();
-  const row = db.prepare("SELECT last_login_date, login_streak FROM stats WHERE user_id = ?").get(req.user.id);
+  const row = db.prepare("SELECT last_login_date, login_streak, powerups_json FROM stats WHERE user_id = ?").get(req.user.id);
   if (row && row.last_login_date === today) {
     return res.json({ alreadyClaimed: true, streak: row.login_streak, stats: loadStats(req.user.id) });
   }
-  // Yesterday continues streak; anything older resets.
+  // Yesterday continues streak; anything older resets — unless the user has a streak_saver power-up.
   const [y, m, d] = today.split("-").map(Number);
   const yesterday = new Date(Date.UTC(y, m - 1, d));
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   const ystr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, "0")}-${String(yesterday.getUTCDate()).padStart(2, "0")}`;
   const continued = row && row.last_login_date === ystr;
-  const newStreak = continued ? row.login_streak + 1 : 1;
+  let streakSaverUsed = false;
+  let newStreak;
+  if (continued) {
+    newStreak = row.login_streak + 1;
+  } else if (row && row.last_login_date && row.login_streak > 0) {
+    // Broken streak. Check for streak_saver.
+    let powerups = {};
+    try { powerups = JSON.parse(row.powerups_json || "{}"); } catch (e) {}
+    if ((powerups.streak_saver || 0) > 0) {
+      powerups.streak_saver -= 1;
+      streakSaverUsed = true;
+      newStreak = row.login_streak + 1;
+      db.prepare("UPDATE stats SET powerups_json = ? WHERE user_id = ?").run(JSON.stringify(powerups), req.user.id);
+    } else {
+      newStreak = 1;
+    }
+  } else {
+    newStreak = 1;
+  }
   // Reward grows with streak, capped: day 1 = 1 spin + 25 coins, day 7+ = 3 spins + 100 coins.
   const tier = Math.min(7, newStreak);
   const spinsReward = tier <= 2 ? 1 : tier <= 5 ? 2 : 3;
@@ -63,6 +81,7 @@ router.post("/daily-login", requireAuth, (req, res) => {
   res.json({
     alreadyClaimed: false,
     streak: newStreak,
+    streak_saver_used: streakSaverUsed,
     spinsReward,
     coinsReward,
     stats: loadStats(req.user.id),
@@ -215,6 +234,59 @@ router.get("/my-rank", requireAuth, (req, res) => {
   res.json({ rank, total, high_score: me.high_score, online_rank: onlineRank, online_total: onlineTotal });
 });
 
+// Recent match history (online matches the user participated in).
+router.get("/match-history", requireAuth, (req, res) => {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+  const me = req.user.id;
+  const rows = db.prepare(`
+    SELECT
+      m.id, m.kind, m.player1_id, m.player2_id,
+      m.player1_score, m.player2_score, m.winner_id,
+      m.started_at, m.finished_at,
+      u1.username AS player1_username,
+      u2.username AS player2_username
+    FROM matches m
+    LEFT JOIN users u1 ON u1.id = m.player1_id
+    LEFT JOIN users u2 ON u2.id = m.player2_id
+    WHERE m.player1_id = ? OR m.player2_id = ?
+    ORDER BY m.finished_at DESC
+    LIMIT ?
+  `).all(me, me, limit);
+  res.json(rows.map((r) => {
+    const youArePlayer1 = r.player1_id === me;
+    const yourScore = youArePlayer1 ? r.player1_score : r.player2_score;
+    const oppScore = youArePlayer1 ? r.player2_score : r.player1_score;
+    const opp = youArePlayer1 ? r.player2_username : r.player1_username;
+    const outcome = !r.winner_id ? "tie" : (r.winner_id === me ? "win" : "loss");
+    return {
+      id: r.id, kind: r.kind, outcome,
+      your_score: yourScore, opponent_score: oppScore,
+      opponent: opp || "unknown",
+      duration_ms: r.finished_at - r.started_at,
+      finished_at: r.finished_at,
+    };
+  }));
+});
+
+// Per-category mastery. Returns rows for every category the user has played.
+router.get("/category-stats", requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT category_id, games_played, correct, incorrect, best_score, updated_at
+    FROM category_stats WHERE user_id = ?
+    ORDER BY games_played DESC
+  `).all(req.user.id);
+  res.json(rows.map((r) => ({
+    category_id: r.category_id,
+    games_played: r.games_played,
+    correct: r.correct,
+    incorrect: r.incorrect,
+    best_score: r.best_score,
+    accuracy_pct: (r.correct + r.incorrect) > 0
+      ? Math.round((r.correct / (r.correct + r.incorrect)) * 100)
+      : 0,
+  })));
+});
+
 // Online vs leaderboard.
 router.get("/online-leaderboard", (req, res) => {
   const rows = db.prepare(`
@@ -246,30 +318,56 @@ router.put("/", requireAuth, (req, res) => {
 });
 
 router.post("/game", requireAuth, (req, res) => {
-  const { score = 0, correct = 0, incorrect = 0, xp_gained = 0, coins_gained = 0, best_streak_run = 0 } = req.body || {};
+  const { score = 0, correct = 0, incorrect = 0, xp_gained = 0, coins_gained = 0, best_streak_run = 0, category_id = null } = req.body || {};
   const now = Date.now();
   const stats = db.prepare("SELECT * FROM stats WHERE user_id = ?").get(req.user.id);
   const newXp = stats.xp + Math.max(0, Math.floor(xp_gained));
   const newLevel = 1 + Math.floor(Math.sqrt(newXp / 100));
   const newBest = Math.max(stats.best_streak, Math.floor(best_streak_run));
+  const leveledUp = newLevel > stats.level;
+
+  // Grant a streak_saver power-up on every level-up — small, valuable, retention boost.
+  let powerupsUpdate = stats.powerups_json;
+  if (leveledUp) {
+    try {
+      const p = JSON.parse(stats.powerups_json);
+      p.streak_saver = (p.streak_saver || 0) + 1;
+      powerupsUpdate = JSON.stringify(p);
+    } catch (e) {}
+  }
+
   db.prepare(`
     UPDATE stats SET
-      xp = ?,
-      level = ?,
+      xp = ?, level = ?,
       coins = coins + ?,
       games_played = games_played + 1,
       correct = correct + ?,
       incorrect = incorrect + ?,
       best_streak = ?,
+      powerups_json = ?,
       updated_at = ?
     WHERE user_id = ?
-  `).run(newXp, newLevel, Math.max(0, Math.floor(coins_gained)), Math.max(0, correct), Math.max(0, incorrect), newBest, now, req.user.id);
+  `).run(newXp, newLevel, Math.max(0, Math.floor(coins_gained)), Math.max(0, correct), Math.max(0, incorrect), newBest, powerupsUpdate, now, req.user.id);
+
+  // Per-category mastery.
+  if (category_id) {
+    db.prepare(`
+      INSERT INTO category_stats (user_id, category_id, games_played, correct, incorrect, best_score, updated_at)
+      VALUES (?, ?, 1, ?, ?, ?, ?)
+      ON CONFLICT(user_id, category_id) DO UPDATE SET
+        games_played = games_played + 1,
+        correct = correct + excluded.correct,
+        incorrect = incorrect + excluded.incorrect,
+        best_score = MAX(best_score, excluded.best_score),
+        updated_at = excluded.updated_at
+    `).run(req.user.id, Number(category_id), Math.max(0, correct), Math.max(0, incorrect), Math.max(0, Math.floor(score)), now);
+  }
 
   const lbRow = db.prepare("SELECT high_score FROM leaderboard WHERE user_id = ?").get(req.user.id);
   if (!lbRow || score > lbRow.high_score) {
     db.prepare("INSERT INTO leaderboard (user_id, high_score, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET high_score = excluded.high_score, updated_at = excluded.updated_at").run(req.user.id, score, now);
   }
-  res.json(loadStats(req.user.id));
+  res.json({ ...loadStats(req.user.id), leveled_up: leveledUp });
 });
 
 router.post("/achievement", requireAuth, (req, res) => {

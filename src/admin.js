@@ -82,6 +82,8 @@ function App() {
     moderation: Moderation,
     events: Events,
     refresh: Refresh,
+    settings: AdminSettings,
+    security: AdminSecurity,
   };
   const Page = PAGES[view] || Dashboard;
 
@@ -113,6 +115,8 @@ function Sidebar({ view, setView, me, onLogout }) {
     { id: "moderation", icon: "🛡️", label: "Moderation" },
     { id: "events",    icon: "💳", label: "Pro Events" },
     { id: "refresh",   icon: "🔄", label: "Bank Refresh" },
+    { id: "settings",  icon: "🔑", label: "Payments / Settings" },
+    { id: "security",  icon: "🔒", label: "Security (2FA)" },
   ];
   return (
     <aside className="adm-sidebar">
@@ -147,13 +151,17 @@ function Sidebar({ view, setView, me, onLogout }) {
 function Login({ onLogin, toasts }) {
   const [emailOrUsername, setEU] = useState("");
   const [password, setPw] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [requireTotp, setRequireTotp] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/login", { emailOrUsername, password });
+      const payload = { emailOrUsername, password };
+      if (requireTotp) payload.totp_code = totpCode;
+      const { data } = await api.post("/auth/login", payload);
       if (!data.user?.is_admin) {
         toasts.push("This account is not an admin.", "err");
         setLoading(false);
@@ -162,7 +170,15 @@ function Login({ onLogin, toasts }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       onLogin(data.user);
     } catch (e) {
-      toasts.push(e?.response?.data?.error || "Login failed", "err");
+      const err = e?.response?.data?.error || "Login failed";
+      if (err === "totp_required") {
+        setRequireTotp(true);
+        toasts.push("Enter the 6-digit code from your authenticator app.", "ok");
+      } else if (err === "totp_invalid") {
+        toasts.push("Invalid 2FA code. Try again.", "err");
+      } else {
+        toasts.push(err, "err");
+      }
     }
     setLoading(false);
   };
@@ -174,11 +190,16 @@ function Login({ onLogin, toasts }) {
         <p style={{ color: "var(--text-dim)", marginTop: 0 }}>Admin accounts only.</p>
         <div className="adm-col">
           <input className="adm-input" placeholder="Email or username" value={emailOrUsername}
-                 onChange={(e) => setEU(e.target.value)} autoFocus required />
+                 onChange={(e) => setEU(e.target.value)} autoFocus required disabled={requireTotp} />
           <input className="adm-input" type="password" placeholder="Password" value={password}
-                 onChange={(e) => setPw(e.target.value)} required />
+                 onChange={(e) => setPw(e.target.value)} required disabled={requireTotp} />
+          {requireTotp && (
+            <input className="adm-input" placeholder="2FA code (or backup code)"
+                   value={totpCode} onChange={(e) => setTotpCode(e.target.value)}
+                   inputMode="numeric" autoFocus required maxLength={9} />
+          )}
           <button className="adm-btn" type="submit" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in…" : requireTotp ? "Verify" : "Sign in"}
           </button>
         </div>
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 0, marginTop: 14 }}>
@@ -1064,6 +1085,303 @@ function Moderation({ toasts }) {
         </div>
       )}
     </>
+  );
+}
+
+// ─── Settings (payment credentials) ─────────────────────────────────────────
+function AdminSettings({ toasts }) {
+  const [config, setConfig] = useState(null);
+  const [dirty, setDirty] = useState({}); // { KEY: newValue }
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api.get("/admin/settings").then((r) => setConfig(r.data)).catch(() => toasts.push("load failed", "err"));
+  }, [toasts]);
+  useEffect(() => { load(); }, [load]);
+
+  if (!config) return <div>Loading…</div>;
+
+  const save = async () => {
+    if (Object.keys(dirty).length === 0) return;
+    setBusy(true);
+    try {
+      const { data } = await api.put("/admin/settings", dirty);
+      if (data.errors && data.errors.length) {
+        toasts.push(`Saved with errors: ${data.errors.map((e) => `${e.key}=${e.error}`).join(", ")}`, "err");
+      } else {
+        toasts.push(`Saved ${data.applied.length} setting${data.applied.length === 1 ? "" : "s"}`, "ok");
+      }
+      setDirty({});
+      setConfig({ ...config, settings: data.settings });
+    } catch (e) {
+      const err = e?.response?.data?.error;
+      if (err === "encryption_not_configured") {
+        toasts.push("Set ADMIN_SETTINGS_KEY in server/.env first — see hint above", "err");
+      } else {
+        toasts.push(err || "save failed", "err");
+      }
+    }
+    setBusy(false);
+  };
+
+  const onChange = (key, value) => {
+    setDirty({ ...dirty, [key]: value });
+  };
+
+  const onClear = (key) => {
+    setDirty({ ...dirty, [key]: "" });
+  };
+
+  // Group: PayPal vs Stripe.
+  const paypalKeys = config.settings.filter((s) => s.key.startsWith("PAYPAL_"));
+  const stripeKeys = config.settings.filter((s) => s.key.startsWith("STRIPE_"));
+
+  return (
+    <>
+      <div className="adm-header">
+        <h1>Payments &amp; Settings</h1>
+        <button className="adm-btn" onClick={save} disabled={busy || Object.keys(dirty).length === 0}>
+          {busy ? "Saving…" : `Save ${Object.keys(dirty).length || ""} change${Object.keys(dirty).length === 1 ? "" : "s"}`.trim()}
+        </button>
+      </div>
+
+      {!config.encryption_configured && (
+        <div className="adm-card" style={{ background: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.5)", marginBottom: 16 }}>
+          <div style={{ fontFamily: "Fredoka", fontWeight: 700, marginBottom: 6 }}>🔐 Encryption key not configured</div>
+          <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
+            Add this to <code>server/.env</code> and restart the server. The key never leaves your filesystem — a database breach alone won't expose your payment credentials.
+          </div>
+          {config.suggest_key && (
+            <div className="adm-card" style={{ padding: 10, fontFamily: "JetBrains Mono", fontSize: 12, overflow: "auto" }}>
+              ADMIN_SETTINGS_KEY={config.suggest_key}
+            </div>
+          )}
+        </div>
+      )}
+
+      <SettingsGroup title="PayPal" items={paypalKeys} dirty={dirty} onChange={onChange} onClear={onClear} />
+      <SettingsGroup title="Stripe" items={stripeKeys} dirty={dirty} onChange={onChange} onClear={onClear} />
+
+      <div className="adm-card" style={{ background: "rgba(124,58,237,0.08)", borderColor: "rgba(124,58,237,0.3)" }}>
+        <div style={{ fontFamily: "Fredoka", fontWeight: 700, marginBottom: 6 }}>How resolution works</div>
+        <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>
+          1. <strong>Environment variables win.</strong> If a key is set in <code>server/.env</code>, the DB value is ignored.<br />
+          2. <strong>DB-stored values are encrypted</strong> at rest using <code>ADMIN_SETTINGS_KEY</code> (AES-256-GCM).<br />
+          3. <strong>Switching modes</strong> (e.g. PayPal sandbox → live): change <code>PAYPAL_MODE</code> here, no redeploy.<br />
+          4. <strong>Removing</strong> a value here doesn't touch your env vars — the env values still take effect.
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SettingsGroup({ title, items, dirty, onChange, onClear }) {
+  if (!items.length) return null;
+  return (
+    <div className="adm-card adm-mb">
+      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      {items.map((s) => {
+        const current = dirty[s.key] != null ? dirty[s.key] : (s.preview || "");
+        const sourceTag = s.source === "env"
+          ? <span className="adm-tag" title="From server/.env — DB value ignored">env</span>
+          : s.source === "db"
+            ? <span className="adm-tag" title="Stored encrypted in DB">db</span>
+            : null;
+        return (
+          <div key={s.key} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
+            <div className="adm-row" style={{ marginBottom: 6 }}>
+              <strong style={{ fontFamily: "JetBrains Mono", fontSize: 13 }}>{s.key}</strong>
+              {sourceTag}
+              {s.is_secret && <span className="adm-tag" style={{ background: "rgba(245,158,11,0.2)", color: "#fcd34d" }}>secret</span>}
+              <div className="adm-spacer" />
+              {dirty[s.key] != null && <span style={{ fontSize: 11, color: "var(--warn)" }}>● unsaved</span>}
+            </div>
+            <input
+              className="adm-input"
+              type={s.is_secret ? "password" : "text"}
+              placeholder={s.source === "env" ? "(set via env var — leave empty in DB)" : "Not set"}
+              value={dirty[s.key] != null ? dirty[s.key] : (s.is_secret ? "" : (s.preview || ""))}
+              onChange={(e) => onChange(s.key, e.target.value)}
+              disabled={s.source === "env"}
+            />
+            {s.is_secret && s.preview && dirty[s.key] == null && (
+              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono", color: "var(--text-dim)", marginTop: 4 }}>
+                Current: {s.preview}
+              </div>
+            )}
+            {s.source === "db" && dirty[s.key] == null && (
+              <button className="adm-btn ghost sm" style={{ marginTop: 6 }} onClick={() => onClear(s.key)}>
+                Clear this value
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── 2FA management ─────────────────────────────────────────────────────────
+function AdminSecurity({ toasts }) {
+  const [status, setStatus] = useState(null);
+  const [setupData, setSetupData] = useState(null);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState(null);
+  const [disablePwd, setDisablePwd] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api.get("/auth/2fa/status").then((r) => setStatus(r.data)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const startSetup = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/auth/2fa/init");
+      setSetupData(data);
+    } catch (e) {
+      const err = e?.response?.data?.error;
+      if (err === "encryption_not_configured") {
+        toasts.push("Set ADMIN_SETTINGS_KEY in server/.env first (Payments tab)", "err");
+      } else {
+        toasts.push(err || "failed", "err");
+      }
+    }
+    setBusy(false);
+  };
+
+  const verify = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post("/auth/2fa/verify", { code: verifyCode });
+      setBackupCodes(data.backup_codes);
+      setSetupData(null);
+      setVerifyCode("");
+      load();
+      toasts.push("2FA enabled — save your backup codes!", "ok");
+    } catch (e) {
+      toasts.push(e?.response?.data?.error || "verify failed", "err");
+    }
+    setBusy(false);
+  };
+
+  const disable = async () => {
+    if (!disablePwd) return;
+    if (!confirm("Disable 2FA? Your account will be less secure.")) return;
+    setBusy(true);
+    try {
+      await api.post("/auth/2fa/disable", { password: disablePwd });
+      setDisablePwd("");
+      setBackupCodes(null);
+      load();
+      toasts.push("2FA disabled", "ok");
+    } catch (e) {
+      toasts.push(e?.response?.data?.error || "failed", "err");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <>
+      <div className="adm-header"><h1>Security</h1></div>
+
+      <div className="adm-card adm-mb">
+        <div className="adm-row">
+          <h3 style={{ margin: 0 }}>Two-factor authentication</h3>
+          <div className="adm-spacer" />
+          {status && (
+            <span className="adm-tag" style={{ background: status.enabled ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)" }}>
+              {status.enabled ? "✓ Enabled" : "✗ Disabled"}
+            </span>
+          )}
+        </div>
+        <p style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 8 }}>
+          Adds a TOTP code requirement on login. Compatible with Google Authenticator, Authy, 1Password, Bitwarden.
+        </p>
+
+        {!status?.enabled && !setupData && !backupCodes && (
+          <button className="adm-btn" disabled={busy} onClick={startSetup}>
+            Enable 2FA
+          </button>
+        )}
+
+        {setupData && (
+          <div className="adm-card" style={{ background: "var(--panel-2)" }}>
+            <strong>1. Scan or paste this into your authenticator app</strong>
+            <div className="adm-card" style={{ padding: 10, marginTop: 8, fontFamily: "JetBrains Mono", fontSize: 12, overflow: "auto" }}>
+              <div style={{ marginBottom: 6 }}>Secret: <strong>{setupData.secret}</strong></div>
+              <div style={{ color: "var(--text-dim)", wordBreak: "break-all" }}>{setupData.otpauth_uri}</div>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>
+              Most apps accept the URI as a deep link. Otherwise type the secret manually.
+            </p>
+            <strong>2. Enter the 6-digit code shown in your app:</strong>
+            <div className="adm-row" style={{ marginTop: 6 }}>
+              <input className="adm-input" placeholder="123456" maxLength={6} inputMode="numeric"
+                     value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} autoFocus />
+              <button className="adm-btn" onClick={verify} disabled={busy || verifyCode.length !== 6}>Verify</button>
+            </div>
+          </div>
+        )}
+
+        {backupCodes && (
+          <div className="adm-card" style={{ background: "rgba(245,158,11,0.12)", borderColor: "rgba(245,158,11,0.5)" }}>
+            <strong>💾 Save these backup codes — they're shown only once!</strong>
+            <div style={{ marginTop: 8, fontFamily: "JetBrains Mono", fontSize: 14, lineHeight: 1.8 }}>
+              {backupCodes.map((c) => <div key={c}>{c}</div>)}
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 8 }}>
+              Each works once. Use them to log in if you lose your authenticator.
+            </p>
+            <button className="adm-btn ghost" onClick={() => setBackupCodes(null)}>I've saved them</button>
+          </div>
+        )}
+
+        {status?.enabled && !setupData && !backupCodes && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 6 }}>
+              Backup codes remaining: <strong>{status.backup_codes_remaining}</strong>
+            </div>
+            <div className="adm-row">
+              <input className="adm-input" type="password" placeholder="Confirm with your password"
+                     value={disablePwd} onChange={(e) => setDisablePwd(e.target.value)} />
+              <button className="adm-btn danger" disabled={busy || !disablePwd} onClick={disable}>Disable 2FA</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="adm-card">
+        <h3 style={{ marginTop: 0 }}>Recent admin audit log</h3>
+        <AuditLog toasts={toasts} />
+      </div>
+    </>
+  );
+}
+
+function AuditLog({ toasts }) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => {
+    api.get("/admin/audit").then((r) => setRows(r.data)).catch(() => {});
+  }, []);
+  return (
+    <div className="adm-table-wrap">
+      <table className="adm-table">
+        <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td>{timeAgo(r.created_at)}</td>
+              <td>#{r.admin_user_id}</td>
+              <td className="mono">{r.action}</td>
+              <td className="mono">{r.target || "—"}</td>
+            </tr>
+          ))}
+          {!rows.length && <tr><td colSpan={4} style={{ color: "var(--text-dim)", textAlign: "center" }}>No audit entries yet.</td></tr>}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

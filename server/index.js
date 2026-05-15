@@ -1,4 +1,5 @@
 require("dotenv").config();
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
@@ -11,6 +12,7 @@ const questionRoutes = require("./routes/questions");
 const adminRoutes = require("./routes/admin");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
+const realtime = require("./realtime");
 
 const app = express();
 
@@ -44,9 +46,11 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = Number(process.env.PORT || 4000);
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+realtime.attach(httpServer);
+
+httpServer.listen(PORT, () => {
   console.log(`trivia-wheel API listening on :${PORT}`);
-  // Seed the question bank on first boot, then start the top-up loop.
   try {
     seedFromFile();
     console.log(`[questions] bank size: ${getTotalCount()}`);

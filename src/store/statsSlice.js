@@ -133,8 +133,24 @@ const slice = createSlice({
     },
     spendLife: (s) => {
       if (s.pro) return;
+      // If we have a free spin banked, burn that instead of a life.
+      if ((s.free_spins || 0) > 0) {
+        s.free_spins = Math.max(0, s.free_spins - 1);
+        persist(s);
+        return;
+      }
       if (s.lives === LIVES_MAX) s.lives_updated_at = Date.now();
       s.lives = Math.max(0, s.lives - 1);
+      persist(s);
+    },
+    consumeFreeSpin: (s) => {
+      if ((s.free_spins || 0) > 0) {
+        s.free_spins = Math.max(0, s.free_spins - 1);
+        persist(s);
+      }
+    },
+    grantFreeSpins: (s, a) => {
+      s.free_spins = (s.free_spins || 0) + Math.max(0, Math.floor(a.payload || 0));
       persist(s);
     },
     refillLives: (s) => {
@@ -236,7 +252,7 @@ const slice = createSlice({
 });
 
 export const {
-  tickLives, spendLife, refillLives, addCoins, spendCoins,
+  tickLives, spendLife, refillLives, addCoins, spendCoins, consumeFreeSpin, grantFreeSpins,
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
   grantTheme, markCategoryPlayed, markAchievement, setPro, resetLocal,
 } = slice.actions;

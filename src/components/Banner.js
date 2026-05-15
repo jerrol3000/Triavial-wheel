@@ -33,6 +33,11 @@ export default function Banner() {
           {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}
           {livesNext() && <span style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
         </span>
+        {stats.free_spins > 0 && (
+          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff" }}>
+            🎡 {stats.free_spins}
+          </span>
+        )}
         <span className="tw-pill" title="Coins">🪙 {stats.coins}</span>
         <span className="tw-pill" title={`Level ${level} • ${xpInLevel}/${xpForNext} XP`}>
           ⭐ L{level} · {percent}%

@@ -100,6 +100,50 @@ db.exec(`
     last_fetched_at INTEGER NOT NULL,
     last_outcome TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    player1_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    player2_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    player1_score INTEGER NOT NULL DEFAULT 0,
+    player2_score INTEGER NOT NULL DEFAULT 0,
+    winner_id INTEGER,
+    finished_at INTEGER NOT NULL,
+    started_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_matches_p1 ON matches(player1_id, finished_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_matches_p2 ON matches(player2_id, finished_at DESC);
+
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    room_code TEXT,
+    text TEXT NOT NULL,
+    filtered INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_recent ON chat_messages(created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS chat_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+    reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason TEXT,
+    resolved_at INTEGER,
+    resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_chat_reports_open ON chat_reports(resolved_at, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS chat_mutes (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    muted_until INTEGER NOT NULL,
+    reason TEXT,
+    muted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // Migration: add columns to users if they're missing (idempotent).
@@ -111,6 +155,15 @@ function ensureColumn(table, column, ddl) {
 }
 ensureColumn("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "banned_at", "INTEGER");
+
+// v3 schema additions: free spins economy + online match stats + daily login streak.
+ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 3");
+ensureColumn("stats", "last_login_date", "TEXT");
+ensureColumn("stats", "login_streak", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "online_wins", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "online_losses", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "online_rating", "INTEGER NOT NULL DEFAULT 1000");
+ensureColumn("stats", "win_streak", "INTEGER NOT NULL DEFAULT 0");
 
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")

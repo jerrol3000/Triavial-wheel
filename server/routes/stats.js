@@ -12,6 +12,7 @@ const ALLOWED_FIELDS = new Set([
 
 function loadStats(userId) {
   const row = db.prepare("SELECT * FROM stats WHERE user_id = ?").get(userId);
+  if (!row) return null;
   const achievements = db
     .prepare("SELECT achievement_id, unlocked_at FROM achievements WHERE user_id = ?")
     .all(userId);
@@ -26,6 +27,63 @@ function loadStats(userId) {
 
 router.get("/", requireAuth, (req, res) => {
   res.json(loadStats(req.user.id));
+});
+
+// Daily login bonus — call this on app boot for authed users. Idempotent per UTC date.
+function todayKey() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+router.post("/daily-login", requireAuth, (req, res) => {
+  const today = todayKey();
+  const row = db.prepare("SELECT last_login_date, login_streak FROM stats WHERE user_id = ?").get(req.user.id);
+  if (row && row.last_login_date === today) {
+    return res.json({ alreadyClaimed: true, streak: row.login_streak, stats: loadStats(req.user.id) });
+  }
+  // Yesterday continues streak; anything older resets.
+  const [y, m, d] = today.split("-").map(Number);
+  const yesterday = new Date(Date.UTC(y, m - 1, d));
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const ystr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, "0")}-${String(yesterday.getUTCDate()).padStart(2, "0")}`;
+  const continued = row && row.last_login_date === ystr;
+  const newStreak = continued ? row.login_streak + 1 : 1;
+  // Reward grows with streak, capped: day 1 = 1 spin + 25 coins, day 7+ = 3 spins + 100 coins.
+  const tier = Math.min(7, newStreak);
+  const spinsReward = tier <= 2 ? 1 : tier <= 5 ? 2 : 3;
+  const coinsReward = Math.min(100, 25 * tier);
+  db.prepare(`
+    UPDATE stats SET
+      last_login_date = ?, login_streak = ?,
+      free_spins = free_spins + ?, coins = coins + ?, updated_at = ?
+    WHERE user_id = ?
+  `).run(today, newStreak, spinsReward, coinsReward, Date.now(), req.user.id);
+  res.json({
+    alreadyClaimed: false,
+    streak: newStreak,
+    spinsReward,
+    coinsReward,
+    stats: loadStats(req.user.id),
+  });
+});
+
+// Spend one free spin (called when the user spins the wheel if they have any).
+router.post("/use-free-spin", requireAuth, (req, res) => {
+  const row = db.prepare("SELECT free_spins FROM stats WHERE user_id = ?").get(req.user.id);
+  if (!row || row.free_spins <= 0) return res.status(400).json({ error: "no_free_spins" });
+  db.prepare("UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ?").run(Date.now(), req.user.id);
+  res.json({ ok: true, free_spins: row.free_spins - 1 });
+});
+
+// Online vs leaderboard.
+router.get("/online-leaderboard", (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.username, s.online_rating, s.online_wins, s.online_losses, s.level
+    FROM stats s JOIN users u ON u.id = s.user_id
+    WHERE s.online_wins + s.online_losses > 0
+    ORDER BY s.online_rating DESC, s.online_wins DESC
+    LIMIT 50
+  `).all();
+  res.json(rows);
 });
 
 router.put("/", requireAuth, (req, res) => {

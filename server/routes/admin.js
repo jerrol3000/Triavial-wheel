@@ -3,9 +3,67 @@ const crypto = require("crypto");
 const db = require("../db");
 const { requireAdmin } = require("../auth");
 const { refreshAllBuckets, getTotalCount, getBucketCount, CATEGORIES, DIFFICULTIES, pickDailyQuestions } = require("../questions");
+const { muteUser, unmuteUser } = require("../moderation");
 
 const router = express.Router();
 router.use(requireAdmin);
+
+// ─── Moderation ─────────────────────────────────────────────────────────────
+router.get("/moderation/reports", (req, res) => {
+  const open = req.query.open !== "0";
+  const rows = db.prepare(`
+    SELECT r.id, r.message_id, r.reason, r.created_at, r.resolved_at,
+           m.text, m.username AS author, m.user_id AS author_id, m.filtered, m.room_code,
+           u.username AS reporter
+    FROM chat_reports r
+    JOIN chat_messages m ON m.id = r.message_id
+    JOIN users u ON u.id = r.reporter_id
+    ${open ? "WHERE r.resolved_at IS NULL" : ""}
+    ORDER BY r.created_at DESC LIMIT 100
+  `).all();
+  res.json(rows);
+});
+
+router.post("/moderation/reports/:id/resolve", (req, res) => {
+  db.prepare("UPDATE chat_reports SET resolved_at = ?, resolved_by = ? WHERE id = ?")
+    .run(Date.now(), req.user.id, Number(req.params.id));
+  res.json({ ok: true });
+});
+
+router.get("/moderation/chat", (req, res) => {
+  const filtered = req.query.filtered === "1";
+  const rows = db.prepare(`
+    SELECT id, user_id, username, room_code, text, filtered, created_at
+    FROM chat_messages
+    ${filtered ? "WHERE filtered = 1" : ""}
+    ORDER BY created_at DESC LIMIT 100
+  `).all();
+  res.json(rows);
+});
+
+router.get("/moderation/mutes", (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.user_id, u.username, m.muted_until, m.reason, m.muted_by, m.created_at
+    FROM chat_mutes m JOIN users u ON u.id = m.user_id
+    WHERE m.muted_until > ?
+    ORDER BY m.muted_until DESC
+  `).all(Date.now());
+  res.json(rows);
+});
+
+router.post("/moderation/mute", (req, res) => {
+  const { user_id, hours = 24, reason = "" } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: "user_id required" });
+  const until = muteUser(Number(user_id), Math.max(1, Number(hours)) * 60 * 60 * 1000, String(reason), req.user.id);
+  res.json({ ok: true, muted_until: until });
+});
+
+router.post("/moderation/unmute", (req, res) => {
+  const { user_id } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: "user_id required" });
+  unmuteUser(Number(user_id));
+  res.json({ ok: true });
+});
 
 // ─── Overview / dashboard ───────────────────────────────────────────────────
 router.get("/overview", (req, res) => {

@@ -78,6 +78,7 @@ function App() {
     users: Users,
     questions: Questions,
     daily: Daily,
+    moderation: Moderation,
     events: Events,
     refresh: Refresh,
   };
@@ -107,6 +108,7 @@ function Sidebar({ view, setView, me, onLogout }) {
     { id: "users",     icon: "👥", label: "Users" },
     { id: "questions", icon: "❓", label: "Questions" },
     { id: "daily",     icon: "📅", label: "Daily" },
+    { id: "moderation", icon: "🛡️", label: "Moderation" },
     { id: "events",    icon: "💳", label: "Pro Events" },
     { id: "refresh",   icon: "🔄", label: "Bank Refresh" },
   ];
@@ -843,6 +845,124 @@ function Refresh({ toasts }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Moderation ─────────────────────────────────────────────────────────────
+function Moderation({ toasts }) {
+  const [reports, setReports] = useState([]);
+  const [mutes, setMutes] = useState([]);
+  const [chat, setChat] = useState([]);
+  const [tab, setTab] = useState("reports");
+  const [filteredOnly, setFilteredOnly] = useState(false);
+
+  const loadAll = useCallback(() => {
+    api.get("/admin/moderation/reports").then((r) => setReports(r.data)).catch(() => {});
+    api.get("/admin/moderation/mutes").then((r) => setMutes(r.data)).catch(() => {});
+    api.get(`/admin/moderation/chat${filteredOnly ? "?filtered=1" : ""}`).then((r) => setChat(r.data)).catch(() => {});
+  }, [filteredOnly]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const resolve = async (id) => {
+    try { await api.post(`/admin/moderation/reports/${id}/resolve`); toasts.push("Resolved", "ok"); loadAll(); }
+    catch (e) { toasts.push("Failed", "err"); }
+  };
+  const mute = async (userId, hours) => {
+    const reason = prompt("Reason for mute (optional):") || "";
+    try { await api.post("/admin/moderation/mute", { user_id: userId, hours, reason }); toasts.push(`Muted for ${hours}h`, "ok"); loadAll(); }
+    catch (e) { toasts.push("Failed", "err"); }
+  };
+  const unmute = async (userId) => {
+    try { await api.post("/admin/moderation/unmute", { user_id: userId }); toasts.push("Unmuted", "ok"); loadAll(); }
+    catch (e) { toasts.push("Failed", "err"); }
+  };
+
+  return (
+    <>
+      <div className="adm-header">
+        <h1>Moderation</h1>
+        <button className="adm-btn ghost" onClick={loadAll}>Refresh</button>
+      </div>
+
+      <div className="adm-row adm-mb">
+        {["reports", "mutes", "chat"].map((t) => (
+          <button key={t}
+            className={`adm-btn ${tab === t ? "" : "ghost"}`}
+            onClick={() => setTab(t)}
+            style={{ textTransform: "capitalize" }}>
+            {t}{t === "reports" && reports.length ? ` · ${reports.length}` : ""}
+          </button>
+        ))}
+      </div>
+
+      {tab === "reports" && (
+        <div className="adm-card">
+          {!reports.length && <div style={{ color: "var(--text-dim)", textAlign: "center", padding: 20 }}>No open reports. Nice.</div>}
+          {reports.map((r) => (
+            <div key={r.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--border)" }}>
+              <div className="adm-row" style={{ marginBottom: 4 }}>
+                <span className="adm-tag">{r.room_code || "—"}</span>
+                <span style={{ fontWeight: 700 }}>@{r.author}</span>
+                <span style={{ color: "var(--text-dim)", fontSize: 12 }}>· reported by @{r.reporter}</span>
+                <span style={{ color: "var(--text-dim)", fontSize: 12, marginLeft: "auto" }}>{timeAgo(r.created_at)}</span>
+              </div>
+              <div style={{ fontFamily: "JetBrains Mono", fontSize: 13, background: "var(--panel-2)", padding: 10, borderRadius: 8 }}>
+                {r.filtered ? <span style={{ color: "var(--bad)" }}>[filtered: not displayed] </span> : null}{r.text}
+              </div>
+              <div className="adm-row" style={{ marginTop: 8 }}>
+                <button className="adm-btn warn sm" onClick={() => mute(r.author_id, 24)}>Mute 24h</button>
+                <button className="adm-btn danger sm" onClick={() => mute(r.author_id, 24 * 7)}>Mute 1 week</button>
+                <button className="adm-btn ghost sm" onClick={() => resolve(r.id)}>Mark resolved</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "mutes" && (
+        <div className="adm-card">
+          {!mutes.length && <div style={{ color: "var(--text-dim)", textAlign: "center", padding: 20 }}>No active mutes.</div>}
+          <table className="adm-table">
+            <thead><tr><th>User</th><th>Expires</th><th>Reason</th><th></th></tr></thead>
+            <tbody>
+              {mutes.map((m) => (
+                <tr key={m.user_id}>
+                  <td>@{m.username}</td>
+                  <td className="mono">{new Date(m.muted_until).toLocaleString()}</td>
+                  <td>{m.reason || "—"}</td>
+                  <td><button className="adm-btn good sm" onClick={() => unmute(m.user_id)}>Unmute</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "chat" && (
+        <div className="adm-card">
+          <div className="adm-row adm-mb">
+            <label className="adm-row" style={{ gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={filteredOnly} onChange={(e) => setFilteredOnly(e.target.checked)} />
+              Show only filtered (blocked) messages
+            </label>
+          </div>
+          <table className="adm-table">
+            <thead><tr><th>When</th><th>User</th><th>Room</th><th>Message</th></tr></thead>
+            <tbody>
+              {chat.map((m) => (
+                <tr key={m.id} style={m.filtered ? { background: "rgba(239,68,68,0.05)" } : {}}>
+                  <td className="mono">{timeAgo(m.created_at)}</td>
+                  <td>@{m.username}</td>
+                  <td className="mono">{m.room_code || "—"}</td>
+                  <td>{m.filtered && <span className="adm-tag banned">filtered</span>} {m.text}</td>
+                </tr>
+              ))}
+              {!chat.length && <tr><td colSpan={4} style={{ color: "var(--text-dim)", textAlign: "center" }}>No chat messages.</td></tr>}
+            </tbody>
+          </table>
         </div>
       )}
     </>

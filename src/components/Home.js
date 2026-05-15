@@ -8,6 +8,7 @@ import { setView, pushToast } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
+import { api } from "../api/client";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -67,15 +68,31 @@ export default function Home() {
 
   const onSpin = () => {
     if (spinning) return;
-    if (stats.lives <= 0 && !stats.pro) {
+    const hasFreeSpins = (stats.free_spins || 0) > 0;
+    if (!hasFreeSpins && stats.lives <= 0 && !stats.pro) {
       dispatch(setView("shop"));
       return;
+    }
+    // If signed in and have free spins, consume one before lives.
+    if (hasFreeSpins && useFreeSpinIfPossible()) {
+      // free spin used — don't decrement lives
     }
     const p = Math.floor(Math.random() * WHEEL_DATA.length);
     setPrize(p);
     setSpinning(true);
     sfx.spin();
     startTicks();
+  };
+
+  // Returns true if we consumed a free spin (and updated server-side).
+  const useFreeSpinIfPossible = () => {
+    if ((stats.free_spins || 0) <= 0) return false;
+    // Optimistically tell server. If user is anonymous, server returns 401 but the
+    // local free_spins counter (mirrored in localStorage) will be decremented by
+    // statsSlice's recordGame at end of round anyway, so this is best-effort.
+    api.post("/stats/use-free-spin").catch(() => {});
+    // Local fast-path so UI updates immediately.
+    return true;
   };
 
   return (
@@ -131,11 +148,17 @@ export default function Home() {
 
       <button
         className="tw-btn block"
-        disabled={spinning || (stats.lives <= 0 && !stats.pro)}
+        disabled={spinning || ((stats.free_spins || 0) === 0 && stats.lives <= 0 && !stats.pro)}
         onClick={onSpin}
         style={{ maxWidth: 320 }}
       >
-        {spinning ? "Spinning..." : stats.lives <= 0 && !stats.pro ? "Out of lives — get more" : "SPIN"}
+        {spinning
+          ? "Spinning..."
+          : (stats.free_spins || 0) > 0
+            ? `SPIN  ·  🎡 ${stats.free_spins} free`
+            : stats.lives <= 0 && !stats.pro
+              ? "Out of lives — get more"
+              : "SPIN"}
       </button>
 
       {!stats.pro && (

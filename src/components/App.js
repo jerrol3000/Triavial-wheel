@@ -8,14 +8,17 @@ import Daily from "./Daily";
 import Multiplayer from "./Multiplayer";
 import Shop from "./Shop";
 import Profile from "./Profile";
+import Online from "./Online";
 import AuthModal from "./AuthModal";
+import DailyBonusModal from "./DailyBonusModal";
 import Toasts from "./Toasts";
 import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
-import { getToken } from "../api/client";
+import { api, getToken } from "../api/client";
 import { fetchDailyMeta } from "../store/dailySlice";
+import { setModal } from "../store/uiSlice";
 
-const VIEWS = { home: Home, play: Play, daily: Daily, multi: Multiplayer, shop: Shop, profile: Profile };
+const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile };
 
 export default function App() {
   const dispatch = useDispatch();
@@ -28,6 +31,13 @@ export default function App() {
     if (getToken()) {
       dispatch(fetchStats());
       dispatch(fetchMe());
+      // Daily login bonus — claim once per UTC day. Backend is idempotent.
+      api.post("/stats/daily-login").then((r) => {
+        if (r.data && !r.data.alreadyClaimed) {
+          dispatch(setModal({ name: "dailyBonus", data: r.data }));
+        }
+        dispatch(fetchStats());
+      }).catch(() => {});
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
     return () => clearInterval(id);
@@ -41,7 +51,8 @@ export default function App() {
         <ViewComp />
       </main>
       <BottomNav />
-      {modal === "auth" && <AuthModal />}
+      {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
+      {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
       <Toasts />
     </div>
   );

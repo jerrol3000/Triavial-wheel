@@ -6,7 +6,7 @@ import { sfx } from "../utils/sound";
 const ITEMS = [
   { id: "home",    label: "Play",   icon: "🎡" },
   { id: "daily",   label: "Daily",  icon: "📅" },
-  { id: "multi",   label: "Friends",icon: "🧑‍🤝‍🧑" },
+  { id: "online",  label: "VS",     icon: "🌐" },
   { id: "shop",    label: "Shop",   icon: "🛒" },
   { id: "profile", label: "Me",     icon: "📊" },
 ];

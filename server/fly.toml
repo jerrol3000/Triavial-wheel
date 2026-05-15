@@ -1,0 +1,44 @@
+# Fly.io deployment config for the Trivia Wheel API.
+#
+# Before first deploy:
+#   1. Change `app` below to a globally-unique name you'll own (e.g. "trivia-wheel-api-jerrol")
+#   2. Pick `primary_region` near your users (full list: `fly platform regions`)
+#      Common: iad (Virginia), lhr (London), fra (Frankfurt), syd (Sydney), nrt (Tokyo)
+#   3. Create the volume:  fly volumes create trivia_data --size 1 --region <region>
+#   4. Set the secrets (see DEPLOY.md), then `fly deploy`.
+
+app = "trivia-wheel-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # PORT and DB_PATH are also set in the Dockerfile but listed here for clarity.
+  PORT = "8080"
+  DB_PATH = "/data/trivia.db"
+
+# Persistent volume for the SQLite file.
+# Volumes are region-pinned and per-machine, so keep this app on a SINGLE machine.
+[[mounts]]
+  source = "trivia_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero when idle — saves money/credits. First request after idle pays ~1s cold start.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+# Smallest VM size — plenty for SQLite + Express at low traffic.
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

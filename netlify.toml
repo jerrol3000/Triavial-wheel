@@ -1,0 +1,27 @@
+# Netlify build + proxy config for the Trivia Wheel frontend.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy /api/* requests to the Fly.io backend so the frontend can use
+# same-origin URLs (no CORS headaches, no need to rebuild with a different
+# API_BASE_URL). Update the host below after `fly deploy` prints your app URL.
+#
+# IMPORTANT: keep this redirect BEFORE the SPA fallback below.
+[[redirects]]
+  from = "/api/*"
+  to = "https://trivia-wheel-api.fly.dev/api/:splat"
+  status = 200
+  force = true
+
+# SPA fallback: serve admin.html for /admin paths, index.html for everything else.
+[[redirects]]
+  from = "/admin/*"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

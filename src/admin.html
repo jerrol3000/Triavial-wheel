@@ -17,5 +17,14 @@
   </head>
   <body>
     <div id="admin-root"></div>
+    <script>
+      // Unconditionally unregister any service worker on the admin route — admin
+      // should always be live, never served from cache.
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        });
+      }
+    </script>
   </body>
 </html>

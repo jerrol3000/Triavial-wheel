@@ -1,5 +1,6 @@
 // Minimal offline-first cache for shell assets.
-const CACHE = "trivia-wheel-v1";
+// Cache name is versioned — bump it to force-evict old caches on the next deploy.
+const CACHE = "trivia-wheel-v2";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {
@@ -17,22 +18,31 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  if (e.request.method !== "GET") return;
-  if (url.pathname.startsWith("/api/")) return; // never cache API
+  const req = e.request;
+  const url = new URL(req.url);
+
+  // Bypass anything we shouldn't touch.
+  if (req.method !== "GET") return;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
+  // Navigation requests (top-level page loads, including /admin and SPA routes)
+  // go straight to the network. Lets the server / dev-server's history fallback
+  // decide what HTML to serve, and avoids cache-miss → undefined Response bugs.
+  if (req.mode === "navigate") return;
+
   e.respondWith(
-    caches.match(e.request).then(
-      (cached) =>
-        cached ||
-        fetch(e.request)
-          .then((res) => {
-            if (res.ok && url.origin === self.location.origin) {
-              const copy = res.clone();
-              caches.open(CACHE).then((c) => c.put(e.request, copy));
-            }
-            return res;
-          })
-          .catch(() => cached)
-    )
+    caches.match(req).then((cached) => {
+      const fromNetwork = fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => cached || Response.error());
+      // Cache-first for static assets, but kick off a network update in the background.
+      return cached || fromNetwork;
+    }).catch(() => Response.error())
   );
 });

@@ -25,10 +25,20 @@
   <body>
     <div id="root"></div>
     <script>
+      // Only register the service worker on real deployments. In localhost dev,
+      // it intercepts /admin and other history-fallback routes and breaks HMR.
+      // On localhost, actively unregister any leftover SW from a previous session.
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/service-worker.js").catch(() => {});
-        });
+        var isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+        if (isLocal) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) { r.unregister(); });
+          });
+        } else {
+          window.addEventListener("load", function () {
+            navigator.serviceWorker.register("/service-worker.js").catch(function () {});
+          });
+        }
       }
     </script>
   </body>

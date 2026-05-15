@@ -1,11 +1,14 @@
-import { createLogger } from "redux-logger";
 import { configureStore } from "@reduxjs/toolkit";
-import questionReducer from "./questionSlice";
+import auth from "./authSlice";
+import stats from "./statsSlice";
+import game from "./gameSlice";
+import daily from "./dailySlice";
+import multiplayer from "./multiplayerSlice";
+import ui from "./uiSlice";
 
 const store = configureStore({
-  reducer: questionReducer,
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(createLogger({ collapsed: true })),
+  reducer: { auth, stats, game, daily, multiplayer, ui },
+  middleware: (gdm) => gdm({ serializableCheck: false }),
 });
 
 export default store;

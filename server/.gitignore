@@ -1,0 +1,6 @@
+node_modules
+.env
+# Ignore the runtime SQLite database but keep the seed JSON files committed.
+data/*.db
+data/*.db-wal
+data/*.db-shm

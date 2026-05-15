@@ -1,39 +1,48 @@
-import React, { useState } from "react";
-import WheelComponent from "../helper/Wheel";
-import { lightTheme, darkTheme } from "./theme/theme.js";
-import { ThemeProvider } from "@mui/material/styles";
+import React, { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import Banner from "./Banner";
-import { Paper } from "@mui/material";
+import BottomNav from "./BottomNav";
+import Home from "./Home";
+import Play from "./Play";
+import Daily from "./Daily";
+import Multiplayer from "./Multiplayer";
+import Shop from "./Shop";
+import Profile from "./Profile";
+import AuthModal from "./AuthModal";
+import Toasts from "./Toasts";
+import { tickLives, fetchStats } from "../store/statsSlice";
+import { fetchMe } from "../store/authSlice";
+import { getToken } from "../api/client";
+import { fetchDailyMeta } from "../store/dailySlice";
 
-const App = () => {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+const VIEWS = { home: Home, play: Play, daily: Daily, multi: Multiplayer, shop: Shop, profile: Profile };
 
-  const theme = isDarkMode ? darkTheme : lightTheme;
+export default function App() {
+  const dispatch = useDispatch();
+  const view = useSelector((s) => s.ui.view);
+  const modal = useSelector((s) => s.ui.modal);
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+  useEffect(() => {
+    dispatch(tickLives());
+    dispatch(fetchDailyMeta());
+    if (getToken()) {
+      dispatch(fetchStats());
+      dispatch(fetchMe());
+    }
+    const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
+    return () => clearInterval(id);
+  }, [dispatch]);
 
+  const ViewComp = VIEWS[view] || Home;
   return (
-    <ThemeProvider theme={theme}>
-      <Paper
-        className="app-container"
-        // style={{
-        //   backgroundImage:
-        //     "url(https://images.unsplash.com/photo-1495195129352-aeb325a55b65?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1476&q=80)",
-        //   backgroundSize: "contain",
-        //   backgroundPosition: "center top 4.25em",
-        //   backgroundRepeat: "no-repeat",
-        //   height: "100vh",
-        //   margin: 0,
-        //   padding: 0,
-        // }}
-      >
-        <Banner toggleTheme={toggleTheme} isDarkMode={isDarkMode} />
-        <WheelComponent />
-      </Paper>
-    </ThemeProvider>
+    <div className="tw-app">
+      <Banner />
+      <main className="tw-content tw-fade-in" key={view}>
+        <ViewComp />
+      </main>
+      <BottomNav />
+      {modal === "auth" && <AuthModal />}
+      <Toasts />
+    </div>
   );
-};
-
-export default App;
+}

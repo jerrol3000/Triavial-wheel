@@ -1,1 +1,253 @@
+:root {
+  --bg-1: #0f0c29;
+  --bg-2: #302b63;
+  --bg-3: #24243e;
+  --primary: #7c3aed;
+  --primary-2: #ec4899;
+  --good: #10b981;
+  --bad: #ef4444;
+  --warn: #f59e0b;
+  --text: #f8fafc;
+  --text-dim: #cbd5e1;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-border: rgba(255, 255, 255, 0.12);
+}
 
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 800px at 0% 0%, rgba(124, 58, 237, 0.35), transparent 60%),
+    radial-gradient(1000px 700px at 100% 100%, rgba(236, 72, 153, 0.30), transparent 60%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2), var(--bg-3));
+  background-attachment: fixed;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spacing: 0.2px; }
+
+.tw-app { min-height: 100vh; display: flex; flex-direction: column; }
+.tw-content { flex: 1; padding: 16px; max-width: 720px; width: 100%; margin: 0 auto; padding-bottom: 96px; }
+
+.tw-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+.tw-btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 14px 22px;
+  font-size: 16px;
+  color: white;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  box-shadow: 0 6px 20px rgba(124,58,237,0.45);
+  transition: transform 0.08s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+}
+.tw-btn:hover { transform: translateY(-1px); }
+.tw-btn:active { transform: translateY(1px) scale(0.99); }
+.tw-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.tw-btn.ghost { background: rgba(255,255,255,0.08); box-shadow: none; border: 1px solid var(--card-border); }
+.tw-btn.danger { background: linear-gradient(135deg, #ef4444, #f97316); box-shadow: 0 6px 20px rgba(239,68,68,0.45); }
+.tw-btn.success { background: linear-gradient(135deg, #10b981, #06b6d4); box-shadow: 0 6px 20px rgba(16,185,129,0.45); }
+.tw-btn.block { display: block; width: 100%; }
+
+.tw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid var(--card-border);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tw-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+}
+.tw-input:focus { border-color: var(--primary); }
+
+.tw-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(15, 12, 41, 0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--card-border);
+  position: sticky; top: 0; z-index: 10;
+}
+.tw-logo { display: flex; align-items: center; gap: 10px; font-family: "Fredoka"; font-weight: 700; font-size: 20px; }
+.tw-logo img { width: 32px; height: 32px; }
+
+.tw-row { display: flex; align-items: center; gap: 10px; }
+.tw-col { display: flex; flex-direction: column; gap: 10px; }
+.tw-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.tw-answer {
+  display: block; width: 100%; text-align: left;
+  padding: 14px 16px; margin-bottom: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--card-border);
+  color: var(--text); font-size: 16px; font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.tw-answer:hover:not(:disabled) { background: rgba(255,255,255,0.12); }
+.tw-answer:active:not(:disabled) { transform: scale(0.99); }
+.tw-answer:disabled { cursor: not-allowed; opacity: 0.9; }
+.tw-answer.correct { background: rgba(16,185,129,0.25); border-color: var(--good); }
+.tw-answer.wrong { background: rgba(239,68,68,0.25); border-color: var(--bad); }
+.tw-answer.eliminated { opacity: 0.25; text-decoration: line-through; }
+
+.tw-countdown {
+  position: fixed; top: 90px; left: 50%; transform: translateX(-50%);
+  width: 84px; height: 84px; border-radius: 50%;
+  background: rgba(15, 12, 41, 0.8);
+  border: 3px solid var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Fredoka"; font-size: 36px; font-weight: 700;
+  z-index: 100;
+  box-shadow: 0 0 30px rgba(124,58,237,0.6);
+}
+.tw-countdown.warn { border-color: var(--warn); box-shadow: 0 0 30px rgba(245,158,11,0.6); }
+.tw-countdown.urgent { border-color: var(--bad); box-shadow: 0 0 40px rgba(239,68,68,0.8); animation: pulse 0.6s infinite; }
+@keyframes pulse { 0%,100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.08); } }
+
+.tw-heart { color: var(--bad); }
+.tw-heart.empty { color: rgba(255,255,255,0.2); }
+
+.tw-fade-in { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.tw-toast {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  background: rgba(15, 12, 41, 0.95);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px 18px;
+  z-index: 1000;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  animation: toastIn 0.25s ease;
+}
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translateX(-50%); } }
+
+.tw-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200; padding: 16px;
+  animation: fadeIn 0.2s ease;
+}
+.tw-modal {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 460px; width: 100%;
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+
+.tw-nav {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: space-around;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: rgba(15, 12, 41, 0.9);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--card-border);
+  z-index: 10;
+}
+.tw-nav button {
+  flex: 1; max-width: 110px;
+  appearance: none; border: none; background: none;
+  color: var(--text-dim); font-family: inherit; font-size: 12px; font-weight: 600;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.tw-nav button.active { color: var(--primary-2); }
+.tw-nav button svg { width: 24px; height: 24px; }
+
+.tw-stat {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+}
+.tw-stat-value { font-family: "Fredoka"; font-size: 22px; font-weight: 700; }
+.tw-stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.tw-streak-flame {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tw-ad-slot {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px dashed var(--card-border);
+  border-radius: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.tw-wheel-wrap { position: relative; }
+.tw-wheel-flash {
+  pointer-events: none;
+  position: absolute; inset: -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.6), transparent 60%);
+  animation: wheelFlash 0.32s ease-out forwards;
+  z-index: 5;
+}
+@keyframes wheelFlash {
+  0%   { opacity: 0; transform: scale(0.95); }
+  35%  { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.15); }
+}
+
+.tw-share-card {
+  font-family: "Fredoka", sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  padding: 16px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (max-width: 480px) {
+  .tw-content { padding: 12px; padding-bottom: 100px; }
+  .tw-card { padding: 14px; }
+}

@@ -10,7 +10,7 @@ import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
 import { api } from "../api/client";
 import QuestsPanel from "./QuestsPanel";
-import GlobalLeaderboard from "./GlobalLeaderboard";
+import LiveLeaderboard from "./LiveLeaderboard";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -99,122 +99,87 @@ export default function Home() {
 
   return (
     <div className="tw-home">
-      <div className="tw-home-hero">
-        <h1 style={{ textAlign: "center", margin: "8px 0 0", fontSize: 32 }}>Spin to play</h1>
-        <p style={{ color: "var(--text-dim)", marginTop: 0, textAlign: "center" }}>
-          10 questions per round. Streaks multiply your score.
-        </p>
+      {/* LEFT — rewards + quests. Hides into the right column on tablet. */}
+      <aside className="tw-home-left">
+        <EarnMoreStrip />
+        <QuestsPanel />
+      </aside>
 
-        <div className="tw-row" style={{ gap: 6, justifyContent: "center" }}>
-          {["easy", "medium", "hard"].map((m) => (
-            <button
-              key={m}
-              className="tw-pill"
-              onClick={() => { sfx.click(); dispatch(setMode(m)); }}
-              title={`${m.charAt(0).toUpperCase() + m.slice(1)} difficulty — ${m === "easy" ? "1x" : m === "medium" ? "1.5x" : "2x"} points`}
-              style={{
-                cursor: "pointer",
-                background: mode === m ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
-                border: mode === m ? "none" : undefined,
-                color: "#fff",
-                textTransform: "capitalize",
+      {/* CENTER — the focal point: title, mode pills, wheel, SPIN. */}
+      <section className="tw-home-center">
+        <div className="tw-home-hero">
+          <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>Spin to play</h1>
+          <p style={{ color: "var(--text-dim)", margin: "4px 0 0", textAlign: "center", fontSize: 13 }}>
+            10 questions per round. Streaks multiply your score.
+          </p>
+
+          <div className="tw-row" style={{ gap: 6, justifyContent: "center" }}>
+            {["easy", "medium", "hard"].map((m) => (
+              <button
+                key={m}
+                className="tw-pill"
+                onClick={() => { sfx.click(); dispatch(setMode(m)); }}
+                title={`${m.charAt(0).toUpperCase() + m.slice(1)} difficulty — ${m === "easy" ? "1x" : m === "medium" ? "1.5x" : "2x"} points`}
+                style={{
+                  cursor: "pointer",
+                  background: mode === m ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
+                  border: mode === m ? "none" : undefined,
+                  color: "#fff",
+                  textTransform: "capitalize",
+                }}
+              >{m}</button>
+            ))}
+          </div>
+
+          <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 380, width: "100%", margin: "0 auto" }}>
+            {flash && <div className="tw-wheel-flash" />}
+            <Wheel
+              mustStartSpinning={spinning}
+              prizeNumber={prize}
+              data={WHEEL_DATA}
+              spinDuration={0.6}
+              fontSize={13}
+              outerBorderWidth={6}
+              outerBorderColor={theme.wheelColors[1] || "#ffffff22"}
+              innerBorderWidth={4}
+              innerBorderColor="#ffffff22"
+              radiusLineColor="#ffffff22"
+              radiusLineWidth={1}
+              backgroundColors={theme.wheelColors}
+              textColors={theme.wheelTextColors}
+              onStopSpinning={() => {
+                setSpinning(false);
+                stopTicks();
+                sfx.coin();
+                setFlash(true);
+                setTimeout(() => setFlash(false), 320);
+                setTimeout(() => startWithCategory(prize), 480);
               }}
-            >{m}</button>
-          ))}
+            />
+          </div>
+
+          <button
+            className="tw-btn tw-btn-spin block"
+            disabled={spinning || ((stats.free_spins || 0) === 0 && stats.lives <= 0 && !stats.pro)}
+            onClick={onSpin}
+            title={spinning ? "Wheel is spinning" : "Spin the wheel to start a round"}
+          >
+            {spinning
+              ? "Spinning..."
+              : (stats.free_spins || 0) > 0
+                ? `SPIN  ·  🎡 ${stats.free_spins} free`
+                : stats.lives <= 0 && !stats.pro
+                  ? "Out of lives — get more"
+                  : "SPIN"}
+          </button>
         </div>
+      </section>
 
-      <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 380, width: "100%", margin: "0 auto" }}>
-        {flash && <div className="tw-wheel-flash" />}
-        <Wheel
-          mustStartSpinning={spinning}
-          prizeNumber={prize}
-          data={WHEEL_DATA}
-          spinDuration={0.6}
-          fontSize={13}
-          outerBorderWidth={6}
-          outerBorderColor={theme.wheelColors[1] || "#ffffff22"}
-          innerBorderWidth={4}
-          innerBorderColor="#ffffff22"
-          radiusLineColor="#ffffff22"
-          radiusLineWidth={1}
-          backgroundColors={theme.wheelColors}
-          textColors={theme.wheelTextColors}
-          onStopSpinning={() => {
-            setSpinning(false);
-            stopTicks();
-            sfx.coin();
-            setFlash(true);
-            setTimeout(() => setFlash(false), 320);
-            setTimeout(() => startWithCategory(prize), 480);
-          }}
-        />
-      </div>
-
-        <button
-          className="tw-btn tw-btn-spin block"
-          disabled={spinning || ((stats.free_spins || 0) === 0 && stats.lives <= 0 && !stats.pro)}
-          onClick={onSpin}
-          title={spinning ? "Wheel is spinning" : "Spin the wheel to start a round"}
-        >
-          {spinning
-            ? "Spinning..."
-            : (stats.free_spins || 0) > 0
-              ? `SPIN  ·  🎡 ${stats.free_spins} free`
-              : stats.lives <= 0 && !stats.pro
-                ? "Out of lives — get more"
-                : "SPIN"}
-        </button>
-      </div>{/* /tw-home-hero */}
-
-      {/* Everything below: redesigned for one-screen ergonomics. */}
-      <div className="tw-home-grid">
-        <QuickActionCard
-          icon="📅"
-          title="Daily Challenge"
-          subtitle={daily.alreadyPlayed ? "Played today" : "Ready to play"}
-          badge={stats.current_daily_streak > 0 ? `🔥 ${stats.current_daily_streak}` : null}
-          tone={daily.alreadyPlayed ? "muted" : "primary"}
-          onClick={() => { sfx.click(); dispatch(setView("daily")); }}
-        />
-        <QuickActionCard
-          icon="🌐"
-          title="Play Online"
-          subtitle={stats.online_wins + stats.online_losses > 0
-            ? `${stats.online_wins}W · ${stats.online_losses}L`
-            : "Find a match"}
-          badge={stats.online_rating ? `⭐ ${stats.online_rating}` : null}
-          onClick={() => { sfx.click(); dispatch(setView("online")); }}
-        />
-        <QuickActionCard
-          icon="🛋️"
-          title="Pass & Play"
-          subtitle="2–6 players, one device"
-          onClick={() => { sfx.click(); dispatch(setView("multi")); }}
-        />
-      </div>
-
-      <EarnMoreStrip />
-
-      <QuestsPanel />
-
-      <GlobalLeaderboard limit={5} />
+      {/* RIGHT — live leaderboard with score-position animations. */}
+      <aside className="tw-home-right">
+        <LiveLeaderboard limit={8} />
+      </aside>
     </div>
-  );
-}
-
-// ─── Quick action card ───────────────────────────────────────────────────────
-function QuickActionCard({ icon, title, subtitle, badge, onClick, tone }) {
-  return (
-    <button
-      className={`tw-quick-card ${tone === "primary" ? "primary" : ""} ${tone === "muted" ? "muted" : ""}`}
-      onClick={onClick}
-      title={title}
-    >
-      <div className="tw-quick-icon">{icon}</div>
-      <div className="tw-quick-title">{title}</div>
-      <div className="tw-quick-sub">{subtitle}</div>
-      {badge && <div className="tw-quick-badge">{badge}</div>}
-    </button>
   );
 }
 

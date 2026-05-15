@@ -69,7 +69,7 @@ export default function App() {
     <I18nProvider user={user}>
       <div className="tw-app">
         <Banner />
-        <main className="tw-content tw-fade-in" key={view}>
+        <main className={`tw-content tw-fade-in ${view === "home" ? "wide" : ""}`} key={view}>
           <ViewComp />
         </main>
         <BottomNav />

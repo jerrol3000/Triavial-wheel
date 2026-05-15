@@ -235,6 +235,9 @@ ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "totp_backup_codes_json", "TEXT");
 
+// Profile avatar (data URL or preset id). Capped at ~3MB encoded.
+ensureColumn("users", "avatar", "TEXT");
+
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")
   .split(",")

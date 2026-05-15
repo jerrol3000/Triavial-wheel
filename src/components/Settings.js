@@ -4,6 +4,7 @@ import { useT, LANGUAGES, COUNTRIES } from "../i18n";
 import { api } from "../api/client";
 import { toggleSound, pushToast, setView } from "../store/uiSlice";
 import { logout, fetchMe } from "../store/authSlice";
+import AvatarPicker from "./AvatarPicker";
 
 export default function Settings() {
   const dispatch = useDispatch();
@@ -47,6 +48,13 @@ export default function Settings() {
   return (
     <div className="tw-col">
       <h1 style={{ margin: "8px 0" }}>⚙️ {t("settings.title")}</h1>
+
+      {user && (
+        <div className="tw-card">
+          <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 10 }}>Profile picture</div>
+          <AvatarPicker value={user.avatar} onChange={() => {}} save="auto" />
+        </div>
+      )}
 
       <div className="tw-card">
         <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 10 }}>{t("settings.preferences")}</div>

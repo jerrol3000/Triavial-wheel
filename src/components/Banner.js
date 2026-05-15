@@ -5,6 +5,8 @@ import { progressToNext } from "../utils/level";
 import { LIVES_MAX_EXPORT, LIVES_REGEN_MS_EXPORT } from "../store/statsSlice";
 import { logout } from "../store/authSlice";
 import { safeNavigate } from "../utils/navigate";
+import Avatar from "./Avatar";
+import Icon from "./Icon";
 
 export default function Banner() {
   const dispatch = useDispatch();
@@ -44,29 +46,33 @@ export default function Banner() {
           {livesNext() && <span style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
         </span>
         {stats.free_spins > 0 && (
-          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff" }}>
-            🎡 {stats.free_spins}
+          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Icon name="free_spin" size={16} /> {stats.free_spins}
           </span>
         )}
-        <span className="tw-pill" title="Coins">🪙 {stats.coins}</span>
+        <span className="tw-pill" title="Coins" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <Icon name="coins" size={16} /> {stats.coins}
+        </span>
         <span className="tw-pill" title={`Level ${level} • ${xpInLevel}/${xpForNext} XP`}>
           ⭐ L{level} · {percent}%
         </span>
         {stats.pro && <span className="tw-pill" style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none" }}>PRO</span>}
         <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer" }}>
-          {soundOn ? "🔊" : "🔇"}
+          {soundOn ? <Icon name="sound" size={16} /> : "🔇"}
         </button>
         <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer" }}>
-          ⚙️
+          <Icon name="settings" size={16} />
         </button>
         {user && user.is_admin && (
-          <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit" }}>
-            🛠️ Admin
+          <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <Icon name="admin" size={16} /> Admin
           </a>
         )}
         {user ? (
-          <button className="tw-pill" onClick={() => dispatch(logout())} title="Sign out" style={{ cursor: "pointer" }}>
-            👤 {user.username}
+          <button className="tw-pill" onClick={() => dispatch(logout())} title="Sign out"
+                  style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px 4px 4px" }}>
+            <Avatar value={user.avatar} size={24} />
+            <span>{user.username}</span>
           </button>
         ) : (
           <button className="tw-pill" onClick={() => dispatch(setModal("auth"))} style={{ cursor: "pointer" }}>

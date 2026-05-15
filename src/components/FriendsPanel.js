@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { pushToast, setModal } from "../store/uiSlice";
+import Avatar from "./Avatar";
 
 // Friends list + add-by-username + pending requests. Rendered on Profile and
 // inside the Online lobby.
@@ -107,8 +108,9 @@ export default function FriendsPanel({ compact = false }) {
         friends.slice(0, compact ? 5 : 50).map((f) => (
           <div key={f.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div className="tw-row" style={{ gap: 8 }}>
-              <span className={`tw-online-dot ${f.online_now ? "on" : ""}`} title={f.online_now ? "Online now" : "Offline"} />
+              <Avatar value={f.avatar} size={28} ring={f.online_now} />
               <span>@{f.username}</span>
+              <span className={`tw-online-dot ${f.online_now ? "on" : ""}`} title={f.online_now ? "Online now" : "Offline"} />
               <span style={{ color: "var(--text-dim)", fontSize: 12 }}>L{f.level} · ⭐ {f.online_rating}</span>
             </div>
             <button className="tw-btn ghost sm" title="Remove friend" onClick={() => remove(f.id)}>×</button>

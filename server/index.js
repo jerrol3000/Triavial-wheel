@@ -24,7 +24,9 @@ app.use(cors({ origin: origins.length === 1 && origins[0] === "*" ? true : origi
 // Stripe webhook needs the raw body — mount it BEFORE the JSON parser.
 app.post("/api/pro/webhook", express.raw({ type: "application/json" }), handleWebhook);
 
-app.use(express.json({ limit: "100kb" }));
+// 4MB cap so avatar uploads (up to 3MB encoded data URLs) succeed. Larger
+// requests are rejected. Every other endpoint uses tiny payloads.
+app.use(express.json({ limit: "4mb" }));
 
 app.use(rateLimit({
   windowMs: 60 * 1000,

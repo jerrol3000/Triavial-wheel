@@ -798,6 +798,58 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   .tw-quick-badge { font-size: 9px; padding: 2px 5px; }
 }
 
+/* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */
+.tw-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(236, 72, 153, 0.3));
+  border-radius: 50%;
+  overflow: hidden;
+  flex: 0 0 auto;
+  color: var(--text);
+  vertical-align: middle;
+}
+.tw-avatar img, .tw-avatar.tw-avatar { object-fit: cover; }
+img.tw-avatar { background: none; }
+.tw-avatar.ring { box-shadow: 0 0 0 2px var(--primary-2), 0 0 12px rgba(236, 72, 153, 0.35); }
+.tw-avatar-emoji { line-height: 1; }
+
+.tw-avpicker { display: flex; flex-direction: column; gap: 12px; }
+.tw-avpicker-current {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+}
+.tw-avpicker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+}
+.tw-avpicker-cell {
+  appearance: none;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.tw-avpicker-cell:hover { background: rgba(255,255,255,0.1); }
+.tw-avpicker-cell:active { transform: scale(0.94); }
+.tw-avpicker-cell.selected {
+  border-color: var(--primary-2);
+  background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(236,72,153,0.25));
+  box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.35);
+}
+
 /* Online dot for friends list */
 .tw-online-dot {
   display: inline-block;

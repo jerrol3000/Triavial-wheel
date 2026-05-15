@@ -290,7 +290,7 @@ router.get("/category-stats", requireAuth, (req, res) => {
 // Online vs leaderboard.
 router.get("/online-leaderboard", (req, res) => {
   const rows = db.prepare(`
-    SELECT u.username, s.online_rating, s.online_wins, s.online_losses, s.level
+    SELECT u.username, u.avatar, s.online_rating, s.online_wins, s.online_losses, s.level
     FROM stats s JOIN users u ON u.id = s.user_id
     WHERE s.online_wins + s.online_losses > 0
     ORDER BY s.online_rating DESC, s.online_wins DESC
@@ -381,7 +381,7 @@ router.post("/achievement", requireAuth, (req, res) => {
 
 router.get("/leaderboard", (req, res) => {
   const rows = db.prepare(`
-    SELECT u.username, l.high_score, s.level
+    SELECT u.username, u.avatar, l.high_score, s.level
     FROM leaderboard l
     JOIN users u ON u.id = l.user_id
     JOIN stats s ON s.user_id = l.user_id

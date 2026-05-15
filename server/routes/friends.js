@@ -26,7 +26,7 @@ router.get("/", (req, res) => {
   const ids = rows.map((r) => r.friend_id);
   const placeholders = ids.map(() => "?").join(",");
   const users = db.prepare(`
-    SELECT u.id, u.username, s.level, s.online_rating
+    SELECT u.id, u.username, u.avatar, s.level, s.online_rating
     FROM users u LEFT JOIN stats s ON s.user_id = u.id
     WHERE u.id IN (${placeholders})
   `).all(...ids);
@@ -36,6 +36,7 @@ router.get("/", (req, res) => {
   res.json(rows.map((r) => ({
     id: r.friend_id,
     username: byId[r.friend_id]?.username || "unknown",
+    avatar: byId[r.friend_id]?.avatar || null,
     level: byId[r.friend_id]?.level || 1,
     online_rating: byId[r.friend_id]?.online_rating || 1000,
     online_now: onlineSet.has(r.friend_id),

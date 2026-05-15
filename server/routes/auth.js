@@ -20,25 +20,44 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean)
 );
 
+// Avatar payload validator. Accepts:
+//   - A short preset id like "preset:cool" / "preset:unicorn"   (≤ 32 chars)
+//   - A data URL for image/{png,jpeg,gif,webp}                  (≤ 3MB encoded)
+// Anything else is rejected. Returns null if valid, an error key otherwise.
+const DATA_URI_RE = /^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+const PRESET_RE = /^preset:[a-z0-9_-]{1,24}$/;
+const AVATAR_MAX = 3 * 1024 * 1024; // 3MB encoded
+function validateAvatar(avatar) {
+  if (avatar == null || avatar === "") return null; // clearing is OK
+  const s = String(avatar);
+  if (PRESET_RE.test(s)) return null;
+  if (s.length > AVATAR_MAX) return "too_large";
+  if (!DATA_URI_RE.test(s)) return "invalid_format";
+  return null;
+}
+
 router.post("/register", (req, res) => {
-  const { email, username, password, country, language } = req.body || {};
+  const { email, username, password, country, language, avatar } = req.body || {};
   if (!email || !EMAIL_RE.test(email)) return res.status(400).json({ error: "invalid email" });
   if (!username || !USERNAME_RE.test(username)) return res.status(400).json({ error: "username must be 3-20 chars, letters/numbers/underscore" });
   if (!password || password.length < 6) return res.status(400).json({ error: "password must be at least 6 chars" });
   const cc = country && COUNTRY_RE.test(String(country).toUpperCase()) ? String(country).toUpperCase() : null;
   const ln = language && LANGUAGE_RE.test(String(language).toLowerCase()) ? String(language).toLowerCase() : null;
+  const avatarErr = validateAvatar(avatar);
+  if (avatarErr) return res.status(400).json({ error: `avatar_${avatarErr}` });
+  const av = avatar || null;
 
   const hash = bcrypt.hashSync(password, 10);
   const now = Date.now();
   try {
     const isAdmin = ADMIN_EMAILS.has(email.toLowerCase()) ? 1 : 0;
     const info = db.prepare(
-      "INSERT INTO users (email, username, password_hash, is_admin, country, language, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).run(email.toLowerCase(), username, hash, isAdmin, cc, ln, now);
+      "INSERT INTO users (email, username, password_hash, is_admin, country, language, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    ).run(email.toLowerCase(), username, hash, isAdmin, cc, ln, av, now);
     db.prepare("INSERT INTO stats (user_id, updated_at) VALUES (?, ?)").run(info.lastInsertRowid, now);
     db.prepare("INSERT INTO leaderboard (user_id, updated_at) VALUES (?, ?)").run(info.lastInsertRowid, now);
     logEvent("signup", info.lastInsertRowid, null, { country: cc, language: ln });
-    const user = { id: info.lastInsertRowid, username, is_admin: !!isAdmin, country: cc, language: ln };
+    const user = { id: info.lastInsertRowid, username, is_admin: !!isAdmin, country: cc, language: ln, avatar: av };
     res.json({ token: sign(user), user });
   } catch (e) {
     if (String(e).includes("UNIQUE")) return res.status(409).json({ error: "email or username already taken" });
@@ -50,7 +69,7 @@ router.post("/login", (req, res) => {
   const { emailOrUsername, password, totp_code } = req.body || {};
   if (!emailOrUsername || !password) return res.status(400).json({ error: "missing credentials" });
   const row = db.prepare(
-    "SELECT id, username, password_hash, is_admin, banned_at, country, language, totp_secret_enc, totp_enabled, totp_backup_codes_json FROM users WHERE email = ? OR username = ?"
+    "SELECT id, username, password_hash, is_admin, banned_at, country, language, avatar, totp_secret_enc, totp_enabled, totp_backup_codes_json FROM users WHERE email = ? OR username = ?"
   ).get(String(emailOrUsername).toLowerCase(), emailOrUsername);
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     return res.status(401).json({ error: "wrong email/username or password" });
@@ -85,7 +104,8 @@ router.post("/login", (req, res) => {
   logEvent("login", row.id);
   const user = {
     id: row.id, username: row.username, is_admin: !!row.is_admin,
-    country: row.country, language: row.language, totp_enabled: !!row.totp_enabled,
+    country: row.country, language: row.language, avatar: row.avatar,
+    totp_enabled: !!row.totp_enabled,
   };
   res.json({ token: sign(user), user });
 });
@@ -102,10 +122,20 @@ function maybeLogVisit(userId) {
 }
 
 router.get("/me", requireAuth, (req, res) => {
-  const row = db.prepare("SELECT id, email, username, is_admin, country, language, created_at FROM users WHERE id = ?").get(req.user.id);
+  const row = db.prepare("SELECT id, email, username, is_admin, country, language, avatar, created_at FROM users WHERE id = ?").get(req.user.id);
   if (!row) return res.status(404).json({ error: "not found" });
   maybeLogVisit(req.user.id);
   res.json({ ...row, is_admin: !!row.is_admin });
+});
+
+// Dedicated avatar update endpoint — accepts data URLs or preset ids.
+router.put("/me/avatar", requireAuth, (req, res) => {
+  const { avatar } = req.body || {};
+  const err = validateAvatar(avatar);
+  if (err) return res.status(400).json({ error: `avatar_${err}` });
+  db.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(avatar || null, req.user.id);
+  const updated = db.prepare("SELECT id, email, username, is_admin, country, language, avatar FROM users WHERE id = ?").get(req.user.id);
+  res.json({ ok: true, user: { ...updated, is_admin: !!updated.is_admin } });
 });
 
 // User-editable settings: language, country, password.

@@ -4,6 +4,7 @@ import { closeModal } from "../store/uiSlice";
 import { login, register, clearError } from "../store/authSlice";
 import { fetchStats } from "../store/statsSlice";
 import { useT, LANGUAGES, COUNTRIES, COUNTRY_TO_LANG } from "../i18n";
+import AvatarPicker from "./AvatarPicker";
 
 export default function AuthModal() {
   const dispatch = useDispatch();
@@ -25,6 +26,8 @@ export default function AuthModal() {
   }, []);
   const [country, setCountry] = useState(detectedCountry || "");
   const [language, setLanguage] = useState(lang);
+  const [avatar, setAvatar] = useState("preset:cool");
+  const [showAvatar, setShowAvatar] = useState(false);
 
   // When country changes, auto-suggest the matching language if user hasn't manually picked.
   const onCountryChange = (cc) => {
@@ -38,7 +41,7 @@ export default function AuthModal() {
     dispatch(clearError());
     const action = tab === "login"
       ? login({ emailOrUsername, password })
-      : register({ email, username, password, country: country || null, language: language || lang });
+      : register({ email, username, password, country: country || null, language: language || lang, avatar });
     const res = await dispatch(action);
     if (res.meta.requestStatus === "fulfilled") {
       dispatch(fetchStats());
@@ -88,6 +91,12 @@ export default function AuthModal() {
                   {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
                 </select>
               </div>
+              <button type="button" className="tw-btn ghost block" onClick={() => setShowAvatar((v) => !v)} style={{ marginTop: 4 }}>
+                {showAvatar ? "Hide profile picture options" : "Choose a profile picture"}
+              </button>
+              {showAvatar && (
+                <AvatarPicker value={avatar} onChange={setAvatar} compact />
+              )}
             </>
           )}
           <input className="tw-input" type="password" placeholder={t("auth.password")} value={password}

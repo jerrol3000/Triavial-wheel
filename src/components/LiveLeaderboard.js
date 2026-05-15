@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { api } from "../api/client";
 import { useT } from "../i18n";
+import Avatar from "./Avatar";
 
 // Polls the global leaderboard every POLL_MS and animates row position
 // changes via CSS transforms. Each row keeps a stable DOM node (keyed by
@@ -97,9 +98,12 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                 <span className="tw-livelb-rank">
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
                 </span>
-                <span className="tw-livelb-name">
-                  {r.username}
-                  {mine && <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>}
+                <span className="tw-livelb-name" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Avatar value={r.avatar} size={22} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.username}
+                    {mine && <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>}
+                  </span>
                 </span>
                 <span className="tw-livelb-level">L{r.level}</span>
                 <span className="tw-livelb-score">{r.high_score.toLocaleString()}</span>

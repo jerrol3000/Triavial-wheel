@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import FriendsPanel from "./FriendsPanel";
 import MatchHistory from "./MatchHistory";
 import CategoryMastery from "./CategoryMastery";
+import Avatar from "./Avatar";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -34,6 +35,9 @@ export default function Profile() {
   return (
     <div className="tw-col">
       <div className="tw-card" style={{ textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <Avatar value={user?.avatar} size={88} ring />
+        </div>
         <div style={{ fontSize: 14, color: "var(--text-dim)" }}>{user ? `@${user.username}` : "Guest"}</div>
         <div style={{ fontFamily: "Fredoka", fontSize: 30, fontWeight: 700, margin: "4px 0" }}>
           ⭐ Level {prog.level}

@@ -114,15 +114,15 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 380, width: "100%", margin: "0 auto" }}>
+          <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 480, width: "100%", margin: "0 auto" }}>
             {flash && <div className="tw-wheel-flash" />}
             <Wheel3D
               ref={wheelRef}
               data={WHEEL_DATA}
               theme={theme}
               onStop={onWheelStop}
-              size={360}
-              fontSize={12}
+              size={460}
+              fontSize={14}
             />
           </div>
 

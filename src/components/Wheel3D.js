@@ -1,68 +1,80 @@
 import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { sfx } from "../utils/sound";
 
-// Physics-based wheel with a faked 3D look (perspective tilt + radial
-// gradients + drop shadow). Rendered to a single <canvas>.
+// Wheel-of-Fortune-style canvas wheel.
 //
-// API (matches the old react-custom-roulette one closely):
-//   <Wheel3D ref={ref} data={[{option, style:{backgroundColor,textColor}}]}
-//     theme={{ wheelColors, wheelTextColors }} onStop={(idx) => ...} />
-//   ref.current.spin()  — kicks off a spin with random velocity
+// Visual:
+//   * Gold studded outer ring (small "lights" around the perimeter)
+//   * Inner pegs at every segment boundary — small vertical posts that
+//     visually push past the pointer flap as the wheel rotates
+//   * Bright saturated segment colors
+//   * Domed metal hub
+//   * CSS rotateX tilt for faux 3D perspective
 //
 // Physics:
-//   ω₀ uniformly random in [14, 22] rad/s (~135–210 rpm — fast enough to feel
-//   weighty, never crawls).
-//   Friction (deceleration) random in [1.6, 2.4] rad/s² — different total
-//   spin time each go. Adds slight jitter per frame for organic feel.
-//   Wobble: when ω drops below 1 rad/s, dampened sinusoidal jitter is added
-//   so the wheel "settles" instead of clicking to a halt.
+//   ω₀ uniformly random in [14, 22] rad/s (~135–210 rpm — never crawls)
+//   Friction random in [1.6, 2.4] rad/s² — total spin 3.5–6 seconds
+//   Per-frame jitter ±8% for organic feel
+//   Settle wobble (dampened sinusoid) when ω < 1.2 rad/s
 //
-// Pointer is at the top (12 o'clock). The segment under the pointer when ω
-// reaches zero is the winner.
+// Pointer flick:
+//   When a peg crosses the pointer, the pointer DOM element gets a one-shot
+//   "flick" CSS class — restarted on every strike so successive pegs each
+//   flick it back and forth like a real wheel-of-fortune flap.
 
 const DEFAULT_COLORS = ["#7c3aed", "#ec4899"];
 
 const Wheel3D = forwardRef(function Wheel3D(
-  { data = [], theme, onStop, size = 380, fontSize = 13 }, ref
+  { data = [], theme, onStop, size = 460, fontSize = 14 }, ref
 ) {
   const canvasRef = useRef(null);
+  const pointerRef = useRef(null);
   const stateRef = useRef({
     angle: Math.random() * Math.PI * 2,
     velocity: 0,
     spinning: false,
     friction: 2,
     lastFrame: 0,
-    lastTickAngle: 0,
+    lastPointerCrossing: 0,
     settling: false,
   });
   const rafRef = useRef(null);
 
-  // Resolve theme colors (fall back to per-segment colors, then defaults).
   const wheelColors = (theme && theme.wheelColors) || DEFAULT_COLORS;
   const textColors = (theme && theme.wheelTextColors) || ["#ffffff"];
 
-  // ── Imperative spin ──────────────────────────────────────────────────────
+  // Strike the pointer flap. Restart-trick: remove the class, force a reflow,
+  // re-add — guarantees the CSS animation replays from frame 0 on every hit.
+  const flickPointer = (intensity = 1) => {
+    const el = pointerRef.current;
+    if (!el) return;
+    el.classList.remove("flicking");
+    el.style.setProperty("--flick-amount", String(Math.min(1, intensity)));
+    // Force reflow:
+    void el.offsetWidth;
+    el.classList.add("flicking");
+  };
+
   useImperativeHandle(ref, () => ({
     spin: () => {
       if (stateRef.current.spinning) return;
-      // Random initial angular velocity. 14 ≈ 130 rpm baseline; up to 22 (~210 rpm).
       const ω0 = 14 + Math.random() * 8;
-      // Friction varies per spin so total duration is ~3.5–6 seconds.
       const friction = 1.6 + Math.random() * 0.8;
-      // Direction always positive (clockwise visually).
       stateRef.current.velocity = ω0;
       stateRef.current.friction = friction;
       stateRef.current.spinning = true;
       stateRef.current.settling = false;
       stateRef.current.lastFrame = performance.now();
-      stateRef.current.lastTickAngle = stateRef.current.angle;
+      // Align the crossing-counter to the current angle so the first flick
+      // fires exactly when a peg first reaches the pointer.
+      const segAng = (Math.PI * 2) / Math.max(1, data.length);
+      stateRef.current.lastPointerCrossing = stateRef.current.angle;
       sfx.spin();
       if (!rafRef.current) tick();
     },
     isSpinning: () => stateRef.current.spinning,
   }));
 
-  // ── Draw + step loop ─────────────────────────────────────────────────────
   const tick = () => {
     const now = performance.now();
     const last = stateRef.current.lastFrame || now;
@@ -72,12 +84,9 @@ const Wheel3D = forwardRef(function Wheel3D(
     if (stateRef.current.spinning) {
       const s = stateRef.current;
 
-      // Per-frame friction with a small jitter for organic feel.
       const jitter = 1 + (Math.random() - 0.5) * 0.08;
       s.velocity = Math.max(0, s.velocity - s.friction * dt * jitter);
 
-      // Wobble while settling: dampened oscillation simulating the wheel's
-      // last few degrees of overshoot/undershoot.
       let extra = 0;
       if (!s.settling && s.velocity < 1.2) {
         s.settling = true;
@@ -89,22 +98,27 @@ const Wheel3D = forwardRef(function Wheel3D(
       }
       s.angle += (s.velocity + extra) * dt;
 
-      // Click sound at every segment boundary crossing.
+      // Peg-passing-pointer detection. Each segAng of rotation past the
+      // baseline counts as one peg striking the pointer. Fires the flick
+      // animation + clack sound. Volume tapers with velocity so the last
+      // few clacks are subtle "tink"s.
       const segAng = (Math.PI * 2) / Math.max(1, data.length);
-      const crossings = Math.floor((s.angle - s.lastTickAngle) / segAng);
+      const crossings = Math.floor((s.angle - s.lastPointerCrossing) / segAng);
       if (crossings > 0) {
-        s.lastTickAngle += crossings * segAng;
-        // Volume scales with current velocity so it tapers naturally.
-        if (s.velocity > 0.2) sfx.clack();
+        s.lastPointerCrossing += crossings * segAng;
+        if (s.velocity > 0.12) {
+          sfx.clack();
+          // Flick intensity drops with velocity for visual realism.
+          flickPointer(Math.min(1, s.velocity / 8));
+        }
       }
 
-      // Stop condition: velocity low AND settle wobble small.
       if (s.velocity < 0.05 && (!s.settling || (now - s.settleStart) > 700)) {
         s.spinning = false;
         s.settling = false;
-        // Snap to the center of the segment that's currently under the pointer.
         const idx = computeSegmentIndex(s.angle, data.length);
-        const snapTarget = -Math.PI / 2 - idx * segAng - segAng / 2;
+        const segAng2 = (Math.PI * 2) / data.length;
+        const snapTarget = -Math.PI / 2 - idx * segAng2 - segAng2 / 2;
         s.angle = snapTarget;
         draw();
         sfx.coin();
@@ -118,15 +132,9 @@ const Wheel3D = forwardRef(function Wheel3D(
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  // The wheel rotates by `angle` clockwise from its initial orientation
-  // (segment 0 starts at the right, angle 0). The pointer sits at the top
-  // (world angle -π/2). To find which segment is under the pointer we
-  // subtract the rotation and floor by segment width.
   function computeSegmentIndex(angle, n) {
     const segAng = (Math.PI * 2) / n;
-    // Local angle of the pointer relative to the un-rotated wheel:
     let local = -Math.PI / 2 - angle;
-    // Normalize to [0, 2π)
     local = ((local % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     return Math.floor(local / segAng) % n;
   }
@@ -148,34 +156,49 @@ const Wheel3D = forwardRef(function Wheel3D(
 
     const cx = cssSize / 2;
     const cy = cssSize / 2;
-    const radius = cssSize / 2 - 4;
+    const outerR = cssSize / 2 - 4;
+    const goldR = outerR;
+    const segOuterR = outerR - 24;   // segments end here; gold ring sits outside
+    const segInnerR = 36;            // hub radius
     const n = data.length || 1;
     const segAng = (Math.PI * 2) / n;
     const angle = stateRef.current.angle;
 
-    // Outer rim with brushed-metal gradient.
-    const rimGrad = ctx.createRadialGradient(cx, cy, radius - 14, cx, cy, radius);
-    rimGrad.addColorStop(0, "#3a3145");
-    rimGrad.addColorStop(0.5, "#1a1626");
-    rimGrad.addColorStop(1, "#3a3145");
-    ctx.fillStyle = rimGrad;
+    // Outer gold ring (Wheel-of-Fortune signature).
+    const goldGrad = ctx.createRadialGradient(cx, cy, segOuterR + 4, cx, cy, goldR);
+    goldGrad.addColorStop(0, "#fbbf24");
+    goldGrad.addColorStop(0.5, "#f59e0b");
+    goldGrad.addColorStop(1, "#92400e");
+    ctx.fillStyle = goldGrad;
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.arc(cx, cy, goldR, 0, Math.PI * 2);
     ctx.fill();
 
-    // Drop shadow under the wheel.
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 6;
+    // Studded "lights" around the gold ring — 2 per segment.
+    const studCount = n * 2;
+    const studRadius = (goldR + segOuterR) / 2;
+    for (let i = 0; i < studCount; i++) {
+      const a = (i / studCount) * Math.PI * 2 + angle * 0.0; // stationary, not rotating with wheel
+      const sx = cx + Math.cos(a) * studRadius;
+      const sy = cy + Math.sin(a) * studRadius;
+      // alternate gold / off-white for variety
+      const isLight = i % 2 === 0;
+      const studGrad = ctx.createRadialGradient(sx - 1, sy - 1, 0.5, sx, sy, 4);
+      studGrad.addColorStop(0, isLight ? "#fff8e1" : "#fde68a");
+      studGrad.addColorStop(1, "#92400e");
+      ctx.fillStyle = studGrad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Inner ring (dark frame between gold and segments).
+    ctx.fillStyle = "#1a1626";
     ctx.beginPath();
-    ctx.arc(cx, cy, radius - 10, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(0,0,0,0)";
+    ctx.arc(cx, cy, segOuterR + 6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
 
     // Segments.
-    const inner = 28; // hub radius
     for (let i = 0; i < n; i++) {
       const start = angle + i * segAng;
       const end = start + segAng;
@@ -183,9 +206,7 @@ const Wheel3D = forwardRef(function Wheel3D(
         (data[i] && data[i].style && data[i].style.backgroundColor) ||
         wheelColors[i % wheelColors.length];
 
-      // Per-segment radial gradient: brighter in the middle, darker at edges,
-      // gives a faux-bevel "depth" without being heavy.
-      const sg = ctx.createRadialGradient(cx, cy, inner, cx, cy, radius - 12);
+      const sg = ctx.createRadialGradient(cx, cy, segInnerR, cx, cy, segOuterR);
       sg.addColorStop(0, shade(segColor, 0.25));
       sg.addColorStop(0.7, segColor);
       sg.addColorStop(1, shade(segColor, -0.2));
@@ -193,16 +214,15 @@ const Wheel3D = forwardRef(function Wheel3D(
 
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, radius - 12, start, end);
+      ctx.arc(cx, cy, segOuterR, start, end);
       ctx.closePath();
       ctx.fill();
 
-      // Segment divider line.
-      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Label.
+      // Label
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(start + segAng / 2);
@@ -210,48 +230,64 @@ const Wheel3D = forwardRef(function Wheel3D(
       ctx.fillStyle = (data[i] && data[i].style && data[i].style.textColor) || textColors[i % textColors.length];
       ctx.font = `700 ${fontSize}px "Fredoka", "Inter", sans-serif`;
       const label = (data[i] && data[i].option) || "";
-      ctx.shadowColor = "rgba(0,0,0,0.45)";
+      ctx.shadowColor = "rgba(0,0,0,0.5)";
       ctx.shadowBlur = 3;
-      ctx.fillText(label, radius - 22, 5);
+      ctx.fillText(label, segOuterR - 18, 5);
       ctx.restore();
     }
 
-    // Glossy highlight across the top half — subtle "depth".
-    const highlight = ctx.createLinearGradient(cx, cy - radius, cx, cy);
+    // Pegs at every segment boundary — small vertical posts the pointer flicks off.
+    // Drawn rotating with the wheel so they appear to pass under the pointer.
+    for (let i = 0; i < n; i++) {
+      const a = angle + i * segAng;
+      const px = cx + Math.cos(a) * (segOuterR + 2);
+      const py = cy + Math.sin(a) * (segOuterR + 2);
+      const pegGrad = ctx.createRadialGradient(px - 1, py - 1, 0.3, px, py, 5);
+      pegGrad.addColorStop(0, "#fef3c7");
+      pegGrad.addColorStop(0.6, "#cbd5e1");
+      pegGrad.addColorStop(1, "#1f2937");
+      ctx.fillStyle = pegGrad;
+      ctx.beginPath();
+      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.4)";
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    }
+
+    // Glossy top highlight.
+    const highlight = ctx.createLinearGradient(cx, cy - segOuterR, cx, cy);
     highlight.addColorStop(0, "rgba(255,255,255,0.22)");
     highlight.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = highlight;
     ctx.beginPath();
-    ctx.arc(cx, cy, radius - 12, Math.PI, Math.PI * 2);
+    ctx.arc(cx, cy, segOuterR, Math.PI, Math.PI * 2);
     ctx.fill();
 
-    // Outer ring stroke.
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius - 12, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Center hub: domed metal disc with screws.
-    const hubGrad = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, inner);
-    hubGrad.addColorStop(0, "#f1f5f9");
-    hubGrad.addColorStop(0.5, "#94a3b8");
+    // Center hub.
+    const hubGrad = ctx.createRadialGradient(cx - 8, cy - 8, 2, cx, cy, segInnerR);
+    hubGrad.addColorStop(0, "#fde68a");
+    hubGrad.addColorStop(0.4, "#f59e0b");
     hubGrad.addColorStop(1, "#1f2937");
     ctx.fillStyle = hubGrad;
     ctx.beginPath();
-    ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+    ctx.arc(cx, cy, segInnerR, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
     ctx.lineWidth = 2;
     ctx.stroke();
-    // Hub highlight
+    // Inner highlight on the hub.
     ctx.beginPath();
-    ctx.arc(cx - 4, cy - 4, inner * 0.35, 0, Math.PI * 2);
+    ctx.arc(cx - 6, cy - 6, segInnerR * 0.35, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fill();
+    // Hub center dot.
+    ctx.fillStyle = "#1f2937";
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
     ctx.fill();
   };
 
-  // Initial draw + handle data changes.
   useEffect(() => {
     draw();
     return () => {
@@ -266,12 +302,11 @@ const Wheel3D = forwardRef(function Wheel3D(
       <div className="tw-wheel3d-tilt">
         <canvas ref={canvasRef} className="tw-wheel3d-canvas" />
       </div>
-      <div className="tw-wheel3d-pointer" aria-hidden="true" />
+      <div ref={pointerRef} className="tw-wheel3d-pointer" aria-hidden="true" />
     </div>
   );
 });
 
-// Lighten (positive amount) or darken (negative) a hex color by `amount` in [-1,1].
 function shade(hex, amount) {
   const c = hex.replace("#", "");
   if (c.length !== 3 && c.length !== 6) return hex;

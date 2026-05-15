@@ -4,6 +4,7 @@ import Confetti from "react-confetti";
 import { startMatch, recordPlayerResult, nextPlayerTurn, resetMatch } from "../store/multiplayerSlice";
 import { startRound, setQuestions, fetchRoundQuestions, resetRound } from "../store/gameSlice";
 import { setView, pushToast } from "../store/uiSlice";
+import { safeNavigate } from "../utils/navigate";
 import { unlockAchievement, markAchievement } from "../store/statsSlice";
 import QuestionCard from "./QuestionCard";
 import { sfx } from "../utils/sound";
@@ -83,10 +84,14 @@ export default function Multiplayer() {
   const isTieAtTop = podiumOrder.filter((p) => p.score === winnerScore).length > 1;
 
   const quit = () => {
-    if (phase === "playing" || phase === "splash") {
-      if (!confirm("Quit this match? Scores will be lost.")) return;
+    // Pre-match (setup phase / finished phase): just leave, no penalty.
+    if (phase === "setup" || phase === "finished") {
+      dispatch(resetRound()); dispatch(resetMatch()); dispatch(setView("home"));
+      return;
     }
-    dispatch(resetRound()); dispatch(resetMatch()); dispatch(setView("home"));
+    // Mid-match (splash / playing): safeNavigate handles confirm + −1 life.
+    dispatch(resetMatch());
+    dispatch(safeNavigate("home"));
   };
 
   return (

@@ -3,6 +3,7 @@ import { useDispatch, useSelector, useStore } from "react-redux";
 import { fetchDailyMeta, fetchDailyQuestions, submitDaily, fetchDailyLeaderboard, setLastResult, resetDaily } from "../store/dailySlice";
 import { startRound, setQuestions, fetchRoundQuestions, resetRound } from "../store/gameSlice";
 import { setView, pushToast } from "../store/uiSlice";
+import { safeNavigate } from "../utils/navigate";
 import { addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement } from "../store/statsSlice";
 import QuestionCard from "./QuestionCard";
 import { sfx } from "../utils/sound";
@@ -107,7 +108,8 @@ export default function Daily() {
   return (
     <div className="tw-col">
       <button className="tw-pill" style={{ alignSelf: "flex-start", cursor: "pointer" }}
-              onClick={() => { dispatch(resetRound()); dispatch(resetDaily()); dispatch(setView("home")); }}>
+              title="Back — forfeits the daily and costs 1 life if mid-round"
+              onClick={() => { dispatch(resetDaily()); dispatch(safeNavigate("home")); }}>
         ← Back
       </button>
 

@@ -7,6 +7,7 @@ import {
 } from "../store/gameSlice";
 import { usePowerup, addCoins } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
+import { haptic } from "../utils/haptics";
 import { pushToast } from "../store/uiSlice";
 
 const POW = [
@@ -33,6 +34,37 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
     if (game.timeLeft <= 5 && game.timeLeft > 0 && !game.showResult) sfx.tick();
   }, [game.timeLeft, game.showResult]);
 
+  // Keyboard shortcuts: 1–4 pick the corresponding answer, Enter advances after reveal.
+  useEffect(() => {
+    if (!game.questions.length || game.finished) return;
+    const onKey = (e) => {
+      // Skip if the user is typing in an input/textarea (e.g. chat).
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.isComposing) return;
+      if (game.showResult) {
+        if (e.key === "Enter" || e.key === " " || e.key === "ArrowRight") {
+          e.preventDefault();
+          handleNextRef.current && handleNextRef.current();
+        }
+        return;
+      }
+      const n = Number(e.key);
+      if (!Number.isNaN(n) && n >= 1 && n <= game.answers.length) {
+        const ans = game.answers[n - 1];
+        if (!game.eliminated.includes(ans)) {
+          e.preventDefault();
+          handlePickRef.current && handlePickRef.current(ans);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [game.questions.length, game.finished, game.showResult, game.answers, game.eliminated]);
+
+  // Refs so the keyboard handler always sees the latest handlePick/handleNext closures.
+  const handlePickRef = useRef(null);
+  const handleNextRef = useRef(null);
+
   if (game.loading) return <div className="tw-card" style={{ textAlign: "center" }}>Loading questions...</div>;
   if (!game.questions.length) {
     return (
@@ -53,10 +85,12 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
 
   const handlePick = (a) => {
     if (game.showResult) return;
-    sfx[a === correct ? "correct" : "wrong"]();
+    const isCorrect = a === correct;
+    sfx[isCorrect ? "correct" : "wrong"]();
+    (isCorrect ? haptic.success : haptic.fail)();
     dispatch(answerSelected(a));
-    if (a === correct) dispatch(addCoins(5));
-    if (onAnswered) onAnswered(a === correct, a);
+    if (isCorrect) dispatch(addCoins(5));
+    if (onAnswered) onAnswered(isCorrect, a);
   };
 
   const handleNext = () => {
@@ -68,6 +102,9 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
       dispatch(nextQuestion());
     }
   };
+
+  handlePickRef.current = handlePick;
+  handleNextRef.current = handleNext;
 
   const usePow = (id) => {
     if ((powerups[id] || 0) <= 0) return;
@@ -112,7 +149,7 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
           {decode(String(q.question))}
         </div>
 
-        {game.answers.map((a) => {
+        {game.answers.map((a, i) => {
           const eliminated = game.eliminated.includes(a);
           let cls = "tw-answer";
           if (game.showResult) {
@@ -126,8 +163,10 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
               className={cls}
               disabled={game.showResult || eliminated}
               onClick={() => handlePick(a)}
+              title={`Press ${i + 1} to pick`}
             >
-              {a}
+              <span className="tw-answer-key" aria-hidden="true">{i + 1}</span>
+              <span>{a}</span>
             </button>
           );
         })}

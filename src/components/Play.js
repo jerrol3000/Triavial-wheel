@@ -6,7 +6,9 @@ import GameOver from "./GameOver";
 import { resetRound } from "../store/gameSlice";
 import { spendLife, addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement, grantPowerup } from "../store/statsSlice";
 import { setView, pushToast } from "../store/uiSlice";
+import { safeNavigate } from "../utils/navigate";
 import { sfx } from "../utils/sound";
+import { haptic } from "../utils/haptics";
 import { ACHIEVEMENT_MAP } from "../data/achievements";
 import { levelForXp } from "../utils/level";
 
@@ -84,10 +86,12 @@ export default function Play() {
 
     if (game.correct >= game.questions.length * 0.7) {
       sfx.win();
+      haptic.win();
       setShowConfetti(true);
       setTimeout(() => setShowConfetti(false), 4000);
     } else {
       sfx.lose();
+      haptic.heavy();
       if (!stats.pro) dispatch(spendLife());
     }
 
@@ -118,7 +122,8 @@ export default function Play() {
   return (
     <div>
       <button className="tw-pill" style={{ marginBottom: 12, cursor: "pointer" }}
-              onClick={() => { dispatch(resetRound()); dispatch(setView("home")); }}>
+              title="Quit this round — costs 1 life and 5 coins"
+              onClick={() => dispatch(safeNavigate("home"))}>
         ← Quit
       </button>
       <QuestionCard onEmpty={() => { dispatch(resetRound()); dispatch(setView("home")); }} />

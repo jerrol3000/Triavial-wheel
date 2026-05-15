@@ -151,6 +151,25 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-answer.correct { background: rgba(16,185,129,0.25); border-color: var(--good); }
 .tw-answer.wrong { background: rgba(239,68,68,0.25); border-color: var(--bad); }
 .tw-answer.eliminated { opacity: 0.25; text-decoration: line-through; }
+.tw-answer { display: flex; align-items: center; gap: 10px; }
+.tw-answer-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--card-border);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  flex: 0 0 24px;
+}
+.tw-answer.correct .tw-answer-key { background: rgba(16,185,129,0.4); color: white; }
+.tw-answer.wrong .tw-answer-key   { background: rgba(239,68,68,0.4); color: white; }
+@media (max-width: 480px) { .tw-answer-key { display: none; } }
 
 .tw-countdown {
   position: fixed; top: 90px; left: 50%; transform: translateX(-50%);

@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../auth");
 const { logEvent } = require("../events");
+const { getPerks } = require("../perks");
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ function loadStats(userId) {
     themes: row.themes_json ? JSON.parse(row.themes_json) : ["classic"],
     pro: !!(row.pro_until && row.pro_until > Date.now()),
     achievements,
+    perks: getPerks(userId),
   };
 }
 

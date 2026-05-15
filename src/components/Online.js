@@ -9,6 +9,7 @@ import { setView, setModal, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import ChatPanel from "./ChatPanel";
 import { sfx } from "../utils/sound";
+import { safeNavigate } from "../utils/navigate";
 
 export default function Online() {
   const dispatch = useDispatch();
@@ -36,7 +37,19 @@ export default function Online() {
         case "chat_muted":    dispatch(setChatNotice({ kind: "muted", until: msg.until, at: Date.now() })); break;
         case "reaction":      dispatch(pushReaction({ ...msg, at: Date.now() })); setTimeout(() => dispatch(pushReaction(null)), 1500); break;
         case "match_end":     sfx.win(); dispatch(setMatchEnd(msg)); dispatch(fetchStats()); break;
-        case "left_room":     dispatch(leftRoom()); break;
+        case "left_room": {
+          dispatch(leftRoom());
+          if (msg.skip && msg.skip.applied) {
+            dispatch(pushToast({
+              icon: "⚠️",
+              title: "Skip penalty",
+              text: `${msg.skip.rating_delta} rating (your daily free skip is used). Supporters get unlimited.`,
+              duration: 4000,
+            }));
+            dispatch(fetchStats());
+          }
+          break;
+        }
         case "kicked":        dispatch(pushToast({ icon: "⚠️", title: "Signed in elsewhere", text: "This tab was disconnected." })); dispatch(leftRoom()); break;
         case "error":         dispatch(setError(msg.error)); break;
       }
@@ -211,8 +224,14 @@ function LiveMatch() {
   const countdown = room.questionEndsAt ? Math.max(0, Math.ceil((room.questionEndsAt - Date.now()) / 1000)) : null;
 
   const leave = () => {
-    if (!confirm(room.started && !room.finished ? "Leave the match? You'll forfeit." : "Leave room?")) return;
-    rt.send({ type: "leave_room" });
+    // Pre-game (room exists but match not yet started): plain leave, no penalty.
+    if (!room.started || room.finished) {
+      if (!confirm("Leave room?")) return;
+      rt.send({ type: "leave_room" });
+      return;
+    }
+    // Mid-match: full forfeit penalty (−1 life + server-side rating drop).
+    dispatch(safeNavigate("home"));
   };
 
   const answer = (a) => {

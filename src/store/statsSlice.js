@@ -158,6 +158,15 @@ const slice = createSlice({
       s.lives_updated_at = Date.now();
       persist(s);
     },
+    // Distinct from spendLife: always decrements lives, never burns a free spin.
+    // Used for deliberate quit penalties — losing a free spin would let
+    // someone duck the penalty by stockpiling spins.
+    loseLife: (s) => {
+      if (s.pro) return;
+      if (s.lives === LIVES_MAX) s.lives_updated_at = Date.now();
+      s.lives = Math.max(0, s.lives - 1);
+      persist(s);
+    },
     addCoins: (s, a) => {
       s.coins += Math.floor(a.payload || 0);
       persist(s);
@@ -252,7 +261,7 @@ const slice = createSlice({
 });
 
 export const {
-  tickLives, spendLife, refillLives, addCoins, spendCoins, consumeFreeSpin, grantFreeSpins,
+  tickLives, spendLife, refillLives, loseLife, addCoins, spendCoins, consumeFreeSpin, grantFreeSpins,
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
   grantTheme, markCategoryPlayed, markAchievement, setPro, resetLocal,
 } = slice.actions;

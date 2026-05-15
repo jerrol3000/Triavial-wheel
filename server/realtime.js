@@ -5,6 +5,8 @@ const { getRandomQuestions } = require("./questions");
 const {
   filterMessage, isMuted, getMuteExpiry, checkRate, recordFiltered,
 } = require("./moderation");
+const { logEvent } = require("./events");
+const { applySkipPenalty } = require("./perks");
 
 const SECRET = process.env.JWT_SECRET || "dev-only-not-secure";
 const QUESTIONS_PER_MATCH = 5;
@@ -359,14 +361,25 @@ function handleMessage(ws, user, msg) {
       const room = findRoomForUser(user.id);
       if (!room) return;
       if (!room.started) {
-        // Pre-game: remove player.
+        // Pre-game leave — count as a "skip" for quick-match rooms. Private
+        // rooms (invited friends) get a pass: no penalty since you're leaving
+        // your own invite.
+        let skipResult = null;
+        if (room.kind === "quick") {
+          logEvent("online_skip", user.id, null, { code: room.code });
+          skipResult = applySkipPenalty(user.id);
+        }
         room.players = room.players.map((p) => (p && p.id === user.id) ? null : p);
         if (room.players.filter(Boolean).length === 0) rooms.delete(room.code);
         else broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
-      } else if (!room.finished) {
+        send(ws, { type: "left_room", skip: skipResult });
+        return;
+      }
+      if (!room.finished) {
         // Mid-game forfeit: opponent gets a boost, leaver eats a harsher rating drop.
         const opponent = room.players.find((p) => p && p.id !== user.id);
         if (opponent) opponent.score += 100;
+        logEvent("online_forfeit", user.id, null, { code: room.code });
         endMatch(room, { forfeiterId: user.id });
       }
       send(ws, { type: "left_room" });

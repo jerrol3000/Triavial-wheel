@@ -473,6 +473,134 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   transform: scale(1.05);
 }
 
+/* ─── Home layout (rewritten for ergonomics) ─────────────────────────────── */
+.tw-home {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+.tw-home-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Hero SPIN button — bigger, bolder, demands attention. */
+.tw-btn-spin {
+  max-width: 320px;
+  width: 100%;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 16px 24px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.55), 0 2px 6px rgba(0,0,0,0.2);
+  margin-top: 4px;
+}
+
+/* Quick-action row directly under the SPIN button. Three equal cards. */
+.tw-home-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.tw-quick-card {
+  position: relative;
+  appearance: none;
+  border: 1px solid var(--card-border);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 12px 8px 10px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.tw-quick-card:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.2); }
+.tw-quick-card:active { transform: scale(0.97); }
+.tw-quick-card.primary {
+  background: linear-gradient(135deg, rgba(124,58,237,0.32), rgba(236,72,153,0.32));
+  border-color: rgba(124,58,237,0.6);
+}
+.tw-quick-card.muted { opacity: 0.7; }
+.tw-quick-icon { font-size: 24px; line-height: 1; }
+.tw-quick-title { font-family: "Fredoka"; font-size: 13px; font-weight: 700; line-height: 1.1; }
+.tw-quick-sub { font-size: 11px; color: var(--text-dim); line-height: 1.2; padding: 0 2px; }
+.tw-quick-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: linear-gradient(135deg, var(--warn), var(--bad));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 7px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+/* "Earn rewards" strip — small dense pills, horizontal-scroll on phones. */
+.tw-earn-strip {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.tw-earn-strip-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.tw-earn-strip-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+}
+.tw-earn-pill {
+  appearance: none;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--card-border);
+  text-align: left;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+.tw-earn-pill:hover { background: rgba(255,255,255,0.1); }
+.tw-earn-pill:active { transform: scale(0.97); }
+.tw-earn-pill.accent {
+  background: linear-gradient(135deg, rgba(239,68,68,0.25), rgba(245,158,11,0.25));
+  border-color: rgba(239,68,68,0.5);
+}
+.tw-earn-icon { font-size: 18px; flex: 0 0 auto; }
+.tw-earn-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.tw-earn-text strong { font-size: 13px; }
+.tw-earn-text span { font-size: 11px; color: var(--text-dim); }
+
+@media (max-width: 480px) {
+  .tw-home-grid { gap: 6px; }
+  .tw-quick-card { min-height: 88px; padding: 10px 4px 8px; }
+  .tw-quick-title { font-size: 12px; }
+  .tw-quick-sub { font-size: 10px; }
+  .tw-quick-badge { font-size: 9px; padding: 2px 5px; }
+}
+
 /* ─── Tooltips ──────────────────────────────────────────────────────────── */
 .tw-tip { position: relative; display: inline-flex; }
 .tw-tip::after {

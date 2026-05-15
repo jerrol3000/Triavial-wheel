@@ -20,7 +20,8 @@ import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
 import { api, getToken } from "../api/client";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { setModal } from "../store/uiSlice";
+import { setModal, pushToast } from "../store/uiSlice";
+import { logout } from "../store/authSlice";
 
 const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings };
 
@@ -62,7 +63,27 @@ export default function App() {
       }).catch(() => {});
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
-    return () => clearInterval(id);
+
+    // When any authed request hits 401, the API client clears the token and
+    // dispatches this event — surface a clear "your session expired" notice
+    // and open the auth modal so the user can sign back in. Most common
+    // trigger: server was restarted with a new JWT_SECRET.
+    const onExpired = () => {
+      dispatch(logout());
+      dispatch(pushToast({
+        icon: "🔒",
+        title: "Session expired",
+        text: "Please sign in again.",
+        duration: 5000,
+      }));
+      dispatch(setModal("auth"));
+    };
+    window.addEventListener("trivia_auth_expired", onExpired);
+
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("trivia_auth_expired", onExpired);
+    };
   }, [dispatch]);
 
   const ViewComp = VIEWS[view] || Home;

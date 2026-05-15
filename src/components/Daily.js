@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import { fetchDailyMeta, fetchDailyQuestions, submitDaily, fetchDailyLeaderboard, setLastResult, resetDaily } from "../store/dailySlice";
 import { startRound, setQuestions, fetchRoundQuestions, resetRound } from "../store/gameSlice";
 import { setView, pushToast } from "../store/uiSlice";
@@ -13,39 +13,44 @@ const QPR = 10;
 
 export default function Daily() {
   const dispatch = useDispatch();
+  const store = useStore();
   const daily = useSelector((s) => s.daily);
-  const game = useSelector((s) => s.game);
-  const stats = useSelector((s) => s.stats);
-  const user = useSelector((s) => s.auth.user);
+  const isFinished = useSelector((s) => s.game.finished);
+  const currentDailyStreak = useSelector((s) => s.stats.current_daily_streak);
+  const longestDailyStreak = useSelector((s) => s.stats.longest_daily_streak);
 
   const [phase, setPhase] = useState(daily.alreadyPlayed ? "result" : "intro");
-  const [startMs, setStartMs] = useState(0);
-  const [endHandled, setEndHandled] = useState(false);
+  const startMsRef = useRef(0);
+  const handledRef = useRef(false);
 
   useEffect(() => { dispatch(fetchDailyMeta()); dispatch(fetchDailyLeaderboard()); }, [dispatch]);
   useEffect(() => { setPhase(daily.alreadyPlayed ? "result" : "intro"); }, [daily.alreadyPlayed]);
 
   const beginDaily = async () => {
     sfx.click();
-    setEndHandled(false);
+    handledRef.current = false;
     const meta = await dispatch(fetchDailyQuestions({ seed: daily.seed || new Date().toISOString().slice(0,10), amount: QPR }));
     let qs = meta.payload?.results;
     if (!qs || !qs.length) {
-      // fall through to opentdb general
       const r = await dispatch(fetchRoundQuestions({ categoryId: null, mode: "medium", amount: QPR }));
       qs = r.payload || [];
     }
     dispatch(startRound({ categoryId: null, mode: "medium" }));
     dispatch(setQuestions(qs));
-    setStartMs(Date.now());
+    startMsRef.current = Date.now();
     setPhase("playing");
   };
 
-  // End of round handler
+  // End-of-round handler. Runs exactly once when the game is finished while we're playing.
   useEffect(() => {
-    if (phase !== "playing" || !game.finished || endHandled) return;
-    setEndHandled(true);
-    const timeMs = Date.now() - startMs;
+    if (phase !== "playing") { handledRef.current = false; return; }
+    if (!isFinished) return;
+    if (handledRef.current) return;
+    handledRef.current = true;
+
+    const { game, stats, auth } = store.getState();
+    const user = auth.user;
+    const timeMs = Date.now() - startMsRef.current;
     const result = {
       score: game.score,
       correct: game.correct,
@@ -61,7 +66,6 @@ export default function Daily() {
     dispatch(addCoins(coinsGained));
     dispatch(recordGame({ correct: game.correct, incorrect: game.incorrect, best_streak_run: game.bestStreakRun }));
 
-    // Daily streak achievements (we trust server-updated counter on next fetchStats)
     const tryUnlock = (id) => {
       if (!stats.achievements.find((a) => a.achievement_id === id)) {
         const def = ACHIEVEMENT_MAP[id];
@@ -83,7 +87,7 @@ export default function Daily() {
       }));
     }
     setPhase("result");
-  }, [phase, game.finished, endHandled, dispatch, game, startMs, stats.current_daily_streak, stats.achievements, user]);
+  }, [phase, isFinished, dispatch, store]);
 
   const result = daily.lastResult;
 
@@ -115,8 +119,8 @@ export default function Daily() {
             Date: <strong>{daily.date}</strong> · Category teaser: <strong>{daily.category?.option || "—"}</strong>
           </div>
           <div className="tw-grid-2" style={{ marginBottom: 14 }}>
-            <div className="tw-stat"><div className="tw-stat-value">🔥 {stats.current_daily_streak}</div><div className="tw-stat-label">Current streak</div></div>
-            <div className="tw-stat"><div className="tw-stat-value">🏅 {stats.longest_daily_streak}</div><div className="tw-stat-label">Longest</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">🔥 {currentDailyStreak}</div><div className="tw-stat-label">Current streak</div></div>
+            <div className="tw-stat"><div className="tw-stat-value">🏅 {longestDailyStreak}</div><div className="tw-stat-label">Longest</div></div>
           </div>
           <button className="tw-btn block" onClick={beginDaily}>Start daily</button>
         </div>

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import Confetti from "react-confetti";
 import QuestionCard from "./QuestionCard";
 import GameOver from "./GameOver";
@@ -12,16 +12,23 @@ import { levelForXp } from "../utils/level";
 
 export default function Play() {
   const dispatch = useDispatch();
-  const game = useSelector((s) => s.game);
-  const stats = useSelector((s) => s.stats);
-  const user = useSelector((s) => s.auth.user);
+  const store = useStore();
+  const isFinished = useSelector((s) => s.game.finished);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [endTime, setEndTime] = useState(null);
 
-  // Trigger end-of-round when finished flag flips on
+  // Ref-based "handled" flag so the end-of-round logic runs exactly once per round,
+  // regardless of how many re-renders the dispatches inside the effect trigger.
+  const handledRef = useRef(false);
+
   useEffect(() => {
-    if (!game.finished || endTime) return;
-    setEndTime(Date.now());
+    if (!isFinished) { handledRef.current = false; return; }
+    if (handledRef.current) return;
+    handledRef.current = true;
+
+    // Read state once, at the moment we run — no need to depend on it in the dep array.
+    const { game, stats, auth } = store.getState();
+    const user = auth.user;
+
     const xpGained = Math.round(game.score / 10) + game.correct * 10;
     const coinsGained = game.correct * 8 + (game.bestStreakRun >= 5 ? 25 : 0);
     const prevLevel = stats.level;
@@ -29,12 +36,9 @@ export default function Play() {
     dispatch(addCoins(coinsGained));
     dispatch(recordGame({ correct: game.correct, incorrect: game.incorrect, best_streak_run: game.bestStreakRun }));
 
-    // Achievement checks
     const unlockedIds = new Set(stats.achievements.map((a) => a.achievement_id));
     const newlyUnlocked = [];
-    const tryUnlock = (id) => {
-      if (!unlockedIds.has(id)) newlyUnlocked.push(id);
-    };
+    const tryUnlock = (id) => { if (!unlockedIds.has(id)) newlyUnlocked.push(id); };
     if (game.correct >= 1) tryUnlock("first_correct");
     if (game.bestStreakRun >= 5) tryUnlock("streak_5");
     if (game.bestStreakRun >= 10) tryUnlock("streak_10");
@@ -83,9 +87,9 @@ export default function Play() {
         best_streak_run: game.bestStreakRun,
       }));
     }
-  }, [game.finished, endTime, dispatch, game, stats.achievements, stats.level, stats.pro, stats.xp, user]);
+  }, [isFinished, dispatch, store]);
 
-  if (game.finished) {
+  if (isFinished) {
     return (
       <>
         {showConfetti && <Confetti recycle={false} numberOfPieces={250} />}

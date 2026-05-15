@@ -91,16 +91,7 @@ function Lobby() {
   return (
     <div className="tw-col">
       <h1 style={{ margin: "8px 0" }}>🧑‍🤝‍🧑 Play with Friends</h1>
-      {!connected && (
-        <div className="tw-card" style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.4)" }}>
-          <div className="tw-row" style={{ gap: 8 }}>
-            <div className="tw-spinner" style={{ width: 18, height: 18, margin: 0, borderWidth: 2 }} />
-            <span style={{ fontSize: 13 }}>Connecting to live server…</span>
-            <button className="tw-pill" style={{ cursor: "pointer", marginLeft: "auto" }}
-              onClick={() => rt.connect()}>Retry</button>
-          </div>
-        </div>
-      )}
+      {!connected && <ConnectionStatus />}
       <div className="tw-grid-2">
         <div className="tw-card tw-online-card">
           <div style={{ fontSize: 26 }}>⚡</div>
@@ -329,6 +320,59 @@ function ReactionLayer() {
     <div className="tw-reaction-fly" key={reaction.at}>
       <span style={{ fontSize: 48 }}>{reaction.emoji}</span>
       <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{reaction.username}</div>
+    </div>
+  );
+}
+
+// ─── ConnectionStatus ───────────────────────────────────────────────────────
+function ConnectionStatus() {
+  const dispatch = useDispatch();
+  const [diag, setDiag] = useState(null);
+  const [running, setRunning] = useState(false);
+
+  const runDiagnose = async () => {
+    setRunning(true);
+    setDiag(null);
+    const result = await rt.diagnose();
+    setDiag(result);
+    setRunning(false);
+  };
+
+  return (
+    <div className="tw-card" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)" }}>
+      <div className="tw-row" style={{ gap: 8 }}>
+        <div className="tw-spinner" style={{ width: 18, height: 18, margin: 0, borderWidth: 2 }} />
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Connecting to live server…</span>
+        <div style={{ flex: 1 }} />
+        <button className="tw-pill" style={{ cursor: "pointer" }} onClick={() => rt.forceReconnect()}>Retry</button>
+        <button className="tw-pill" style={{ cursor: "pointer" }} onClick={runDiagnose} disabled={running}>
+          {running ? "..." : "Diagnose"}
+        </button>
+      </div>
+      {diag && (
+        <div style={{ marginTop: 10, fontSize: 12, fontFamily: "monospace", background: "rgba(0,0,0,0.25)", padding: 10, borderRadius: 8 }}>
+          <div>API health: <strong style={{ color: diag.reachable ? "var(--good)" : "var(--bad)" }}>{diag.reachable ? "✓ reachable" : "✗ unreachable"}</strong></div>
+          {!diag.reachable && diag.network_error && <div style={{ color: "var(--bad)" }}>Network: {diag.network_error}</div>}
+          <div>Auth token: <strong>{diag.token ? "✓ present" : "✗ missing — sign in"}</strong></div>
+          <div>WS URL: <span style={{ color: "var(--text-dim)" }}>{diag.wsUrl}</span></div>
+          {diag.error && <div style={{ color: "var(--bad)" }}>Last error: {diag.error}</div>}
+          {!diag.reachable && (
+            <div style={{ marginTop: 8, padding: 8, background: "rgba(239,68,68,0.15)", borderRadius: 6, color: "var(--text)" }}>
+              💡 Backend not running. In a terminal: <code>cd server && npm start</code>
+            </div>
+          )}
+          {diag.reachable && !diag.token && (
+            <div style={{ marginTop: 8, padding: 8, background: "rgba(245,158,11,0.15)", borderRadius: 6 }}>
+              💡 Sign in first — online play needs an account.
+            </div>
+          )}
+          {diag.reachable && diag.token && diag.error && (
+            <div style={{ marginTop: 8, padding: 8, background: "rgba(245,158,11,0.15)", borderRadius: 6 }}>
+              💡 Backend is up but the /ws endpoint rejected the connection. The most common cause: backend was started before realtime support was added. Restart with <code>cd server && npm start</code>.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

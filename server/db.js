@@ -144,6 +144,19 @@ db.exec(`
     muted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at INTEGER NOT NULL
   );
+
+  -- Telemetry / analytics. One row per event (visit, ad_watch, payment, etc).
+  -- Use SQL aggregations to answer "ads watched today / this week / this month".
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    amount REAL,
+    meta TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_kind_time ON events(kind, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_events_user_time ON events(user_id, created_at DESC);
 `);
 
 // Migration: add columns to users if they're missing (idempotent).
@@ -155,6 +168,8 @@ function ensureColumn(table, column, ddl) {
 }
 ensureColumn("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "banned_at", "INTEGER");
+ensureColumn("users", "country", "TEXT");
+ensureColumn("users", "language", "TEXT");
 
 // v3 schema additions: free spins economy + online match stats + daily login streak.
 ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 3");

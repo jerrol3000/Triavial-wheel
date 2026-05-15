@@ -7,6 +7,7 @@ import { THEME_LIST } from "../data/themes";
 import { POWERUP_LIST } from "../data/powerups";
 import { sfx } from "../utils/sound";
 import PayPalButton from "./PayPalButton";
+import StripeCheckoutButton from "./StripeCheckoutButton";
 
 const COIN_PACKS = [
   { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
@@ -178,12 +179,13 @@ export default function Shop() {
         </div>
       </div>
 
-      {/* Real-money packs via PayPal (and PayPal-managed credit card / mobile pay) */}
-      {payCfg && payCfg.paypal_enabled && (
+      {/* Real-money packs — both PayPal and Stripe shown side-by-side (no preferred method). */}
+      {payCfg && (payCfg.paypal_enabled || payCfg.stripe_enabled) && (
         <div className="tw-card">
           <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy with real money</div>
           <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
-            PayPal · credit card · Apple/Google Pay · Venmo (via PayPal). {payCfg.paypal_mode === "sandbox" && <em>(Sandbox mode)</em>}
+            Pick your payment method — both go straight to the same purchase.
+            {payCfg.paypal_mode === "sandbox" && <em> (PayPal sandbox)</em>}
           </div>
           {[
             { id: "freespins_10", label: "10 Free Spins", price: "$1.99", desc: "Skip the wait — 10 spins of the wheel" },
@@ -194,31 +196,36 @@ export default function Shop() {
             { id: "freespins_30", label: "30 Free Spins", price: "$4.99", desc: "A month's worth of spins" },
             { id: "coins_large", label: "Coin vault · 1500 🪙", price: "$5.99", desc: "Whale tier 🐳" },
           ].map((p) => (
-            <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 200px" }}>
-                <div style={{ fontWeight: 600 }}>{p.label}</div>
-                <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.desc}</div>
+            <div key={p.id} style={{ padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="tw-row" style={{ justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{p.label}</div>
+                  <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.desc} · <strong>{p.price}</strong></div>
+                </div>
               </div>
-              <div style={{ minWidth: 200, flex: "0 0 auto" }}>
-                {user ? (
-                  <PayPalButton productId={p.id} clientId={payCfg.paypal_client_id} />
-                ) : (
-                  <button className="tw-btn block" onClick={() => dispatch(setModal("auth"))}>
-                    Sign in to buy
-                  </button>
-                )}
-              </div>
+              {user ? (
+                <div className="tw-grid-2" style={{ marginTop: 8 }}>
+                  {payCfg.paypal_enabled && <PayPalButton productId={p.id} clientId={payCfg.paypal_client_id} />}
+                  {payCfg.stripe_enabled && <StripeCheckoutButton productId={p.id} />}
+                </div>
+              ) : (
+                <button className="tw-btn block" style={{ marginTop: 8 }} onClick={() => dispatch(setModal("auth"))}>
+                  Sign in to buy
+                </button>
+              )}
             </div>
           ))}
+          <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center", marginTop: 10 }}>
+            All payments processed by {[payCfg.paypal_enabled && "PayPal", payCfg.stripe_enabled && "Stripe"].filter(Boolean).join(" or ")}. No card details touch our servers.
+          </div>
         </div>
       )}
 
-      {payCfg && !payCfg.paypal_enabled && (
+      {payCfg && !payCfg.paypal_enabled && !payCfg.stripe_enabled && (
         <div className="tw-card" style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)" }}>
           <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700 }}>💳 Real-money packs (admin)</div>
           <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
-            Set <code>PAYPAL_CLIENT_ID</code> + <code>PAYPAL_CLIENT_SECRET</code> in <code>server/.env</code> to enable
-            PayPal · credit card · Apple/Google Pay · Venmo.
+            Add PayPal or Stripe credentials in <code>server/.env</code> to enable real billing. See <code>DEPLOY.md</code>.
           </div>
         </div>
       )}

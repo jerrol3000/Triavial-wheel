@@ -9,24 +9,44 @@ import Multiplayer from "./Multiplayer";
 import Shop from "./Shop";
 import Profile from "./Profile";
 import Online from "./Online";
+import Settings from "./Settings";
 import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
 import Toasts from "./Toasts";
+import { I18nProvider } from "../i18n";
 import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
 import { api, getToken } from "../api/client";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { setModal } from "../store/uiSlice";
 
-const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile };
+const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings };
 
 export default function App() {
   const dispatch = useDispatch();
   const view = useSelector((s) => s.ui.view);
   const modal = useSelector((s) => s.ui.modal);
+  const user = useSelector((s) => s.auth.user);
 
   useEffect(() => {
+    // Handle Stripe success-redirect: if the URL has ?paid=1&session=..., verify on the server.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const session = params.get("session");
+      if (params.get("paid") === "1" && session && getToken()) {
+        api.post("/pay/stripe/verify", { session_id: session })
+          .then((r) => {
+            if (r.data?.ok) dispatch(fetchStats());
+          })
+          .catch(() => {})
+          .finally(() => {
+            // Clean the URL.
+            window.history.replaceState({}, document.title, window.location.pathname);
+          });
+      }
+    } catch (e) {}
+
     dispatch(tickLives());
     dispatch(fetchDailyMeta());
     if (getToken()) {
@@ -46,16 +66,18 @@ export default function App() {
 
   const ViewComp = VIEWS[view] || Home;
   return (
-    <div className="tw-app">
-      <Banner />
-      <main className="tw-content tw-fade-in" key={view}>
-        <ViewComp />
-      </main>
-      <BottomNav />
-      {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
-      {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
-      {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
-      <Toasts />
-    </div>
+    <I18nProvider user={user}>
+      <div className="tw-app">
+        <Banner />
+        <main className="tw-content tw-fade-in" key={view}>
+          <ViewComp />
+        </main>
+        <BottomNav />
+        {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
+        {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
+        {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
+        <Toasts />
+      </div>
+    </I18nProvider>
   );
 }

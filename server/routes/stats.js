@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../auth");
+const { logEvent } = require("../events");
 
 const router = express.Router();
 
@@ -109,6 +110,7 @@ router.post("/watch-ad-reward", requireAuth, (req, res) => {
     req.user.id
   );
 
+  logEvent("ad_watch", req.user.id, null, { reward });
   res.json({ ...grant, ads_today_count: count + 1, daily_limit: AD_DAILY_LIMIT });
 });
 

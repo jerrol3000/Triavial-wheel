@@ -4,9 +4,44 @@ const db = require("../db");
 const { requireAdmin } = require("../auth");
 const { refreshAllBuckets, getTotalCount, getBucketCount, CATEGORIES, DIFFICULTIES, pickDailyQuestions } = require("../questions");
 const { muteUser, unmuteUser } = require("../moderation");
+const { countSince, sumSince, distinctUsersSince, dailyBreakdown } = require("../events");
 
 const router = express.Router();
 router.use(requireAdmin);
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+// ─── Analytics ──────────────────────────────────────────────────────────────
+router.get("/analytics", (req, res) => {
+  const windows = { today: DAY, week: 7 * DAY, month: 30 * DAY };
+  function rollup(kind, sumAmount = false) {
+    const out = {};
+    for (const [name, ms] of Object.entries(windows)) {
+      out[name] = sumAmount
+        ? { count: countSince(kind, ms), revenue: Number(sumSince(kind, ms).toFixed(2)) }
+        : { count: countSince(kind, ms) };
+    }
+    return out;
+  }
+  res.json({
+    visits: {
+      ...rollup("visit"),
+      unique_today: distinctUsersSince("visit", DAY),
+      unique_week: distinctUsersSince("visit", 7 * DAY),
+      unique_month: distinctUsersSince("visit", 30 * DAY),
+    },
+    signups: rollup("signup"),
+    logins: rollup("login"),
+    ad_watches: rollup("ad_watch"),
+    payments: rollup("payment", true),
+    daily: {
+      visits: dailyBreakdown("visit", 30),
+      ad_watches: dailyBreakdown("ad_watch", 30),
+      payments: dailyBreakdown("payment", 30),
+    },
+  });
+});
 
 // ─── Moderation ─────────────────────────────────────────────────────────────
 router.get("/moderation/reports", (req, res) => {

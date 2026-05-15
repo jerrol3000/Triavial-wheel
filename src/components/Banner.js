@@ -43,8 +43,11 @@ export default function Banner() {
           ⭐ L{level} · {percent}%
         </span>
         {stats.pro && <span className="tw-pill" style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none" }}>PRO</span>}
-        <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound" style={{ cursor: "pointer" }}>
+        <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer" }}>
           {soundOn ? "🔊" : "🔇"}
+        </button>
+        <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer" }}>
+          ⚙️
         </button>
         {user && user.is_admin && (
           <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit" }}>

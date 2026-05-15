@@ -10,6 +10,7 @@ import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
 import { api } from "../api/client";
 import QuestsPanel from "./QuestsPanel";
+import GlobalLeaderboard from "./GlobalLeaderboard";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -195,6 +196,8 @@ export default function Home() {
           {daily.alreadyPlayed ? "See leaderboard" : "Play daily"}
         </button>
       </div>
+
+      <GlobalLeaderboard />
 
       <QuestsPanel />
     </div>

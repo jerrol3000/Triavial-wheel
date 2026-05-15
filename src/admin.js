@@ -75,6 +75,7 @@ function App() {
 
   const PAGES = {
     dashboard: Dashboard,
+    analytics: Analytics,
     users: Users,
     questions: Questions,
     daily: Daily,
@@ -105,6 +106,7 @@ function App() {
 function Sidebar({ view, setView, me, onLogout }) {
   const items = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
+    { id: "analytics", icon: "📈", label: "Analytics" },
     { id: "users",     icon: "👥", label: "Users" },
     { id: "questions", icon: "❓", label: "Questions" },
     { id: "daily",     icon: "📅", label: "Daily" },
@@ -852,6 +854,98 @@ function Refresh({ toasts }) {
         </div>
       )}
     </>
+  );
+}
+
+// ─── Analytics ──────────────────────────────────────────────────────────────
+function Analytics({ toasts }) {
+  const [data, setData] = useState(null);
+  const load = useCallback(() => {
+    api.get("/admin/analytics").then((r) => setData(r.data)).catch((e) => toasts.push("load failed", "err"));
+  }, [toasts]);
+  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
+
+  if (!data) return <div>Loading…</div>;
+
+  return (
+    <>
+      <div className="adm-header">
+        <h1>Analytics</h1>
+        <button className="adm-btn ghost" onClick={load}>Refresh</button>
+      </div>
+
+      <div className="adm-grid adm-grid-4 adm-mb">
+        <BigStat label="Visits today" v={data.visits.today.count} sub={`${data.visits.unique_today} unique users`} />
+        <BigStat label="Visits this week" v={data.visits.week.count} sub={`${data.visits.unique_week} unique users`} />
+        <BigStat label="Visits this month" v={data.visits.month.count} sub={`${data.visits.unique_month} unique users`} />
+        <BigStat label="Signups today" v={data.signups.today.count} sub={`${data.signups.week.count} this week`} />
+      </div>
+
+      <div className="adm-grid adm-grid-4 adm-mb">
+        <BigStat label="Ads watched today" v={data.ad_watches.today.count} />
+        <BigStat label="Ads this week" v={data.ad_watches.week.count} />
+        <BigStat label="Ads this month" v={data.ad_watches.month.count} />
+        <BigStat label="Logins today" v={data.logins.today.count} />
+      </div>
+
+      <div className="adm-grid adm-grid-3 adm-mb">
+        <BigStat label="Revenue today"    v={`$${data.payments.today.revenue.toFixed(2)}`} sub={`${data.payments.today.count} purchases`} />
+        <BigStat label="Revenue this week"  v={`$${data.payments.week.revenue.toFixed(2)}`} sub={`${data.payments.week.count} purchases`} />
+        <BigStat label="Revenue this month" v={`$${data.payments.month.revenue.toFixed(2)}`} sub={`${data.payments.month.count} purchases`} />
+      </div>
+
+      <div className="adm-card adm-mb">
+        <h3 style={{ marginTop: 0 }}>Daily breakdown (last 30 days)</h3>
+        <Sparkline title="Visits" data={data.daily.visits} field="count" color="var(--accent)" />
+        <Sparkline title="Ads watched" data={data.daily.ad_watches} field="count" color="var(--info)" />
+        <Sparkline title="Revenue ($)" data={data.daily.payments} field="amount" color="var(--good)" />
+      </div>
+    </>
+  );
+}
+
+function BigStat({ label, v, sub }) {
+  return (
+    <div className="adm-card">
+      <div className="adm-stat-label">{label}</div>
+      <div className="adm-stat-value">{v ?? 0}</div>
+      {sub && <div className="adm-stat-sub">{sub}</div>}
+    </div>
+  );
+}
+
+function Sparkline({ title, data, field, color }) {
+  // 30-day bar chart inline. Today on the right.
+  const days = [];
+  const map = new Map((data || []).map((d) => [d.day, d]));
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const day = d.toISOString().slice(0, 10);
+    const row = map.get(day);
+    days.push({ day, value: row ? Number(row[field] || 0) : 0 });
+  }
+  const max = Math.max(1, ...days.map((d) => d.value));
+  const total = days.reduce((a, b) => a + b.value, 0);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div className="adm-row" style={{ marginBottom: 6 }}>
+        <strong>{title}</strong>
+        <span style={{ flex: 1 }} />
+        <span className="mono" style={{ color: "var(--text-dim)" }}>30d total: {field === "amount" ? `$${total.toFixed(2)}` : total}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 60 }}>
+        {days.map((d) => (
+          <div key={d.day} title={`${d.day} · ${field === "amount" ? "$" + d.value.toFixed(2) : d.value}`}
+            style={{
+              flex: 1,
+              height: `${Math.max(2, (d.value / max) * 100)}%`,
+              background: color,
+              opacity: d.value === 0 ? 0.15 : 0.85,
+              borderRadius: 2,
+            }} />
+        ))}
+      </div>
+    </div>
   );
 }
 

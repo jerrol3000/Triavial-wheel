@@ -17,10 +17,12 @@ const CATEGORIES = [
   { id: 27, name: "Animals" },
 ];
 const DIFFICULTIES = ["easy", "medium", "hard"];
-const MIN_PER_BUCKET = 30; // refresh from opentdb until each bucket has at least this many
-const MAX_PER_BUCKET = 150; // stop fetching when bucket is well-stocked
-const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h between full sweeps
-const OPENTDB_THROTTLE_MS = 5500; // opentdb rate-limits at ~1 req / 5s
+const MIN_PER_BUCKET = 30;                          // top-up target
+const MAX_PER_BUCKET = 80;                          // stop fetching past this — saves API calls
+const REQUEST_AMOUNT = 20;                          // per-call ask; smaller = more reliable success
+const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;     // 6h between full sweeps
+const OPENTDB_THROTTLE_MS = 5500;                   // opentdb rate-limits at ~1 req / 5s
+const EXHAUSTED_BACKOFF_MS = 24 * 60 * 60 * 1000;   // after response_code 1, leave bucket alone for 24h
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function hashQ(text, categoryId, difficulty) {
@@ -176,16 +178,41 @@ function pickDailyQuestions(date, amount = 10) {
 let refreshing = false;
 function bucketKey(catId, diff) { return `${catId}:${diff}`; }
 
-async function refreshBucket(cat, diff) {
+function logFetch(key, outcome) {
+  db.prepare(`
+    INSERT INTO question_fetch_log (bucket, last_fetched_at, last_outcome) VALUES (?, ?, ?)
+    ON CONFLICT(bucket) DO UPDATE SET last_fetched_at = excluded.last_fetched_at, last_outcome = excluded.last_outcome
+  `).run(key, Date.now(), outcome);
+}
+
+function bucketIsExhausted(key) {
+  const row = db.prepare("SELECT last_outcome, last_fetched_at FROM question_fetch_log WHERE bucket = ?").get(key);
+  return !!(row && row.last_outcome === "exhausted" && (Date.now() - row.last_fetched_at) < EXHAUSTED_BACKOFF_MS);
+}
+
+async function refreshBucket(cat, diff, { force = false } = {}) {
+  const key = bucketKey(cat.id, diff);
   const count = getBucketCount(cat.id, diff);
   if (count >= MAX_PER_BUCKET) return { skipped: true, count };
-  const need = Math.min(50, MAX_PER_BUCKET - count);
-  const url = `https://opentdb.com/api.php?amount=${need}&category=${cat.id}&difficulty=${diff}&type=multiple`;
+  if (!force && bucketIsExhausted(key)) return { skipped: true, count, reason: "exhausted" };
+
+  const want = Math.min(REQUEST_AMOUNT, MAX_PER_BUCKET - count);
+  const url = `https://opentdb.com/api.php?amount=${want}&category=${cat.id}&difficulty=${diff}&type=multiple`;
   try {
     const res = await fetch(url);
     if (!res.ok) return { error: `HTTP ${res.status}` };
     const data = await res.json();
-    if (data.response_code !== 0 || !Array.isArray(data.results)) return { error: `response_code ${data.response_code}` };
+
+    // response_code 1 = "no results" — opentdb's bank has fewer than `want` in this bucket.
+    // Mark exhausted and back off; this is normal for small categories at hard difficulty.
+    if (data.response_code === 1) {
+      logFetch(key, "exhausted");
+      return { exhausted: true, count };
+    }
+    if (data.response_code !== 0 || !Array.isArray(data.results)) {
+      return { error: `response_code ${data.response_code}` };
+    }
+
     const rows = data.results.map((r) => ({
       category_id: cat.id,
       category_name: cat.name,
@@ -195,10 +222,7 @@ async function refreshBucket(cat, diff) {
       incorrect_answers: r.incorrect_answers,
     }));
     const added = insertMany(rows, "opentdb");
-    db.prepare(
-      `INSERT INTO question_fetch_log (bucket, last_fetched_at, last_outcome) VALUES (?, ?, ?)
-       ON CONFLICT(bucket) DO UPDATE SET last_fetched_at = excluded.last_fetched_at, last_outcome = excluded.last_outcome`
-    ).run(bucketKey(cat.id, diff), Date.now(), `added=${added}`);
+    logFetch(key, `added=${added}`);
     return { added };
   } catch (e) {
     return { error: String(e?.message || e) };
@@ -208,16 +232,22 @@ async function refreshBucket(cat, diff) {
 async function refreshAllBuckets({ force = false } = {}) {
   if (refreshing) return;
   refreshing = true;
+  let added = 0, exhausted = 0, errors = 0, skipped = 0;
   try {
     for (const cat of CATEGORIES) {
       for (const diff of DIFFICULTIES) {
         const count = getBucketCount(cat.id, diff);
-        if (!force && count >= MIN_PER_BUCKET) continue;
-        const out = await refreshBucket(cat, diff);
-        console.log(`[questions] refresh ${cat.name}/${diff} →`, out);
+        if (!force && count >= MIN_PER_BUCKET) { skipped += 1; continue; }
+        if (!force && bucketIsExhausted(bucketKey(cat.id, diff))) { skipped += 1; continue; }
+        const out = await refreshBucket(cat, diff, { force });
+        if (out.added) { added += out.added; console.log(`[questions] +${out.added} to ${cat.name}/${diff}`); }
+        else if (out.exhausted) { exhausted += 1; }
+        else if (out.error) { errors += 1; console.warn(`[questions] ${cat.name}/${diff} →`, out.error); }
+        else { skipped += 1; }
         await new Promise((r) => setTimeout(r, OPENTDB_THROTTLE_MS));
       }
     }
+    console.log(`[questions] refresh complete: +${added} added · ${exhausted} exhausted (24h backoff) · ${skipped} skipped · ${errors} errors · bank size ${getTotalCount()}`);
   } finally {
     refreshing = false;
   }

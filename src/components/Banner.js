@@ -10,6 +10,8 @@ export default function Banner() {
   const stats = useSelector((s) => s.stats);
   const user = useSelector((s) => s.auth.user);
   const soundOn = useSelector((s) => s.ui.soundOn);
+  const view = useSelector((s) => s.ui.view);
+  const notHome = view !== "home";
 
   const { level, xpInLevel, xpForNext, percent } = progressToNext(stats.xp);
 
@@ -24,10 +26,15 @@ export default function Banner() {
 
   return (
     <header className="tw-banner">
-      <div className="tw-logo" onClick={() => dispatch(setView("home"))} style={{ cursor: "pointer" }}>
+      <button
+        className={`tw-logo tw-logo-btn ${notHome ? "back" : ""}`}
+        onClick={() => dispatch(setView("home"))}
+        title={notHome ? "Back to home" : "Trivia Wheel — home"}
+      >
+        {notHome && <span className="tw-logo-back-arrow" aria-hidden="true">←</span>}
         <img src="/logo-no-background.png" alt="" />
         <span>Trivia&nbsp;Wheel</span>
-      </div>
+      </button>
       <div className="tw-row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <span className="tw-pill" title="Lives">
           {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}

@@ -21,18 +21,33 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
+  // Mirror `value` locally so the picker reflects the latest pick instantly
+  // even when `save="auto"` and the server roundtrip is mid-flight.
+  const [localValue, setLocalValue] = useState(value);
+  React.useEffect(() => { setLocalValue(value); }, [value]);
 
   const set = async (next) => {
+    setLocalValue(next);
     if (onChange) onChange(next);
     if (save === "auto") {
       setBusy(true);
       try {
-        await api.put("/auth/me/avatar", { avatar: next });
+        const { data } = await api.put("/auth/me/avatar", { avatar: next });
         dispatch(fetchMe());
         dispatch(pushToast({ icon: "✨", title: "Avatar updated" }));
       } catch (e) {
-        const err = e?.response?.data?.error || "failed";
-        dispatch(pushToast({ icon: "⚠️", title: "Couldn't save avatar", text: err }));
+        const status = e?.response?.status;
+        const err = e?.response?.data?.error || (status === 413 ? "too_large" : status ? `http_${status}` : "network");
+        // Roll back so the UI doesn't lie about the saved state.
+        setLocalValue(value);
+        dispatch(pushToast({
+          icon: "⚠️",
+          title: "Couldn't save avatar",
+          text: err === "too_large" ? "Picture is too large (max 3 MB)."
+            : err === "avatar_invalid_format" ? "Unsupported image format."
+            : err === "network" ? "Server unreachable — is the backend running?"
+            : err,
+        }));
       }
       setBusy(false);
     }
@@ -61,7 +76,7 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
   return (
     <div className="tw-avpicker">
       <div className="tw-avpicker-current">
-        <Avatar value={value} size={compact ? 56 : 80} ring />
+        <Avatar value={localValue} size={compact ? 56 : 80} ring />
         <div style={{ flex: 1 }}>
           {!compact && <div style={{ fontFamily: "Fredoka", fontWeight: 700, marginBottom: 4 }}>Profile picture</div>}
           <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.4 }}>
@@ -77,7 +92,7 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
             >
               📤 Upload
             </button>
-            {value && (
+            {localValue && (
               <button
                 className="tw-btn ghost"
                 type="button"
@@ -102,7 +117,7 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
       <div className="tw-avpicker-grid">
         {presets.map((p) => {
           const presetVal = `preset:${p.id}`;
-          const selected = value === presetVal;
+          const selected = localValue === presetVal;
           return (
             <button
               key={p.id}

@@ -607,23 +607,28 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
  * visually separate from the wheel area. */
 .tw-home {
   display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(480px, 1fr) minmax(220px, 280px);
+  /* Center column floor is 420px (was 480) so the layout fits sooner without
+   * squeezing the side columns off-screen. Wheel max-width inside is 460px
+   * which still fits 420 + scroll bar / padding. */
+  grid-template-columns: minmax(200px, 240px) minmax(420px, 1fr) minmax(200px, 260px);
   grid-template-areas: "left center right";
-  gap: 28px;
+  gap: 24px;
   width: 100%;
   align-items: start;
 }
-.tw-home-left   { grid-area: left;   display: flex; flex-direction: column; gap: 12px; }
-.tw-home-center { grid-area: center; display: flex; flex-direction: column; gap: 12px; }
-.tw-home-right  { grid-area: right;  display: flex; flex-direction: column; gap: 12px; }
+.tw-home-left   { grid-area: left;   display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tw-home-center { grid-area: center; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tw-home-right  { grid-area: right;  display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
-/* On very large screens, push side cards even further out. */
+/* On very large screens, push side cards even further toward the edges. */
 @media (min-width: 1280px) {
-  .tw-home { gap: 36px; }
+  .tw-home { gap: 32px; }
 }
 
-/* On smaller screens, stack vertically — center first, then right, then left. */
-@media (max-width: 960px) {
+/* Collapse to single column sooner — 1100px instead of 960px. Otherwise
+ * narrow laptops (≤ 1080) get a 3-column layout that doesn't quite fit
+ * and the side columns can overflow off-screen. */
+@media (max-width: 1099px) {
   .tw-home {
     grid-template-columns: 1fr;
     grid-template-areas:

@@ -4,6 +4,8 @@ import { load, save } from "../utils/storage";
 import { levelForXp } from "../utils/level";
 
 const STORAGE_KEY = "stats";
+const STORAGE_VERSION = 2;
+const VERSION_KEY = "stats_version";
 
 const DEFAULT_STATS = {
   xp: 0,
@@ -31,15 +33,40 @@ const DEFAULT_STATS = {
   leaderboard: [],
 };
 
-function mergeStats(local, server) {
-  // Server is source of truth for everything except `lives` and `categories_played` (local-only).
+// Guarantee no arrays/objects are null/undefined. Older saved-state shapes
+// could crash component render with stats.achievements.map / .find on null.
+function sanitize(s) {
+  if (!s || typeof s !== "object") return { ...DEFAULT_STATS };
   return {
+    ...DEFAULT_STATS,
+    ...s,
+    powerups: (s.powerups && typeof s.powerups === "object") ? s.powerups : DEFAULT_STATS.powerups,
+    themes: Array.isArray(s.themes) ? s.themes : DEFAULT_STATS.themes,
+    achievements: Array.isArray(s.achievements) ? s.achievements : [],
+    categories_played: Array.isArray(s.categories_played) ? s.categories_played : [],
+    leaderboard: Array.isArray(s.leaderboard) ? s.leaderboard : [],
+  };
+}
+
+function mergeStats(local, server) {
+  return sanitize({
     ...local,
     ...server,
     powerups: server.powerups || local.powerups,
     themes: server.themes || local.themes,
     achievements: server.achievements || local.achievements,
-  };
+  });
+}
+
+// Wipe stats on version bump — protects against schema-mismatched cached state
+// from older builds. Increment STORAGE_VERSION above when the shape changes.
+function loadInitial() {
+  const version = load(VERSION_KEY, 0);
+  if (version !== STORAGE_VERSION) {
+    save(VERSION_KEY, STORAGE_VERSION);
+    return { ...DEFAULT_STATS };
+  }
+  return sanitize(load(STORAGE_KEY, DEFAULT_STATS));
 }
 
 export const fetchStats = createAsyncThunk("stats/fetch", async (_, { rejectWithValue }) => {
@@ -90,7 +117,7 @@ function persist(state) { save(STORAGE_KEY, state); }
 
 const slice = createSlice({
   name: "stats",
-  initialState: load(STORAGE_KEY, DEFAULT_STATS),
+  initialState: loadInitial(),
   reducers: {
     tickLives: (s) => {
       if (s.pro) { s.lives = LIVES_MAX; return; }

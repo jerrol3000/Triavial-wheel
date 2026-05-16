@@ -8,8 +8,14 @@ const ROTATE_MS = 4500;
 
 // Each slide is a single bite-sized benefit — short headline, one-line
 // blurb, a big emoji that doubles as the visual hook. Tone is friendly
-// and concrete, not marketing-speak.
+// and concrete, not marketing-speak. Lead with the social hook (1v1
+// vs friends) — strongest activation reason.
 const SLIDES = [
+  {
+    icon: "🎮",
+    title: "Play 1v1 with friends",
+    text: "Challenge friends head-to-head or jump into ranked matches against players online.",
+  },
   {
     icon: "🏆",
     title: "Climb the leaderboard",
@@ -59,7 +65,21 @@ export default function GuestWelcome() {
     dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_welcome" } }));
   };
 
+  // Manual nav pauses auto-rotation so the user can read at their own
+  // pace without the slide flipping out from under them mid-sentence.
+  const goPrev = () => { setIdx((n) => (n - 1 + SLIDES.length) % SLIDES.length); setPaused(true); };
+  const goNext = () => { setIdx((n) => (n + 1) % SLIDES.length); setPaused(true); };
+
   const slide = SLIDES[idx];
+  const arrowBtn = {
+    background: "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    color: "var(--text)",
+    width: 28, height: 28, borderRadius: 8,
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    cursor: "pointer", fontSize: 14, lineHeight: 1, flexShrink: 0,
+    padding: 0,
+  };
 
   return (
     <div
@@ -93,23 +113,41 @@ export default function GuestWelcome() {
         <span style={{ color: "var(--text-dim)", fontSize: 12 }}>Quick tour</span>
       </div>
 
-      {/* Slide content. Fixed minHeight prevents the card from jumping
-          as slides cycle through different text lengths. */}
-      <div
-        key={idx}
-        style={{
-          minHeight: 92,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          animation: "fadeIn 360ms ease",
-        }}
-      >
-        <div style={{ fontSize: 36, lineHeight: 1, flexShrink: 0 }}>{slide.icon}</div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{slide.title}</div>
-          <div style={{ color: "var(--text-dim)", fontSize: 12, lineHeight: 1.4 }}>{slide.text}</div>
+      {/* Slide row: prev arrow · content · next arrow. Arrows make
+          manual nav obvious (the dots alone read as decoration). Fixed
+          minHeight prevents card jumping as slides change length. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 92 }}>
+        <button
+          type="button"
+          onClick={goPrev}
+          style={arrowBtn}
+          aria-label="Previous benefit"
+          title="Previous"
+        >‹</button>
+        <div
+          key={idx}
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            animation: "fadeIn 360ms ease",
+            minWidth: 0,
+          }}
+        >
+          <div style={{ fontSize: 36, lineHeight: 1, flexShrink: 0 }}>{slide.icon}</div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{slide.title}</div>
+            <div style={{ color: "var(--text-dim)", fontSize: 12, lineHeight: 1.4 }}>{slide.text}</div>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={goNext}
+          style={arrowBtn}
+          aria-label="Next benefit"
+          title="Next"
+        >›</button>
       </div>
 
       {/* Manual dots — clickable, current one is filled. */}

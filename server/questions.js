@@ -88,19 +88,94 @@ function rowToQuestion(r) {
 }
 
 // ─── Public lookup ──────────────────────────────────────────────────────────
-function getRandomQuestions({ categoryId = null, difficulty = "easy", amount = 10 }) {
-  const params = [];
-  let where = `difficulty = ?`;
-  params.push(difficulty);
-  if (categoryId) { where += ` AND category_id = ?`; params.push(categoryId); }
-  const rows = db.prepare(
-    `SELECT * FROM questions WHERE ${where} ORDER BY RANDOM() LIMIT ?`
-  ).all(...params, amount);
-  if (rows.length) {
-    const ids = rows.map((r) => r.id);
+// Picks `amount` random questions for a (category, difficulty) bucket.
+//
+// When `userId` (single) or `userIds` (array, for multiplayer matches) is
+// provided, the picker excludes any question already in seen_questions
+// for those users — guaranteeing no repeats during a logged-in player's
+// session. If the unseen pool can't fill `amount`, we wipe seen rows for
+// the affected bucket(s) and re-pick, so even after exhausting the bank
+// the player still gets a full round (just starting a new cycle).
+//
+// Anonymous callers (no userId provided) get the legacy behavior: pure
+// random with no tracking.
+function getRandomQuestions({ categoryId = null, difficulty = "easy", amount = 10, userId = null, userIds = null }) {
+  const trackedUsers = (userIds && userIds.length ? userIds : (userId ? [userId] : []))
+    .filter((u) => Number.isInteger(u));
+
+  const baseWhere = `q.difficulty = ?${categoryId ? " AND q.category_id = ?" : ""}`;
+  const baseParams = categoryId ? [difficulty, categoryId] : [difficulty];
+
+  let picks = [];
+
+  if (!trackedUsers.length) {
+    // Anonymous — original behavior.
+    picks = db.prepare(
+      `SELECT q.* FROM questions q WHERE ${baseWhere} ORDER BY RANDOM() LIMIT ?`
+    ).all(...baseParams, amount);
+  } else {
+    // Logged-in: pull from UNSEEN-by-all-tracked-users first.
+    const userPH = trackedUsers.map(() => "?").join(",");
+    picks = db.prepare(
+      `SELECT q.* FROM questions q
+       WHERE ${baseWhere}
+         AND NOT EXISTS (
+           SELECT 1 FROM seen_questions s
+           WHERE s.user_id IN (${userPH}) AND s.question_id = q.id
+         )
+       ORDER BY RANDOM() LIMIT ?`
+    ).all(...baseParams, ...trackedUsers, amount);
+
+    // Pool exhausted? Wipe history for this bucket and top up from the
+    // freshly-cycled pool. Done in a transaction so we can't half-reset.
+    if (picks.length < amount) {
+      const fillNeeded = amount - picks.length;
+      const pickedIds = picks.map((p) => p.id);
+      const excludePH = pickedIds.length ? `AND q.id NOT IN (${pickedIds.map(() => "?").join(",")})` : "";
+      const resetAndRefill = db.transaction(() => {
+        // Delete this user's seen records for this exact bucket — keeps
+        // other (category, difficulty) buckets they've explored intact.
+        const wipe = db.prepare(
+          `DELETE FROM seen_questions
+           WHERE user_id IN (${userPH})
+             AND question_id IN (
+               SELECT id FROM questions WHERE difficulty = ?${categoryId ? " AND category_id = ?" : ""}
+             )`
+        );
+        wipe.run(...trackedUsers, ...baseParams);
+
+        const more = db.prepare(
+          `SELECT q.* FROM questions q WHERE ${baseWhere} ${excludePH}
+           ORDER BY RANDOM() LIMIT ?`
+        ).all(...baseParams, ...pickedIds, fillNeeded);
+        picks = [...picks, ...more];
+      });
+      resetAndRefill();
+    }
+
+    // Record the served set as seen for every tracked user. Using
+    // INSERT OR REPLACE so the seen_at refreshes if a fallback re-served
+    // an already-seen question (rare; only when pool < amount).
+    if (picks.length) {
+      const now = Date.now();
+      const insertSeen = db.prepare(
+        `INSERT OR REPLACE INTO seen_questions(user_id, question_id, seen_at) VALUES (?, ?, ?)`
+      );
+      const tx = db.transaction((rows) => {
+        for (const u of trackedUsers) {
+          for (const r of rows) insertSeen.run(u, r.id, now);
+        }
+      });
+      tx(picks);
+    }
+  }
+
+  // Stat bump regardless of auth — used by admin analytics.
+  if (picks.length) {
+    const ids = picks.map((r) => r.id);
     db.prepare(`UPDATE questions SET served_count = served_count + 1 WHERE id IN (${ids.map(() => "?").join(",")})`).run(...ids);
   }
-  return rows.map(rowToQuestion);
+  return picks.map(rowToQuestion);
 }
 
 function getBucketCount(categoryId, difficulty) {

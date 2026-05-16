@@ -80,8 +80,12 @@ function shuffleAnswers(q) {
   return arr;
 }
 
-function loadQuestions(amount) {
-  const rows = getRandomQuestions({ difficulty: "medium", amount });
+function loadQuestions(amount, players) {
+  // For multiplayer matches: exclude questions either player has already
+  // seen. The same set is served to both — if pool is too small, the
+  // picker falls back to repeats and cycles their seen history.
+  const userIds = (players || []).filter((p) => p && p.id).map((p) => p.id);
+  const rows = getRandomQuestions({ difficulty: "medium", amount, userIds });
   // Add a stable shuffled order so both players see same.
   return rows.map((r) => ({ ...r, shuffled: shuffleAnswers(r) }));
 }
@@ -122,7 +126,7 @@ function startMatch(room) {
   if (room.players.filter(Boolean).length < 2) return;
   room.started = true;
   room.startedAt = Date.now();
-  room.questions = loadQuestions(QUESTIONS_PER_MATCH);
+  room.questions = loadQuestions(QUESTIONS_PER_MATCH, room.players);
   room.index = 0;
   advanceQuestion(room, /* first */ true);
 }

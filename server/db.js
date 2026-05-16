@@ -244,6 +244,20 @@ ensureColumn("users", "avatar", "TEXT");
 // session_id and effectively signs out every other device.
 ensureColumn("users", "session_id", "TEXT");
 
+// Per-user question-seen ledger. When a logged-in user starts a round, the
+// picker filters this table out so they don't see repeats until the
+// (category, difficulty) pool is exhausted; at that point the rows for
+// that bucket are wiped and the cycle starts over.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS seen_questions (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+    seen_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, question_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_seen_user_time ON seen_questions(user_id, seen_at DESC);
+`);
+
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")
   .split(",")

@@ -7,7 +7,7 @@
 #   3. Create the volume:  fly volumes create trivia_data --size 1 --region <region>
 #   4. Set the secrets (see DEPLOY.md), then `fly deploy`.
 
-app = "trivia-wheel-api"
+app = "trigger-happy-trivia-wheel876"
 primary_region = "iad"
 
 [build]

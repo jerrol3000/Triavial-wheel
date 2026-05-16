@@ -818,8 +818,8 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-pill .tw-icon { vertical-align: text-bottom; }
 
 /* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
-   The VS tab gets a slightly larger slot so the matchup icon pops as the
-   primary call-to-action in the bottom nav. */
+   The VS / online tab gets the hero treatment: bigger icon, no label,
+   elevated above the row so it reads as the primary social call-to-action. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
@@ -829,13 +829,23 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   margin-bottom: 2px;
 }
 .tw-nav-icon.tw-nav-icon-lg {
-  width: 40px;
-  height: 40px;
-  margin-top: -4px;        /* lift the bigger icon so the label stays aligned */
-  margin-bottom: 0;
+  width: 52px;
+  height: 52px;
+  margin-top: -14px;       /* lift the bigger icon so it floats above the row */
 }
 .tw-nav-icon-lg .tw-icon {
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(124, 58, 237, 0.45));
+  filter:
+    drop-shadow(0 4px 8px rgba(124, 58, 237, 0.55))
+    drop-shadow(0 0 14px rgba(236, 72, 153, 0.4));
+  transition: transform 160ms ease;
+}
+.tw-nav button.hero {
+  flex: 0 0 auto;
+  padding-top: 0;
+}
+.tw-nav button.hero:hover .tw-nav-icon-lg .tw-icon,
+.tw-nav button.hero.active .tw-nav-icon-lg .tw-icon {
+  transform: scale(1.08);
 }
 
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */

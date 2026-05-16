@@ -189,16 +189,8 @@ function EarnMoreStrip() {
     onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "coins" } } }),
     tooltip: "Watch a short ad to earn 30 coins",
   });
-  if (user) {
-    items.push({
-      key: "shop",
-      icon: <Icon name="shop" size={26} />,
-      text: "Buy more",
-      sub: "Shop",
-      onClick: () => dispatch(setView("shop")),
-      tooltip: "Coin packs, themes, and Trivia Pro",
-    });
-  }
+  // Shop intentionally omitted here — the bottom nav has a persistent Shop
+  // tab, and duplicating it on the home rail clutters the rewards row.
 
   return (
     <div className="tw-earn-strip">

@@ -5,14 +5,14 @@ import { safeNavigate } from "../utils/navigate";
 import Icon from "./Icon";
 import Avatar from "./Avatar";
 
-// Each entry can be an Icon name (resolves from /icons/ with emoji fallback)
-// OR — for the "me" tab when the user has set an avatar — render the avatar.
+// Bottom nav. The Trivia Wheel logo in the header is the "home/play" entry
+// point so we don't duplicate it here. VS is the centerpiece — rendered
+// larger with no label since the icon literally reads "VS".
 const ITEMS = [
-  { id: "home",    label: "Play",   icon: "play" },
-  { id: "daily",   label: "Daily",  icon: "daily" },
-  { id: "online",  label: "VS",     icon: "vs" },
-  { id: "shop",    label: "Shop",   icon: "shop" },
-  { id: "profile", label: "Me",     icon: "me" },
+  { id: "daily",   label: "Daily", icon: "daily" },
+  { id: "online",  label: null,    icon: "vs",   hero: true },
+  { id: "shop",    label: "Shop",  icon: "shop" },
+  { id: "profile", label: "Me",    icon: "me" },
 ];
 
 export default function BottomNav() {
@@ -23,25 +23,22 @@ export default function BottomNav() {
   return (
     <nav className="tw-nav">
       {ITEMS.map((it) => {
-        const active = view === it.id || (it.id === "home" && view === "play");
+        const active = view === it.id;
         const showAvatar = it.id === "profile" && user && user.avatar;
-        // VS is the primary social/competitive tab — render it a notch larger
-        // than its siblings so it reads as the headline call-to-action.
-        const isHero = it.id === "online";
-        const iconSize = isHero ? 38 : 28;
+        const iconSize = it.hero ? 48 : 28;
         return (
           <button
             key={it.id}
-            className={active ? "active" : ""}
+            className={`${active ? "active" : ""} ${it.hero ? "hero" : ""}`}
             onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
-            title={it.label}
+            title={it.id === "online" ? "Play with friends" : it.label}
           >
-            <span className={`tw-nav-icon ${isHero ? "tw-nav-icon-lg" : ""}`}>
+            <span className={`tw-nav-icon ${it.hero ? "tw-nav-icon-lg" : ""}`}>
               {showAvatar
                 ? <Avatar value={user.avatar} size={iconSize} ring={active} />
                 : <Icon name={it.icon} size={iconSize} />}
             </span>
-            <span>{it.label}</span>
+            {it.label && <span>{it.label}</span>}
           </button>
         );
       })}

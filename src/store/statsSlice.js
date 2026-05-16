@@ -4,7 +4,7 @@ import { load, save } from "../utils/storage";
 import { levelForXp } from "../utils/level";
 
 const STORAGE_KEY = "stats";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;  // bumped after merging lives → free_spins (single resource)
 const VERSION_KEY = "stats_version";
 
 const DEFAULT_STATS = {
@@ -24,9 +24,8 @@ const DEFAULT_STATS = {
   pro: false,
   pro_until: null,
   achievements: [], // [{ achievement_id, unlocked_at }]
-  // Lives (local-only; not on server)
-  lives: 5,
-  lives_updated_at: Date.now(),
+  // Spin regen state — see tickLives reducer for the regen math.
+  free_spins_updated_at: Date.now(),
   // Local-only category-played set
   categories_played: [],
   // Cache of leaderboard
@@ -121,8 +120,12 @@ export const fetchLeaderboard = createAsyncThunk("stats/leaderboard", async () =
   return data;
 });
 
-const LIVES_MAX = 5;
-const LIVES_REGEN_MS = 30 * 60 * 1000; // 30 minutes per life
+// Single energy resource: SPINS. They regenerate up to a floor of 5
+// (one every 30 min). Spins EARNED or BOUGHT stack ABOVE the floor with
+// no upper cap — regen only tops you back up to 5 if you're below it.
+// Pro players ignore the gate entirely (no decrement, no regen needed).
+const SPIN_REGEN_FLOOR = 5;
+const SPIN_REGEN_MS = 30 * 60 * 1000;
 
 function persist(state) { save(STORAGE_KEY, state); }
 
@@ -130,52 +133,59 @@ const slice = createSlice({
   name: "stats",
   initialState: loadInitial(),
   reducers: {
+    // Periodic ticker (App.js fires every 30s). Only adds spins if the
+    // user is below the regen floor and the clock has advanced enough
+    // since the last bump. Pro skips entirely.
     tickLives: (s) => {
-      if (s.pro) { s.lives = LIVES_MAX; return; }
-      if (s.lives >= LIVES_MAX) { s.lives_updated_at = Date.now(); return; }
-      const now = Date.now();
-      const elapsed = now - (s.lives_updated_at || now);
-      const regen = Math.floor(elapsed / LIVES_REGEN_MS);
-      if (regen > 0) {
-        s.lives = Math.min(LIVES_MAX, s.lives + regen);
-        s.lives_updated_at = (s.lives_updated_at || now) + regen * LIVES_REGEN_MS;
-      }
-      persist(s);
-    },
-    spendLife: (s) => {
       if (s.pro) return;
-      // If we have a free spin banked, burn that instead of a life.
-      if ((s.free_spins || 0) > 0) {
-        s.free_spins = Math.max(0, s.free_spins - 1);
-        persist(s);
+      if ((s.free_spins || 0) >= SPIN_REGEN_FLOOR) {
+        s.free_spins_updated_at = Date.now();
         return;
       }
-      if (s.lives === LIVES_MAX) s.lives_updated_at = Date.now();
-      s.lives = Math.max(0, s.lives - 1);
+      const now = Date.now();
+      const elapsed = now - (s.free_spins_updated_at || now);
+      const regen = Math.floor(elapsed / SPIN_REGEN_MS);
+      if (regen > 0) {
+        s.free_spins = Math.min(SPIN_REGEN_FLOOR, (s.free_spins || 0) + regen);
+        s.free_spins_updated_at = (s.free_spins_updated_at || now) + regen * SPIN_REGEN_MS;
+        persist(s);
+      }
+    },
+    // Single decrement helper: every spin costs one. No more lives-vs-
+    // free-spins fork — there's only one resource now. Pro doesn't pay.
+    spendLife: (s) => {
+      if (s.pro) return;
+      if ((s.free_spins || 0) <= 0) return;
+      // Start the regen clock the moment we drop BELOW the floor.
+      if (s.free_spins === SPIN_REGEN_FLOOR) s.free_spins_updated_at = Date.now();
+      s.free_spins = Math.max(0, s.free_spins - 1);
       persist(s);
     },
     consumeFreeSpin: (s) => {
-      if ((s.free_spins || 0) > 0) {
-        s.free_spins = Math.max(0, s.free_spins - 1);
-        persist(s);
-      }
+      if (s.pro) return;
+      if ((s.free_spins || 0) <= 0) return;
+      if (s.free_spins === SPIN_REGEN_FLOOR) s.free_spins_updated_at = Date.now();
+      s.free_spins = Math.max(0, s.free_spins - 1);
+      persist(s);
     },
     grantFreeSpins: (s, a) => {
       s.free_spins = (s.free_spins || 0) + Math.max(0, Math.floor(a.payload || 0));
       persist(s);
     },
+    // Backwards-named: refills the regen floor (5 spins). Doesn't reset
+    // the stacked total — if you had 12 spins already, this is a no-op.
     refillLives: (s) => {
-      s.lives = LIVES_MAX;
-      s.lives_updated_at = Date.now();
+      s.free_spins = Math.max(s.free_spins || 0, SPIN_REGEN_FLOOR);
+      s.free_spins_updated_at = Date.now();
       persist(s);
     },
-    // Distinct from spendLife: always decrements lives, never burns a free spin.
-    // Used for deliberate quit penalties — losing a free spin would let
-    // someone duck the penalty by stockpiling spins.
+    // Quit-penalty: cost 1 spin. Was `loseLife` in the old two-pool
+    // model; same effect in the new single-pool model.
     loseLife: (s) => {
       if (s.pro) return;
-      if (s.lives === LIVES_MAX) s.lives_updated_at = Date.now();
-      s.lives = Math.max(0, s.lives - 1);
+      if ((s.free_spins || 0) <= 0) return;
+      if (s.free_spins === SPIN_REGEN_FLOOR) s.free_spins_updated_at = Date.now();
+      s.free_spins = Math.max(0, s.free_spins - 1);
       persist(s);
     },
     addCoins: (s, a) => {
@@ -278,5 +288,7 @@ export const {
 } = slice.actions;
 
 export default slice.reducer;
-export const LIVES_MAX_EXPORT = LIVES_MAX;
-export const LIVES_REGEN_MS_EXPORT = LIVES_REGEN_MS;
+// Re-exported under the old names so the existing UI imports keep
+// working — single source of truth now: SPIN_REGEN_FLOOR / SPIN_REGEN_MS.
+export const LIVES_MAX_EXPORT = SPIN_REGEN_FLOOR;
+export const LIVES_REGEN_MS_EXPORT = SPIN_REGEN_MS;

@@ -2,43 +2,46 @@ import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { sfx } from "../utils/sound";
 import { safeNavigate } from "../utils/navigate";
+import { useT } from "../i18n";
 import Icon from "./Icon";
 import Avatar from "./Avatar";
 
-// Four equal tabs, all labeled. Labels describe destinations (not icons),
-// so "Online" is clearer than "VS" which would duplicate the icon's
-// visible text. Active state lifts the icon and recolors the label — no
-// background chips, halos, or FAB chrome.
+// Four equal tabs. Labels resolve through i18n so a language switch in
+// Settings re-labels the nav immediately. Label keys map to nav.*
+// translations (Daily / Online / Shop / Me — though Online uses "VS"
+// in English-icon context). i18n key list lives in src/i18n/translations.js.
 const ITEMS = [
-  { id: "daily",   label: "Daily",   icon: "daily" },
-  { id: "online",  label: "Online",  icon: "vs" },
-  { id: "shop",    label: "Shop",    icon: "shop" },
-  { id: "profile", label: "Profile", icon: "me" },
+  { id: "daily",   labelKey: "nav.daily",   icon: "daily" },
+  { id: "online",  labelKey: "nav.online",  icon: "vs" },
+  { id: "shop",    labelKey: "nav.shop",    icon: "shop" },
+  { id: "profile", labelKey: "nav.profile", icon: "me" },
 ];
 
 export default function BottomNav() {
   const dispatch = useDispatch();
   const view = useSelector((s) => s.ui.view);
   const user = useSelector((s) => s.auth.user);
+  const { t } = useT();
 
   return (
     <nav className="tw-nav">
       {ITEMS.map((it) => {
         const active = view === it.id;
         const showAvatar = it.id === "profile" && user && user.avatar;
+        const label = t(it.labelKey);
         return (
           <button
             key={it.id}
             className={active ? "active" : ""}
             onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
-            title={it.label}
+            title={label}
           >
             <span className="tw-nav-icon">
               {showAvatar
                 ? <Avatar value={user.avatar} size={32} ring={active} me />
                 : <Icon name={it.icon} size={32} />}
             </span>
-            <span>{it.label}</span>
+            <span>{label}</span>
           </button>
         );
       })}

@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useDispatch } from "react-redux";
 import Avatar from "./Avatar";
-import { AVATAR_PRESETS } from "../data/icons";
 import { api } from "../api/client";
 import { fetchMe } from "../store/authSlice";
 import { pushToast } from "../store/uiSlice";
@@ -94,8 +93,6 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
     e.target.value = ""; // allow re-selecting the same file later
   };
 
-  const presets = compact ? AVATAR_PRESETS.slice(0, 8) : AVATAR_PRESETS;
-
   return (
     <div className="tw-avpicker">
       <div className="tw-avpicker-current">
@@ -103,15 +100,20 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
         <div style={{ flex: 1 }}>
           {!compact && <div style={{ fontFamily: "Fredoka", fontWeight: 700, marginBottom: 4 }}>Profile picture</div>}
           <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.4 }}>
-            Pick a preset or upload a PNG / JPG / animated GIF (max 3 MB).
+            Pick from the grid, shuffle for a random one, or upload your own (PNG / JPG / GIF, max 3 MB).
           </div>
           <div className="tw-row" style={{ marginTop: 8, gap: 6, flexWrap: "wrap" }}>
+            <button className="tw-pill" type="button" onClick={shuffleDicebear} disabled={busy} title="Roll a random avatar"
+                    style={{ cursor: "pointer", padding: "6px 12px" }}>
+              🎲 Shuffle
+            </button>
             <button
-              className="tw-btn"
+              className="tw-btn ghost"
               type="button"
               onClick={() => fileInputRef.current && fileInputRef.current.click()}
               disabled={busy}
               title="Upload an image or animated GIF"
+              style={{ padding: "6px 14px", fontSize: 13 }}
             >
               📤 Upload
             </button>
@@ -122,6 +124,7 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
                 onClick={() => set(null)}
                 disabled={busy}
                 title="Remove avatar"
+                style={{ padding: "6px 14px", fontSize: 13 }}
               >
                 ✕ Remove
               </button>
@@ -137,61 +140,32 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
         </div>
       </div>
 
+      {/* Style selector — 6 visual languages to pick from. */}
+      <div className="tw-row" style={{ gap: 4, flexWrap: "wrap", marginTop: 12, marginBottom: 8 }}>
+        {DICEBEAR_STYLES.map((s) => (
+          <button key={s.id} type="button"
+                  className={`tw-pill ${dbStyle === s.id ? "selected" : ""}`}
+                  style={{ cursor: "pointer", padding: "4px 12px", fontSize: 12,
+                           background: dbStyle === s.id ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
+                           border: dbStyle === s.id ? "none" : undefined, color: "#fff" }}
+                  onClick={() => setDbStyle(s.id)}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       <div className="tw-avpicker-grid">
-        {presets.map((p) => {
-          const presetVal = `preset:${p.id}`;
-          const selected = localValue === presetVal;
+        {DICEBEAR_SEEDS.map((seed) => {
+          const val = `dicebear:${dbStyle}:${seed}`;
+          const selected = localValue === val;
           return (
-            <button
-              key={p.id}
-              className={`tw-avpicker-cell ${selected ? "selected" : ""}`}
-              type="button"
-              onClick={() => set(presetVal)}
-              disabled={busy}
-              title={p.id}
-            >
-              <Avatar value={presetVal} size={compact ? 36 : 44} />
+            <button key={seed} type="button" disabled={busy}
+                    className={`tw-avpicker-cell ${selected ? "selected" : ""}`}
+                    onClick={() => set(val)} title={seed}>
+              <Avatar value={val} size={compact ? 36 : 44} />
             </button>
           );
         })}
-      </div>
-
-      {/* DiceBear section — free generated avatars. Style selector at
-          the top, 12 seeded variations below, plus a Shuffle button to
-          roll a fresh random seed. */}
-      <div className="tw-avpicker-dicebear">
-        <div className="tw-row" style={{ justifyContent: "space-between", margin: "12px 0 6px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Generated avatars</div>
-          <button className="tw-pill" type="button" onClick={shuffleDicebear} disabled={busy} title="Roll a random one"
-                  style={{ cursor: "pointer", padding: "4px 10px" }}>
-            🎲 Shuffle
-          </button>
-        </div>
-        <div className="tw-row" style={{ gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-          {DICEBEAR_STYLES.map((s) => (
-            <button key={s.id} type="button"
-                    className={`tw-pill ${dbStyle === s.id ? "selected" : ""}`}
-                    style={{ cursor: "pointer", padding: "3px 10px", fontSize: 11,
-                             background: dbStyle === s.id ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
-                             border: dbStyle === s.id ? "none" : undefined, color: "#fff" }}
-                    onClick={() => setDbStyle(s.id)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <div className="tw-avpicker-grid">
-          {DICEBEAR_SEEDS.map((seed) => {
-            const val = `dicebear:${dbStyle}:${seed}`;
-            const selected = localValue === val;
-            return (
-              <button key={seed} type="button" disabled={busy}
-                      className={`tw-avpicker-cell ${selected ? "selected" : ""}`}
-                      onClick={() => set(val)} title={seed}>
-                <Avatar value={val} size={compact ? 36 : 44} />
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

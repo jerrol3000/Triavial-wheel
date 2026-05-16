@@ -4,6 +4,7 @@ import { setView, toggleSound, setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { LIVES_MAX_EXPORT, LIVES_REGEN_MS_EXPORT } from "../store/statsSlice";
 import { safeNavigate } from "../utils/navigate";
+import { useT } from "../i18n";
 import Icon from "./Icon";
 
 export default function Banner() {
@@ -13,14 +14,18 @@ export default function Banner() {
   const soundOn = useSelector((s) => s.ui.soundOn);
   const view = useSelector((s) => s.ui.view);
   const notHome = view !== "home";
+  const { t } = useT();
 
   const onHomeClick = () => dispatch(safeNavigate("home"));
 
   const { level, xpInLevel, xpForNext, percent } = progressToNext(stats.xp);
 
+  // Mini timer that shows when the next spin regenerates. Hidden when
+  // the player is already above the regen floor (5) or has Pro.
   const livesNext = () => {
-    if (stats.lives >= LIVES_MAX_EXPORT || stats.pro) return null;
-    const since = Date.now() - (stats.lives_updated_at || Date.now());
+    const spins = stats.free_spins || 0;
+    if (spins >= LIVES_MAX_EXPORT || stats.pro) return null;
+    const since = Date.now() - (stats.free_spins_updated_at || Date.now());
     const left = Math.max(0, LIVES_REGEN_MS_EXPORT - (since % LIVES_REGEN_MS_EXPORT));
     const m = Math.floor(left / 60000);
     const s = Math.floor((left % 60000) / 1000);
@@ -39,19 +44,15 @@ export default function Banner() {
         <span>Trivia&nbsp;Wheel</span>
       </button>
       <div className="tw-row tw-banner-stats">
-        <span className="tw-pill" title={stats.pro ? "Pro — unlimited lives" : `${stats.lives}/${LIVES_MAX_EXPORT} lives`} aria-label={stats.pro ? "Pro: unlimited lives" : `${stats.lives} of ${LIVES_MAX_EXPORT} lives`}>
-          {/* Fixed-line-height container so the heart glyphs align with
-              the PNG icons in the neighboring pills. */}
-          <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 1 }}>
-            {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}
-          </span>
-          {livesNext() && <span className="tw-banner-hide-sm" style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
+        {/* Single spins pill — no more lives/free-spins dual display. */}
+        <span className="tw-pill"
+              title={stats.pro ? "Pro — unlimited spins" : `${stats.free_spins || 0} spins · regen up to ${LIVES_MAX_EXPORT}`}
+              aria-label={stats.pro ? "Pro: unlimited spins" : `${stats.free_spins || 0} spins`}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
+          <Icon name="free_spin" size={20} />
+          <strong>{stats.pro ? "∞" : (stats.free_spins || 0)}</strong>
+          {livesNext() && <span className="tw-banner-hide-sm" style={{ marginLeft: 4, color: "var(--text-dim)", fontWeight: 400 }}>{livesNext()}</span>}
         </span>
-        {stats.free_spins > 0 && (
-          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
-            <Icon name="free_spin" size={20} /> {stats.free_spins}
-          </span>
-        )}
         <span className="tw-pill" title="Coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
           <Icon name="coins" size={20} /> {stats.coins}
         </span>
@@ -72,7 +73,7 @@ export default function Banner() {
         )}
         {!user && (
           <button className="tw-pill" onClick={() => dispatch(setModal("auth"))} style={{ cursor: "pointer" }}>
-            Sign in
+            {t("common.signin")}
           </button>
         )}
       </div>

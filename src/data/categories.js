@@ -24,3 +24,14 @@ export const WHEEL_DATA = [
   id: c.id,
   isMystery: !!c.isMystery,
 }));
+
+// Same shape as WHEEL_DATA but with the `option` strings translated via
+// the i18n `t` function. Call from a component that has access to
+// `useT()` — `translatedCategories(t)` returns a fresh array each
+// language change so the wheel relabels live.
+export function translatedCategories(t) {
+  return WHEEL_DATA.map((c) => {
+    if (c.isMystery) return { ...c, option: t("category.mystery") };
+    return { ...c, option: t(`category.${c.id}`) || c.option };
+  });
+}

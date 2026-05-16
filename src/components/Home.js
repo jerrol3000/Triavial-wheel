@@ -13,6 +13,8 @@ import QuestsPanel from "./QuestsPanel";
 import WeeklyQuestsPanel from "./WeeklyQuestsPanel";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
+import { useT } from "../i18n";
+import { translatedCategories } from "../data/categories";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -23,6 +25,9 @@ export default function Home() {
   const stats = useSelector((s) => s.stats);
   const daily = useSelector((s) => s.daily);
   const mode = useSelector((s) => s.game.mode);
+  const { t } = useT();
+  // Wheel labels translate live with language switches.
+  const wheelData = React.useMemo(() => translatedCategories(t), [t]);
 
   const [spinning, setSpinning] = React.useState(false);
   const [flash, setFlash] = React.useState(false);
@@ -69,14 +74,13 @@ export default function Home() {
 
   const onSpin = () => {
     if (spinning) return;
-    const hasFreeSpins = (stats.free_spins || 0) > 0;
-    if (!hasFreeSpins && stats.lives <= 0 && !stats.pro) {
+    // Pro skips the gate. Everyone else needs at least one spin in the
+    // bank — out of spins routes through the OutOfSpinsCard.
+    if (!stats.pro && (stats.free_spins || 0) <= 0) {
       dispatch(setView("shop"));
       return;
     }
-    if (hasFreeSpins && useFreeSpinIfPossible()) {
-      // free spin used — don't decrement lives
-    }
+    useFreeSpinIfPossible();
     setSpinning(true);
     if (wheelRef.current) wheelRef.current.spin();
     try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
@@ -114,9 +118,9 @@ export default function Home() {
       {/* CENTER — the focal point: title, mode pills, wheel, SPIN. */}
       <section className="tw-home-center">
         <div className="tw-home-hero">
-          <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>Spin to play</h1>
+          <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>{t("home.title")}</h1>
           <p style={{ color: "var(--text-dim)", margin: "4px 0 0", textAlign: "center", fontSize: 13 }}>
-            10 questions per round. Streaks multiply your score.
+            {t("home.subtitle")}
           </p>
 
           <div className="tw-row" style={{ gap: 6, justifyContent: "center" }}>
@@ -125,7 +129,7 @@ export default function Home() {
                 key={m}
                 className="tw-pill"
                 onClick={() => { sfx.click(); dispatch(setMode(m)); }}
-                title={`${m.charAt(0).toUpperCase() + m.slice(1)} difficulty — ${m === "easy" ? "1x" : m === "medium" ? "1.5x" : "2x"} points`}
+                title={t(`home.difficulty.${m}`)}
                 style={{
                   cursor: "pointer",
                   background: mode === m ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
@@ -133,7 +137,7 @@ export default function Home() {
                   color: "#fff",
                   textTransform: "capitalize",
                 }}
-              >{m}</button>
+              >{t(`home.difficulty.${m}`)}</button>
             ))}
           </div>
 
@@ -141,7 +145,7 @@ export default function Home() {
             {flash && <div className="tw-wheel-flash" />}
             <Wheel3D
               ref={wheelRef}
-              data={WHEEL_DATA}
+              data={wheelData}
               theme={theme}
               onStop={onWheelStop}
               size={460}
@@ -149,15 +153,12 @@ export default function Home() {
             />
           </div>
 
-          {/* Aggregate "spins left" = free_spins + lives (for non-Pro).
-              When zero, swap the SPIN button for an action card pointing
-              players at the ways to replenish (ads / store). Pro players
-              never see the gate — unlimited lives = infinite spins. */}
+          {/* Single energy resource: SPINS. Pro = unlimited. Below 1 =
+              out-of-spins card with watch-ad / buy paths. Otherwise spin
+              normally — the count is shown in the button label. */}
           {(() => {
-            const spinsLeft = (stats.free_spins || 0) + (stats.pro ? 99 : (stats.lives || 0));
-            if (spinsLeft <= 0 && !stats.pro) {
-              return <OutOfSpinsCard />;
-            }
+            const spins = stats.free_spins || 0;
+            if (!stats.pro && spins <= 0) return <OutOfSpinsCard />;
             return (
               <button
                 className="tw-btn tw-btn-spin block"
@@ -167,9 +168,9 @@ export default function Home() {
               >
                 {spinning
                   ? "Spinning..."
-                  : (stats.free_spins || 0) > 0
-                    ? `SPIN  ·  🎡 ${stats.free_spins} free`
-                    : "SPIN"}
+                  : stats.pro
+                    ? "SPIN"
+                    : `SPIN  ·  🎡 ${spins}`}
               </button>
             );
           })()}
@@ -201,17 +202,9 @@ function EarnMoreStrip() {
     onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } }),
     tooltip: "Watch a short ad to earn one free spin",
   });
-  if (stats.lives === 0) {
-    items.push({
-      key: "lives",
-      icon: "♥",
-      text: "Refill lives",
-      sub: "Watch ad",
-      onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "life_refill" } } }),
-      tooltip: "Watch a short ad to refill your lives",
-      accent: true,
-    });
-  }
+  // Lives are gone — refill is just another way to get spins. The free-
+  // spin pill above already covers this entry path, so the duplicate
+  // refill pill is removed.
   items.push({
     key: "coins",
     icon: <Icon name="coins" size={26} />,

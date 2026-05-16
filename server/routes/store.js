@@ -21,8 +21,10 @@ function grantPowerup(userId, type, count) {
     .run(JSON.stringify(p), Date.now(), userId);
 }
 function refillLives(userId) {
-  db.prepare(`UPDATE stats SET lives = 5, lives_updated_at = ?, updated_at = ? WHERE user_id = ?`)
-    .run(Date.now(), Date.now(), userId);
+  // Repurposed: now tops the player's free_spins up to 5 (the regen
+  // floor). Stacked spins above 5 are untouched. Lives column is dead.
+  db.prepare(`UPDATE stats SET free_spins = MAX(free_spins, 5), updated_at = ? WHERE user_id = ?`)
+    .run(Date.now(), userId);
 }
 
 // Public catalog — anyone can browse, sign-in is only required to buy.

@@ -371,7 +371,7 @@ function CurrencyPane() {
 
       <div className="tw-card">
         <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Quick refills</div>
-        <button className="tw-btn ghost block" onClick={buyLives} disabled={stats.lives >= 5 || stats.pro}>
+        <button className="tw-btn ghost block" onClick={buyLives} disabled={(stats.free_spins || 0) >= 5 || stats.pro}>
           ♥ Refill lives (50 🪙)
         </button>
       </div>

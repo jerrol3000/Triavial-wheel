@@ -30,11 +30,15 @@ function loadStats(userId) {
   const achievements = db
     .prepare("SELECT achievement_id, unlocked_at FROM achievements WHERE user_id = ?")
     .all(userId);
+  // Strip the legacy `lives` column — the game uses `free_spins` as the
+  // sole spin/energy resource now. Sending lives from the server would
+  // overwrite the client's regenerating spin counter on every fetch.
+  const { lives, lives_updated_at, ...clean } = row;
   return {
-    ...row,
-    powerups: row.powerups_json ? JSON.parse(row.powerups_json) : {},
-    themes: row.themes_json ? JSON.parse(row.themes_json) : ["classic"],
-    pro: !!(row.pro_until && row.pro_until > Date.now()),
+    ...clean,
+    powerups: clean.powerups_json ? JSON.parse(clean.powerups_json) : {},
+    themes: clean.themes_json ? JSON.parse(clean.themes_json) : ["classic"],
+    pro: !!(clean.pro_until && clean.pro_until > Date.now()),
     achievements,
     perks: getPerks(userId),
   };

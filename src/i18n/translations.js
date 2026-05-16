@@ -118,6 +118,18 @@ export const TRANSLATIONS = {
     "game.correct": "Correct",
     "game.accuracy": "Accuracy",
     "game.playAgain": "Play again",
+
+    "category.mystery": "MYSTERY x1.5",
+    "category.9":  "General",
+    "category.11": "Film",
+    "category.14": "TV",
+    "category.17": "Science",
+    "category.21": "Sports",
+    "category.22": "Geography",
+    "category.12": "Music",
+    "category.18": "Computers",
+    "category.20": "Mythology",
+    "category.27": "Animals",
   },
 
   es: {
@@ -234,6 +246,18 @@ export const TRANSLATIONS = {
     "game.correct": "Correctas",
     "game.accuracy": "Precisión",
     "game.playAgain": "Jugar de nuevo",
+
+    "category.mystery": "MISTERIO x1.5",
+    "category.9":  "Cultura general",
+    "category.11": "Cine",
+    "category.14": "TV",
+    "category.17": "Ciencia",
+    "category.21": "Deportes",
+    "category.22": "Geografía",
+    "category.12": "Música",
+    "category.18": "Informática",
+    "category.20": "Mitología",
+    "category.27": "Animales",
   },
 
   fr: {
@@ -295,6 +319,12 @@ export const TRANSLATIONS = {
     "game.crushed": "🔥 Bravo !", "game.notBad": "👍 Pas mal !", "game.niceTry": "Bien essayé !",
     "game.score": "Score", "game.bestStreak": "Meilleure série",
     "game.correct": "Correctes", "game.accuracy": "Précision", "game.playAgain": "Rejouer",
+
+    "category.mystery": "MYSTÈRE x1.5",
+    "category.9":  "Culture générale", "category.11": "Cinéma", "category.14": "TV",
+    "category.17": "Sciences", "category.21": "Sports", "category.22": "Géographie",
+    "category.12": "Musique", "category.18": "Informatique", "category.20": "Mythologie",
+    "category.27": "Animaux",
   },
 
   pt: {
@@ -348,6 +378,12 @@ export const TRANSLATIONS = {
     "game.crushed": "🔥 Mandou bem!", "game.notBad": "👍 Nada mal!", "game.niceTry": "Boa tentativa!",
     "game.score": "Pontos", "game.bestStreak": "Melhor sequência",
     "game.correct": "Acertos", "game.accuracy": "Precisão", "game.playAgain": "Jogar novamente",
+
+    "category.mystery": "MISTÉRIO x1.5",
+    "category.9":  "Geral", "category.11": "Cinema", "category.14": "TV",
+    "category.17": "Ciências", "category.21": "Esportes", "category.22": "Geografia",
+    "category.12": "Música", "category.18": "Informática", "category.20": "Mitologia",
+    "category.27": "Animais",
   },
 
   de: {
@@ -401,6 +437,12 @@ export const TRANSLATIONS = {
     "game.crushed": "🔥 Geschafft!", "game.notBad": "👍 Nicht schlecht!", "game.niceTry": "Guter Versuch!",
     "game.score": "Punkte", "game.bestStreak": "Beste Serie",
     "game.correct": "Richtig", "game.accuracy": "Genauigkeit", "game.playAgain": "Erneut spielen",
+
+    "category.mystery": "MYSTERIUM x1.5",
+    "category.9":  "Allgemeinwissen", "category.11": "Film", "category.14": "TV",
+    "category.17": "Wissenschaft", "category.21": "Sport", "category.22": "Geografie",
+    "category.12": "Musik", "category.18": "Computer", "category.20": "Mythologie",
+    "category.27": "Tiere",
   },
 };
 

@@ -38,7 +38,7 @@
   {"id":"boost_xp_2x","category":"boost","name":"2× XP (30 min)","description":"Double XP earned for 30 minutes after activation.","price_coins":500,"rarity":"common","icon":"⚡","data":{"effect":"xp_2x","duration_ms":1800000},"consumable":1,"sort_order":10},
   {"id":"boost_coins_2x","category":"boost","name":"2× Coins (30 min)","description":"Double coin payouts for 30 minutes.","price_coins":800,"rarity":"rare","icon":"💰","data":{"effect":"coins_2x","duration_ms":1800000},"consumable":1,"sort_order":20},
   {"id":"boost_streak_shield","category":"boost","name":"Streak Shield","description":"Saves your daily streak once.","price_coins":300,"rarity":"common","icon":"🛡️","data":{"effect":"streak_shield"},"consumable":1,"sort_order":30},
-  {"id":"boost_refill_lives","category":"boost","name":"Full Lives Refill","description":"Refill all 5 lives instantly.","price_coins":250,"rarity":"common","icon":"❤️","data":{"effect":"lives_refill"},"consumable":1,"sort_order":40},
+  {"id":"boost_refill_lives","category":"boost","name":"Refill Spins","description":"Top your spins back up to 5 instantly.","price_coins":250,"rarity":"common","icon":"🎡","data":{"effect":"lives_refill"},"consumable":1,"sort_order":40},
   {"id":"boost_mystery_box","category":"boost","name":"Mystery Box","description":"Random reward: coins, powerups, or rare cosmetic.","price_coins":1500,"rarity":"rare","icon":"📦","data":{"effect":"mystery_box"},"consumable":1,"sort_order":50},
 
   {"id":"spins_5","category":"spins","name":"5 Spins","description":"5 wheel spins. Quick top-up.","price_coins":150,"rarity":"common","icon":"🎡","data":{"spins":5},"sort_order":10},

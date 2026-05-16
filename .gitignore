@@ -4,3 +4,7 @@ dist
 *.log
 .env
 .env.local
+
+# Stray build artifacts at repo root (real build output goes to dist/)
+/index.html
+/public/bundle.js

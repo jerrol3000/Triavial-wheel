@@ -23,13 +23,21 @@ const slice = createSlice({
       // (Online.js gates `disabled={!!picked || !!reveal}`), making
       // the match look frozen after Q1. Compare by question index so
       // we only reset on actual round transitions, not generic room
-      // updates (chat, ready state, etc.).
+      // updates (chat, ready state, vote tally, etc.).
       const next = a.payload;
       const prevIndex = s.room ? s.room.index : null;
       s.room = next;
       s.waiting = false;
-      s.matchEnd = null;
       s.error = null;
+      // ONLY clear matchEnd when the room is back in an actively-playing
+      // state. Between rounds the server keeps the room around with
+      // finished=true and broadcasts room_state to update vote tallies;
+      // clearing matchEnd then would unmount <MatchEnd/> and fall through
+      // to <LiveMatch/>'s pre-game lobby, which (for private rooms) shows
+      // the friend code again — users read that as "asking to generate a
+      // new code every round". Preserve matchEnd until the rematch
+      // actually starts (finished=false, started=true).
+      if (next && !next.finished) s.matchEnd = null;
       if (next && typeof next.index === "number" && next.index !== prevIndex) {
         s.reveal = null;
         s.opponentAnswered = false;

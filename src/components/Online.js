@@ -48,7 +48,11 @@ export default function Online() {
           // Whitelist the fields we actually want — don't spread the
           // whole WS payload into redux. Cancel any in-flight clear so
           // rapid reactions don't blank each other out prematurely.
+          // Play a subtle chime so the receiver actually notices the
+          // reaction even if they're not looking at the screen corner
+          // where it animates in — but skip when it's our own echo.
           dispatch(pushReaction({ emoji: msg.emoji, username: msg.username, at: Date.now() }));
+          if (msg.userId !== user.id) sfx.click();
           if (reactionTimer) clearTimeout(reactionTimer);
           reactionTimer = setTimeout(() => dispatch(pushReaction(null)), 1500);
           break;
@@ -59,10 +63,18 @@ export default function Online() {
           // No penalty — just navigate the player home cleanly.
           dispatch(leftRoom());
           const reason = msg.reason;
-          const text = reason === "declined" ? "Opponent decided not to continue."
-                     : reason === "continue_timeout" ? "Rematch timer ran out."
-                     : "Session ended.";
-          dispatch(pushToast({ icon: "👋", title: "Game over", text }));
+          const declinedBySelf = reason === "declined" && msg.byUserId === user.id;
+          // The person who clicked Decline already knows they declined —
+          // don't pop a toast that frames it as the opponent's decision.
+          if (!declinedBySelf) {
+            const text = reason === "declined" ? "Opponent decided not to continue."
+                       : reason === "continue_timeout" ? "Rematch timer ran out."
+                       : reason === "connection_lost" ? "Connection lost — couldn't reach the server."
+                       : reason === "opponent_disconnected" ? "Opponent disconnected."
+                       : reason === "opponent_left_pregame" ? "Opponent left before the match started."
+                       : "Session ended.";
+            dispatch(pushToast({ icon: "👋", title: "Game over", text }));
+          }
           dispatch(fetchStats());
           break;
         }
@@ -270,6 +282,7 @@ function LiveMatch() {
   const room = useSelector((s) => s.online.room);
   const reveal = useSelector((s) => s.online.reveal);
   const opponentAnswered = useSelector((s) => s.online.opponentAnswered);
+  const connected = useSelector((s) => s.online.connected);
   const me = useSelector((s) => s.auth.user);
   const [picked, setPicked] = useState(null);
   const [tick, setTick] = useState(0);
@@ -305,13 +318,18 @@ function LiveMatch() {
     rt.send({ type: "answer", answer: a });
   };
 
-  // Pre-game lobby / waiting for opponent
+  // Pre-game lobby / waiting for opponent. The code-sharing UI is gated
+  // to first-ever round (rounds === 0) so a rematch transition — when
+  // room.started briefly flips false between rounds — doesn't ask the
+  // user to re-share the invite they already sent.
   if (!room.started) {
+    const isFirstRound = !room.rounds || room.rounds === 0;
+    const showInviteCode = room.kind === "private" && isFirstRound;
     return (
       <div className="tw-col">
         <button className="tw-pill" onClick={leave} style={{ alignSelf: "flex-start" }}>← Leave</button>
         <div className="tw-card" style={{ textAlign: "center" }}>
-          {room.kind === "private" && (
+          {showInviteCode && (
             <>
               <div style={{ color: "var(--text-dim)", fontSize: 13 }}>Share this code with a friend</div>
               <div className="tw-room-code">{room.code}</div>
@@ -331,7 +349,9 @@ function LiveMatch() {
             </>
           )}
           <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700, marginTop: 12 }}>
-            {startingSoon ? "Both players in — starting…" : "Waiting for opponent…"}
+            {startingSoon ? "Both players in — starting…"
+             : !isFirstRound ? "Next round starting…"
+             : "Waiting for opponent…"}
           </div>
           <div className="tw-row" style={{ justifyContent: "center", marginTop: 16, gap: 24 }}>
             <PlayerSlot player={room.players[0]} you={meSlot && meSlot.id === room.players[0]?.id} />
@@ -353,6 +373,21 @@ function LiveMatch() {
 
   return (
     <div className="tw-col">
+      {!connected && (
+        <div className="tw-card" style={{
+          background: "rgba(245,158,11,0.18)",
+          border: "1px solid rgba(245,158,11,0.5)",
+          padding: "10px 14px",
+        }}>
+          <div className="tw-row" style={{ gap: 10 }}>
+            <div className="tw-spinner" style={{ width: 16, height: 16, margin: 0, borderWidth: 2 }} />
+            <strong style={{ fontSize: 13 }}>Reconnecting…</strong>
+            <span style={{ flex: 1, color: "var(--text-dim)", fontSize: 12 }}>
+              Your answer will sync as soon as we're back online.
+            </span>
+          </div>
+        </div>
+      )}
       <div className="tw-row" style={{ justifyContent: "space-between" }}>
         <button className="tw-pill" onClick={leave}>
           ← {isFriendly ? "Leave (no penalty)" : "Forfeit"}
@@ -621,18 +656,44 @@ function MatchEnd() {
             <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
               Both players must agree within <strong>{remaining}s</strong>. No penalty either way.
             </div>
-            {oppWaiting && <div style={{ marginTop: 8, color: "var(--warn)", fontSize: 12 }}>You're in — waiting on {opp?.username || "opponent"}…</div>}
-            {oppDeclined && <div style={{ marginTop: 8, color: "var(--bad)", fontSize: 12 }}>{opp?.username || "Opponent"} declined.</div>}
+            {myVote === true && oppVote == null && (
+              <div style={{ marginTop: 8, color: "var(--warn)", fontSize: 12 }}>
+                ✓ You're in — waiting on {opp?.username || "opponent"}…
+              </div>
+            )}
+            {myVote === true && oppVote === true && (
+              <div style={{ marginTop: 8, color: "var(--good)", fontSize: 12 }}>
+                ✓ Both ready — starting next round!
+              </div>
+            )}
+            {oppDeclined && (
+              <div style={{ marginTop: 8, color: "var(--bad)", fontSize: 12 }}>
+                {opp?.username || "Opponent"} declined.
+              </div>
+            )}
 
             <div className="tw-row" style={{ justifyContent: "center", marginTop: 12, flexWrap: "wrap", gap: 6 }}>
               {myVote == null && (
                 <>
-                  <button className="tw-btn" onClick={() => vote(true)}>Rematch</button>
-                  <button className="tw-btn ghost" onClick={() => vote(false)}>Decline</button>
+                  <button className="tw-btn" onClick={() => vote(true)} title="Play another round with the same opponent">
+                    🔁 Rematch
+                  </button>
+                  <button className="tw-btn ghost" onClick={() => vote(false)} title="End the session">
+                    ✕ Decline
+                  </button>
                 </>
               )}
-              {!isFriendly && <button className="tw-btn ghost" onClick={findNew}>New opponent</button>}
-              <button className="tw-btn ghost" onClick={goHome}>Home</button>
+              {myVote === true && (
+                <button className="tw-btn ghost" onClick={() => vote(false)} title="Cancel your rematch vote and end the session">
+                  Cancel my vote
+                </button>
+              )}
+              {!isFriendly && myVote !== true && (
+                <button className="tw-btn ghost" onClick={findNew} title="Decline and queue for a new opponent">
+                  🔀 New opponent
+                </button>
+              )}
+              <button className="tw-btn ghost" onClick={goHome}>🏠 Home</button>
             </div>
           </div>
         )}

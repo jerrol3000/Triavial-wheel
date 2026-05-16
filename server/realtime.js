@@ -310,11 +310,17 @@ function endMatch(room, opts = {}) {
 
 // Final teardown after the continue window closes (timeout, decline,
 // disconnect, etc.). Removes the room and notifies players so the
-// client can navigate them home.
-function endRoom(room, reason) {
+// client can navigate them home. `byUserId` identifies who triggered
+// the end (decline, leave) so the client can suppress the misleading
+// "opponent declined" toast for the player who actually clicked decline.
+function endRoom(room, reason, opts = {}) {
   if (!rooms.has(room.code)) return;
   if (room.continueTimeoutId) { clearTimeout(room.continueTimeoutId); room.continueTimeoutId = null; }
-  broadcastRoom(room, { type: "session_ended", reason: reason || "ended" });
+  broadcastRoom(room, {
+    type: "session_ended",
+    reason: reason || "ended",
+    byUserId: opts.byUserId || null,
+  });
   rooms.delete(room.code);
 }
 
@@ -571,17 +577,25 @@ function handleMessage(ws, user, msg) {
     }
 
     // Rematch vote — both players must say yes within continueDeadline
-    // or the room shuts down (no penalty, just navigates home).
+    // or the room shuts down (no penalty, just navigates home). A
+    // player can change their YES → NO (cancel) but not NO → YES (a
+    // decline already tore the room down, so this branch never fires
+    // after a decline).
     case "continue_vote": {
       const room = findRoomForUser(user.id);
       if (!room || !room.finished) return;
       const accept = !!msg.accept;
+      // Idempotency: repeat YES votes are no-ops. Without this guard a
+      // double-click on Rematch flickers a redundant room_state to both
+      // clients.
+      if (room.continueVotes[user.id] === true && accept) return;
       room.continueVotes[user.id] = accept;
       const players = room.players.filter(Boolean);
       if (!accept) {
         // One decline is enough to tear the room down — saves the other
-        // player from waiting out the full timeout.
-        endRoom(room, "declined");
+        // player from waiting out the full timeout. Tag with byUserId
+        // so the decliner doesn't get the "opponent declined" toast.
+        endRoom(room, "declined", { byUserId: user.id });
         return;
       }
       const allYes = players.length === 2 && players.every((p) => room.continueVotes[p.id] === true);

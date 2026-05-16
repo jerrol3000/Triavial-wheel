@@ -25,6 +25,10 @@ export default function BottomNav() {
       {ITEMS.map((it) => {
         const active = view === it.id || (it.id === "home" && view === "play");
         const showAvatar = it.id === "profile" && user && user.avatar;
+        // VS is the primary social/competitive tab — render it a notch larger
+        // than its siblings so it reads as the headline call-to-action.
+        const isHero = it.id === "online";
+        const iconSize = isHero ? 38 : 28;
         return (
           <button
             key={it.id}
@@ -32,8 +36,10 @@ export default function BottomNav() {
             onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
             title={it.label}
           >
-            <span className="tw-nav-icon">
-              {showAvatar ? <Avatar value={user.avatar} size={28} ring={active} /> : <Icon name={it.icon} size={28} />}
+            <span className={`tw-nav-icon ${isHero ? "tw-nav-icon-lg" : ""}`}>
+              {showAvatar
+                ? <Avatar value={user.avatar} size={iconSize} ring={active} />
+                : <Icon name={it.icon} size={iconSize} />}
             </span>
             <span>{it.label}</span>
           </button>

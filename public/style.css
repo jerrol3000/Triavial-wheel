@@ -804,29 +804,39 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 }
 
 /* ─── Custom icons (rendered by <Icon name="..." />) ─────────────────────── */
+/* Icons are transparent PNGs — no tile background, just soft drop shadow
+   so the art separates from dark backgrounds without floating awkwardly. */
 .tw-icon {
   display: inline-block;
   object-fit: contain;
   vertical-align: middle;
   flex: 0 0 auto;
-  /* Subtle shadow so dark-themed illustrated icons separate from the background. */
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 6px rgba(0, 0, 0, 0.18));
 }
-.tw-icon.rounded { border-radius: 6px; }
 
-/* When an icon appears inside a pill button, give it a touch more spacing. */
+/* When an icon appears inside a pill button, nudge baseline alignment. */
 .tw-pill .tw-icon { vertical-align: text-bottom; }
 
-/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform. */
+/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
+   The VS tab gets a slightly larger slot so the matchup icon pops as the
+   primary call-to-action in the bottom nav. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   margin-bottom: 2px;
 }
-.tw-nav-icon .tw-icon { border-radius: 8px; }
+.tw-nav-icon.tw-nav-icon-lg {
+  width: 40px;
+  height: 40px;
+  margin-top: -4px;        /* lift the bigger icon so the label stays aligned */
+  margin-bottom: 0;
+}
+.tw-nav-icon-lg .tw-icon {
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(124, 58, 237, 0.45));
+}
 
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */
 .tw-avatar {

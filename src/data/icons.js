@@ -5,17 +5,17 @@
 // File names below match the actual assets in public/icons/. Filenames are
 // case-sensitive on Linux/Netlify — leave them exactly as committed.
 export const ICONS = {
-  // UI / navigation — real illustrated icons
-  vs:            { emoji: "🆚", file: "VS.jpg",           label: "VS / Online" },
-  stats:         { emoji: "📊", file: "My_stats.jpg",     label: "My Stats" },
-  shop:          { emoji: "🛒", file: "Shop.jpg",         label: "Shop" },
+  // UI / navigation — real illustrated icons (transparent PNGs).
+  vs:            { emoji: "🆚", file: "VS.png",           label: "VS / Online" },
+  stats:         { emoji: "📊", file: "My_stats.png",     label: "My Stats" },
+  shop:          { emoji: "🛒", file: "Shop.png",         label: "Shop" },
   daily_bonus:   { emoji: "🎁", file: "daily_prize.PNG",  label: "Daily Login Prize" },
   free_spin:     { emoji: "🎡", file: "free_spin.PNG",    label: "Free Spin" },
-  coins:         { emoji: "🪙", file: "coins.jpg",        label: "Gold Coins" },
-  sound:         { emoji: "🔊", file: "sound.jpg",        label: "Sound" },
-  admin:         { emoji: "🛠️", file: "admin_panel.jpg",  label: "Admin Panel" },
-  daily_quest:   { emoji: "📋", file: "daily_quest.jpg",  label: "Daily Quest" },
-  leaderboard:   { emoji: "🌍", file: "leader_board.jpg", label: "World Leaderboard" },
+  coins:         { emoji: "🪙", file: "coin.png",         label: "Gold Coins" },
+  sound:         { emoji: "🔊", file: "sound.png",        label: "Sound" },
+  admin:         { emoji: "🛠️", file: "admin_panel.png",  label: "Admin Panel" },
+  daily_quest:   { emoji: "📋", file: "daily_quest.png",  label: "Daily Quest" },
+  leaderboard:   { emoji: "🌍", file: "leader_board.png", label: "World Leaderboard" },
 
   // Nav / utility — fall back to emoji until you drop in custom files.
   // Drop e.g. public/icons/play.png and set `file` here to enable it.

@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { ICONS } from "../data/icons";
 
 // Renders a named icon. Prefers /icons/<file>; falls back to the emoji
-// if the image fails to load. The image is rendered inside a square
-// container with the icon contained (preserves aspect, no stretching),
-// rounded corners, and a soft drop shadow for depth on dark backgrounds.
-export default function Icon({ name, size = 22, rounded = true, className = "", style = {} }) {
+// if the image fails to load. Icons are transparent PNGs — `object-fit:
+// contain` preserves aspect, and a soft drop shadow gives depth on dark
+// backgrounds without boxing the art in a tile.
+export default function Icon({ name, size = 22, className = "", style = {} }) {
   const def = ICONS[name];
   const [failed, setFailed] = useState(false);
   if (!def) return null;
@@ -26,7 +26,7 @@ export default function Icon({ name, size = 22, rounded = true, className = "", 
       alt={def.label || name}
       width={size}
       height={size}
-      className={`tw-icon ${rounded ? "rounded" : ""} ${className}`}
+      className={`tw-icon ${className}`}
       style={{ width: size, height: size, ...style }}
       onError={() => setFailed(true)}
       draggable={false}

@@ -24,6 +24,7 @@ import { api, getToken } from "../api/client";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { setModal, pushToast } from "../store/uiSlice";
 import { logout } from "../store/authSlice";
+import { rt } from "../realtime/client";
 
 const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings };
 
@@ -74,6 +75,15 @@ export default function App() {
       });
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
+
+    // Open the WebSocket as soon as we have an auth token. The bell
+    // subscribes to it for live `notification` pushes (gifts, friend
+    // requests) so the badge updates instantly instead of waiting on
+    // its 30s poll. Idempotent — Online.js calls connect() again when
+    // it mounts and the realtime client short-circuits.
+    if (getToken()) {
+      try { rt.connect(); } catch (e) {}
+    }
 
     // When any authed request hits 401, the API client clears the token and
     // dispatches this event — surface a clear "your session expired" notice

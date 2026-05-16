@@ -828,6 +828,19 @@ function getOnlineUserIds() {
   return new Set(connections.keys());
 }
 
+// Push an arbitrary message to a specific user's open WS socket. Used
+// by HTTP routes (gifts, friend requests) to broadcast a live
+// `notification` event so the recipient's bell updates instantly
+// instead of waiting on the 30s poll. Silent no-op if the user isn't
+// currently connected — the next /api/notifications poll will catch
+// them up once they're back.
+function sendToUser(userId, msg) {
+  const ws = connections.get(userId);
+  if (ws && ws.readyState === 1) {
+    try { ws.send(JSON.stringify(msg)); } catch (e) {}
+  }
+}
+
 function attach(httpServer) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
@@ -862,4 +875,4 @@ function attach(httpServer) {
   console.log("[realtime] WebSocket server attached at /ws");
 }
 
-module.exports = { attach, getOnlineUserIds };
+module.exports = { attach, getOnlineUserIds, sendToUser };

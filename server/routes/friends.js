@@ -9,6 +9,17 @@ function pair(a, b) {
   return a < b ? [a, b] : [b, a];
 }
 
+// Live push to a user's open WS socket. Required late so the realtime
+// module is fully initialized (attach() runs after route mounting in
+// server/index.js). Silent no-op if the recipient is offline — they'll
+// see the notification on their next /api/notifications poll instead.
+function pushNotification(userId, payload) {
+  try {
+    const realtime = require("../realtime");
+    if (realtime.sendToUser) realtime.sendToUser(userId, { type: "notification", notification: payload });
+  } catch (e) { /* best-effort */ }
+}
+
 // List of accepted friends. Returns id, username, level, last_seen, online_now
 // (online_now is set from the realtime in-memory presence map).
 router.get("/", (req, res) => {
@@ -70,18 +81,43 @@ router.post("/add", (req, res) => {
   if (existing) {
     if (existing.status === "accepted") return res.status(409).json({ error: "already_friends" });
     if (existing.status === "pending" && existing.requester_id === me) return res.status(409).json({ error: "request_already_sent" });
-    // Auto-accept: they sent a request to us first.
+    // Auto-accept: they sent a request to us first. Tell the original
+    // requester their request just went through, in real time.
     if (existing.status === "pending") {
+      const now = Date.now();
       db.prepare("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE user_a = ? AND user_b = ?")
-        .run(Date.now(), a, b);
+        .run(now, a, b);
+      const myName = req.user.username || "Someone";
+      pushNotification(existing.requester_id, {
+        id: `facc-${me}-${now}`,
+        type: "friend_accepted",
+        icon: "🤝",
+        title: `${myName} accepted your friend request`,
+        text: "Send a gift to celebrate!",
+        at: now,
+        actor: { id: me, username: myName },
+        actionType: "view_friends",
+      });
       return res.json({ ok: true, status: "accepted" });
     }
   }
 
+  const now = Date.now();
   db.prepare(`
     INSERT INTO friendships (user_a, user_b, status, requester_id, created_at)
     VALUES (?, ?, 'pending', ?, ?)
-  `).run(a, b, me, Date.now());
+  `).run(a, b, me, now);
+  const myName = req.user.username || "Someone";
+  pushNotification(target.id, {
+    id: `freq-${me}-${now}`,
+    type: "friend_request",
+    icon: "👋",
+    title: `${myName} wants to be your friend`,
+    text: "Tap to accept or view in Profile → Friends.",
+    at: now,
+    actor: { id: me, username: myName },
+    actionType: "view_friends",
+  });
   res.json({ ok: true, status: "pending" });
 });
 
@@ -94,8 +130,20 @@ router.post("/accept", (req, res) => {
   if (!row) return res.status(404).json({ error: "no_request" });
   if (row.status === "accepted") return res.json({ ok: true, status: "accepted" });
   if (row.requester_id === me) return res.status(400).json({ error: "cant_accept_own" });
+  const now = Date.now();
   db.prepare("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE user_a = ? AND user_b = ?")
-    .run(Date.now(), a, b);
+    .run(now, a, b);
+  const myName = req.user.username || "Someone";
+  pushNotification(requesterId, {
+    id: `facc-${me}-${now}`,
+    type: "friend_accepted",
+    icon: "🤝",
+    title: `${myName} accepted your friend request`,
+    text: "Send a gift to celebrate!",
+    at: now,
+    actor: { id: me, username: myName },
+    actionType: "view_friends",
+  });
   res.json({ ok: true, status: "accepted" });
 });
 
@@ -209,6 +257,23 @@ router.post("/gift", (req, res) => {
     console.error("[friends] gift_failed", e);
     return res.status(500).json({ error: "gift_failed" });
   }
+
+  // Live notification to the recipient so their bell + toast fire
+  // immediately instead of waiting on their next 30s poll.
+  const myName = req.user.username || "A friend";
+  const kindLabel = kind === "free_spins" ? `${amount} free spin${amount === 1 ? "" : "s"}`
+                  : kind === "coins"      ? `${amount} coin${amount === 1 ? "" : "s"}`
+                  : `${amount} gift`;
+  pushNotification(recipientId, {
+    id: `gift-live-${me}-${Date.now()}`,
+    type: "gift_received",
+    icon: kind === "free_spins" ? "🎡" : "🎁",
+    title: `${myName} sent you ${kindLabel}`,
+    text: "Tap to send one back.",
+    at: Date.now(),
+    actor: { id: me, username: myName },
+    actionType: "view_friends",
+  });
 
   res.json({ ok: true, kind, amount });
 });

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
-import { setView, setProfileTab } from "../store/uiSlice";
+import { setView, setProfileTab, pushToast } from "../store/uiSlice";
+import { rt } from "../realtime/client";
+import { sfx } from "../utils/sound";
 
 // Polls /api/notifications every POLL_MS while the user is logged in.
 // Bell renders a red badge with the unread count; clicking opens a
@@ -46,6 +48,39 @@ export default function NotificationBell() {
     const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
   }, [load, user]);
+
+  // Live push subscription. The server emits `notification` over the
+  // shared WebSocket whenever an interaction lands (gift sent, friend
+  // request opened, friend accepted). We prepend it to the visible
+  // list, bump the unread badge, fire a coin chime + transient toast
+  // so the user notices even if they're not staring at the bell.
+  // De-dupes by id so a notification that arrives both live AND on
+  // the next poll only renders once.
+  useEffect(() => {
+    if (!user) return;
+    // Ensure the socket is actually open. App.js calls connect() on
+    // login, but if NotificationBell mounts before App's effect fires
+    // (or after a remount) we belt-and-suspender it here.
+    try { rt.connect(); } catch (e) {}
+    const off = rt.on((msg) => {
+      if (!msg || msg.type !== "notification" || !msg.notification) return;
+      const n = msg.notification;
+      setItems((prev) => {
+        if (prev.some((it) => it.id === n.id)) return prev;
+        return [{ ...n, unread: true }, ...prev].slice(0, 30);
+      });
+      // Only bump unread if the panel isn't already open (open = read).
+      setUnread((u) => (open ? u : u + 1));
+      try { sfx.coin(); } catch (e) {}
+      dispatch(pushToast({
+        icon: n.icon || "🔔",
+        title: n.title || "New notification",
+        text: n.text || "",
+        duration: 4000,
+      }));
+    });
+    return off;
+  }, [user, open, dispatch]);
 
   // Close the panel when clicking outside it (excluding the bell itself).
   useEffect(() => {

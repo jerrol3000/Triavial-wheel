@@ -38,10 +38,10 @@ export default function Banner() {
         <img src="/logo-no-background.png" alt="" />
         <span>Trivia&nbsp;Wheel</span>
       </button>
-      <div className="tw-row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <div className="tw-row tw-banner-stats">
         <span className="tw-pill" title="Lives">
           {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}
-          {livesNext() && <span style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
+          {livesNext() && <span className="tw-banner-hide-sm" style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
         </span>
         {stats.free_spins > 0 && (
           <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
@@ -52,17 +52,17 @@ export default function Banner() {
           <Icon name="coins" size={20} /> {stats.coins}
         </span>
         <span className="tw-pill" title={`Level ${level} • ${xpInLevel}/${xpForNext} XP`}>
-          ⭐ L{level} · {percent}%
+          ⭐ L{level}<span className="tw-banner-hide-sm"> · {percent}%</span>
         </span>
         {stats.pro && <span className="tw-pill" style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none" }}>PRO</span>}
-        <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer", padding: "4px 8px" }}>
+        <button className="tw-pill tw-banner-hide-sm" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer", padding: "4px 8px" }}>
           {soundOn ? <Icon name="sound" size={20} /> : <span style={{ fontSize: 18 }}>🔇</span>}
         </button>
-        <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
+        <button className="tw-pill tw-banner-hide-sm" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
           <Icon name="settings" size={20} />
         </button>
         {user && user.is_admin && (
-          <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
+          <a className="tw-pill tw-banner-hide-sm" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
             <Icon name="admin" size={20} /> Admin
           </a>
         )}

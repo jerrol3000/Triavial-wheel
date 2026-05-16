@@ -129,6 +129,24 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 @media (max-width: 480px) {
   .tw-logo { font-size: 16px; gap: 6px; }
   .tw-logo img { width: 26px; height: 26px; }
+  /* Hide the wordmark on the very smallest screens — the logo image
+     alone is enough of a brand anchor and saves ~110px of bar width. */
+  .tw-logo > span { display: none; }
+}
+
+/* Stats row in the banner — flex-end on desktop, tightened on mobile. */
+.tw-banner-stats {
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 640px) {
+  .tw-banner { padding: 8px 10px; }
+  .tw-banner-stats { gap: 4px; flex-wrap: nowrap; }
+  .tw-banner-stats .tw-pill { padding: 3px 8px; font-size: 12px; }
+  /* Hide non-essential controls on phones — sound, settings, admin
+     pill are all reachable from the Profile / Settings tab. */
+  .tw-banner-hide-sm { display: none !important; }
 }
 
 .tw-row { display: flex; align-items: center; gap: 10px; }

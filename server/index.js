@@ -4,6 +4,42 @@ const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// Pre-flight checks. In production these become hard errors — fail fast and
+// loudly so a misconfigured deploy never silently serves bad responses.
+function preflight() {
+  const missing = [];
+  const warnings = [];
+
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "change-me-to-a-long-random-string" || process.env.JWT_SECRET === "dev-only-not-secure") {
+    if (IS_PROD) missing.push("JWT_SECRET");
+    else warnings.push("JWT_SECRET not set — using insecure default (dev only). All tokens reset on every restart.");
+  }
+  if (IS_PROD) {
+    if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === "*") {
+      warnings.push("CORS_ORIGIN not pinned to your frontend domain — anyone can call this API. Set it to e.g. https://yoursite.com");
+    }
+    if (!process.env.ADMIN_EMAILS) {
+      warnings.push("ADMIN_EMAILS not set — nobody can access the admin panel.");
+    }
+    if (!process.env.ADMIN_SETTINGS_KEY) {
+      warnings.push("ADMIN_SETTINGS_KEY not set — admin Settings panel can't store payment creds.");
+    }
+    if (!process.env.DB_PATH) {
+      warnings.push("DB_PATH not set — SQLite file lives in ./data/. On Fly/Render with a volume, point this at the volume mount (e.g. /data/trivia.db).");
+    }
+  }
+
+  warnings.forEach((w) => console.warn("[startup] ⚠ ", w));
+  if (missing.length) {
+    console.error("[startup] ✗ Required env vars missing in production:", missing.join(", "));
+    console.error("           Set these in your hosting provider's secrets (Fly: `fly secrets set ...`).");
+    process.exit(1);
+  }
+}
+preflight();
+
 const authRoutes = require("./routes/auth");
 const statsRoutes = require("./routes/stats");
 const dailyRoutes = require("./routes/daily");
@@ -35,7 +71,38 @@ app.use(rateLimit({
   legacyHeaders: false,
 }));
 
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+app.get("/api/health", (req, res) => {
+  // Cheap healthcheck — no DB hit, no auth. Used by load balancers (Fly).
+  res.json({
+    ok: true,
+    env: process.env.NODE_ENV || "development",
+    version: process.env.APP_VERSION || "dev",
+    time: Date.now(),
+  });
+});
+
+// Detail check — verifies DB connectivity + reports key facts. For deploy
+// verification (curl this once after rollout).
+app.get("/api/health/full", (req, res) => {
+  const { getTotalCount } = require("./questions");
+  const settings = require("./settings");
+  const { isConfigured: cryptoConfigured } = require("./crypto");
+  try {
+    res.json({
+      ok: true,
+      env: process.env.NODE_ENV || "development",
+      version: process.env.APP_VERSION || "dev",
+      time: Date.now(),
+      database: { questions: getTotalCount() },
+      crypto: { configured: cryptoConfigured() },
+      paypal: { configured: !!settings.get("PAYPAL_CLIENT_ID") && !!settings.get("PAYPAL_CLIENT_SECRET") },
+      stripe: { configured: !!settings.get("STRIPE_SECRET_KEY") },
+      cors_origin: process.env.CORS_ORIGIN || "*",
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/stats", statsRoutes);

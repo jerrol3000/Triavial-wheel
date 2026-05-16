@@ -5,15 +5,15 @@ import { safeNavigate } from "../utils/navigate";
 import Icon from "./Icon";
 import Avatar from "./Avatar";
 
-// Bottom nav. The Trivia Wheel logo in the header is the "home/play" entry
-// point, so it's not duplicated here. Shop and VS are the two primary
-// action tabs — rendered larger than the secondary Daily / Me tabs so
-// they pop without any background chrome.
+// Four equal tabs, all labeled. Labels describe destinations (not icons),
+// so "Online" is clearer than "VS" which would duplicate the icon's
+// visible text. Active state lifts the icon and recolors the label — no
+// background chips, halos, or FAB chrome.
 const ITEMS = [
-  { id: "daily",   label: "Daily", icon: "daily" },
-  { id: "shop",    label: null,    icon: "shop", big: true, title: "Shop" },
-  { id: "online",  label: null,    icon: "vs",   title: "Play with friends" },
-  { id: "profile", label: "Me",    icon: "me" },
+  { id: "daily",   label: "Daily",   icon: "daily" },
+  { id: "online",  label: "Online",  icon: "vs" },
+  { id: "shop",    label: "Shop",    icon: "shop" },
+  { id: "profile", label: "Profile", icon: "me" },
 ];
 
 export default function BottomNav() {
@@ -26,22 +26,19 @@ export default function BottomNav() {
       {ITEMS.map((it) => {
         const active = view === it.id;
         const showAvatar = it.id === "profile" && user && user.avatar;
-        const iconSize = it.big ? 48 : 28;
         return (
           <button
             key={it.id}
-            className={`${active ? "active" : ""} ${it.big ? "big" : ""}`}
+            className={active ? "active" : ""}
             onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
-            title={it.title || it.label}
+            title={it.label}
           >
-            <span className="tw-nav-icon" style={{ width: iconSize, height: iconSize }}>
+            <span className="tw-nav-icon">
               {showAvatar
-                ? <Avatar value={user.avatar} size={iconSize} ring={active} />
-                : <Icon name={it.icon} size={iconSize} />}
+                ? <Avatar value={user.avatar} size={32} ring={active} />
+                : <Icon name={it.icon} size={32} />}
             </span>
-            {/* Empty placeholder keeps vertical alignment consistent for
-                tabs that don't have a label (VS). */}
-            <span>{it.label || " "}</span>
+            <span>{it.label}</span>
           </button>
         );
       })}

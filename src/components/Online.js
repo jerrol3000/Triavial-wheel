@@ -466,8 +466,83 @@ function LiveMatch() {
       </div>
 
       <ReactionLayer />
-      <ChatPanel />
+      <MobileCollapsibleChat />
     </div>
+  );
+}
+
+// On mobile the chat panel piling under the answer card pushed the
+// powerup row + scoreboard well below the fold and chat itself slid
+// under the bottom nav. Collapse it to a floating bubble that
+// expands into a drawer when tapped — keeps the question + answers
+// occupying the visible viewport during a match. Desktop renders the
+// chat inline as before.
+function MobileCollapsibleChat() {
+  const [open, setOpen] = React.useState(false);
+  const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+  if (!isMobile) return <ChatPanel />;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Open chat"
+        aria-label="Open chat"
+        style={{
+          position: "fixed",
+          right: 14,
+          bottom: "calc(100px + env(safe-area-inset-bottom))",
+          width: 48, height: 48, borderRadius: 24,
+          background: "linear-gradient(135deg, var(--primary, #7c3aed), var(--primary-2, #ec4899))",
+          color: "#fff", border: "none", cursor: "pointer",
+          fontSize: 22,
+          boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+          zIndex: 30,
+        }}
+      >💬</button>
+      {open && (
+        <div
+          onClick={() => setOpen(false)}
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 40,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              left: 0, right: 0, bottom: 0,
+              maxHeight: "70vh",
+              background: "#1a1530",
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              borderTop: "1px solid rgba(124,58,237,0.45)",
+              padding: 12,
+              paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+              boxShadow: "0 -12px 36px rgba(0,0,0,0.4)",
+              overflowY: "auto",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+              <strong style={{ fontFamily: "Fredoka", fontSize: 15 }}>Chat</strong>
+              <div style={{ flex: 1 }} />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close chat"
+                style={{
+                  background: "transparent", border: "none",
+                  color: "var(--text-dim)", cursor: "pointer", fontSize: 20, padding: 4,
+                }}
+              >×</button>
+            </div>
+            <ChatPanel />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

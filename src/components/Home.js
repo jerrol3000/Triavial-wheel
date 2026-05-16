@@ -39,6 +39,29 @@ export default function Home() {
   const [spinning, setSpinning] = React.useState(false);
   const [flash, setFlash] = React.useState(false);
   const wheelRef = useRef(null);
+  // Responsive wheel sizing — Wheel3D draws to a fixed-size canvas, so
+  // we measure the wrapping div on mount + resize and feed it the
+  // actual available width (capped at 460 for desktop). Before this,
+  // the canvas was forced to 460px on a 360px phone → label-rotation
+  // pushed text past the viewport and the tilt clipped.
+  const wheelWrapRef = useRef(null);
+  const [wheelSize, setWheelSize] = React.useState(460);
+  React.useLayoutEffect(() => {
+    if (!wheelWrapRef.current) return;
+    const el = wheelWrapRef.current;
+    const measure = () => {
+      const w = Math.max(220, Math.min(460, el.clientWidth));
+      setWheelSize(w);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    else window.addEventListener("resize", measure);
+    return () => {
+      if (ro) ro.disconnect();
+      else window.removeEventListener("resize", measure);
+    };
+  }, []);
   // Track the two setTimeouts fired in onWheelStop so we can cancel them
   // if the component unmounts (navigation away) before they fire. Without
   // this, the wheel stop will force a view change after the user has
@@ -164,15 +187,15 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 480, width: "100%", margin: "0 auto" }}>
+          <div ref={wheelWrapRef} className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 480, width: "100%", margin: "0 auto" }}>
             {flash && <div className="tw-wheel-flash" />}
             <Wheel3D
               ref={wheelRef}
               data={wheelData}
               theme={theme}
               onStop={onWheelStop}
-              size={460}
-              fontSize={14}
+              size={wheelSize}
+              fontSize={Math.max(11, Math.round(wheelSize * 0.030))}
             />
           </div>
 

@@ -141,8 +141,11 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   justify-content: flex-end;
 }
 @media (max-width: 640px) {
-  .tw-banner { padding: 8px 10px; }
-  .tw-banner-stats { gap: 4px; flex-wrap: nowrap; }
+  .tw-banner { padding: 8px 10px; flex-wrap: wrap; row-gap: 6px; }
+  /* Allow the stats row to wrap to a second line if it can't fit —
+     the old `flex-wrap: nowrap` clipped pills on 481–640px when the
+     wordmark + 5+ pills + bell didn't quite fit on one row. */
+  .tw-banner-stats { gap: 4px; flex-wrap: wrap; row-gap: 4px; }
   .tw-banner-stats .tw-pill { padding: 3px 8px; font-size: 12px; }
   /* Hide non-essential controls on phones — sound, settings, admin
      pill are all reachable from the Profile / Settings tab. */
@@ -646,14 +649,18 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 
 /* Collapse to single column sooner — 1100px instead of 960px. Otherwise
  * narrow laptops (≤ 1080) get a 3-column layout that doesn't quite fit
- * and the side columns can overflow off-screen. */
+ * and the side columns can overflow off-screen. Mobile stack order:
+ * center (wheel) → LEFT (quests + rewards) → RIGHT (leaderboard).
+ * The audit flagged the previous order (center → right → left) buried
+ * QuestsHub below the leaderboard at the very bottom of the page —
+ * the most reward-dense surface was below the fold on every visit. */
 @media (max-width: 1099px) {
   .tw-home {
     grid-template-columns: 1fr;
     grid-template-areas:
       "center"
-      "right"
-      "left";
+      "left"
+      "right";
     gap: 14px;
   }
 }
@@ -1109,10 +1116,16 @@ img.tw-avatar { background: none; }
   .tw-content { padding: 12px; padding-bottom: 100px; }
   .tw-card { padding: 14px; }
   .tw-room-code { font-size: 32px; letter-spacing: 6px; padding: 8px 14px; }
-  .tw-vs-name { font-size: 42px; }
-  .tw-online-scoreboard { grid-template-columns: 1fr; }
-  .tw-online-score { padding: 8px; }
+  .tw-vs-name { font-size: 36px; }
+  /* Keep the YOU | VS | OPP triptych side-by-side on mobile so the
+     "head-to-head" mental model survives. Old style (single column)
+     stacked opponent below you with the countdown wedged between,
+     breaking the read at a glance. Just shrink padding + font. */
+  .tw-online-scoreboard { grid-template-columns: 1fr auto 1fr; gap: 8px; }
+  .tw-online-score { padding: 8px 6px; }
   .tw-online-score-value { font-size: 22px; }
+  .tw-online-score-name { font-size: 11px; }
+  .tw-online-score-sub { font-size: 10px; }
   /* Bigger tap targets on phones */
   .tw-btn { padding: 14px 18px; font-size: 15px; }
   .tw-pill { padding: 8px 12px; font-size: 13px; }
@@ -1120,15 +1133,53 @@ img.tw-avatar { background: none; }
   .tw-nav button { padding: 10px 4px; }
 }
 
+/* Ultra-narrow tier (iPhone SE 1st-gen, small Androids). Audit found
+ * the previous CSS jumped from 480px to "nothing" so a 320px viewport
+ * inherited the 480px styling and overflowed on:
+ *   - Room code display (`tw-room-code` 32px font + 6px letter-spacing
+ *     pushed past container)
+ *   - VS splash name (`tw-vs-name` still 36px after the 480 tier)
+ *   - Modal padding (24px top/bottom + 24px sides ate too much room)
+ *   - Card padding leaving < 280px usable for content
+ */
+@media (max-width: 380px) {
+  .tw-content { padding: 8px; padding-bottom: 96px; }
+  .tw-card { padding: 12px; }
+  .tw-room-code { font-size: 26px; letter-spacing: 4px; padding: 6px 10px; }
+  .tw-vs-name { font-size: 30px; }
+  .tw-modal { padding: 18px; max-height: 92vh; }
+  .tw-banner { padding: 6px 8px; }
+  .tw-online-score-value { font-size: 18px; }
+  .tw-online-score-name { font-size: 10px; }
+  .tw-online-vs { min-width: 38px; }
+  .tw-answer { padding: 14px 12px; font-size: 14px; }
+  /* Difficulty/category pills on Home reflow tighter */
+  .tw-pill { padding: 6px 10px; font-size: 12px; }
+  /* The 2-col grid used by AuthModal's country/language selects clips
+     option text at 320px — stack vertically below 380. */
+  .tw-grid-2 { grid-template-columns: 1fr; }
+}
+
 /* ─── Store: tabs + item cards + frame animations ────────────────────── */
+/* Wrap horizontally-scrolling tab strips in a positioned container so
+ * we can paint a fade-out gradient on the right edge — without it the
+ * cut-off tabs were invisible (we hide the scrollbar) and users on
+ * mobile assumed Profile/Shop had only 3 tabs instead of 7-9.
+ * scroll-snap keeps a tapped tab nicely aligned, and the right-edge
+ * mask only appears when there's content past the viewport. */
 .tw-store-tabs {
+  position: relative;
   display: flex;
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 4px 0 2px;
+  padding: 4px 16px 2px 0;
+  scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
+          mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%);
 }
 .tw-store-tabs::-webkit-scrollbar { display: none; }
+.tw-store-tabs > * { scroll-snap-align: start; flex-shrink: 0; }
 .tw-store-tab {
   appearance: none;
   border: 1px solid rgba(255,255,255,0.1);

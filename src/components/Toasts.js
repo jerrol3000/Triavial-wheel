@@ -34,7 +34,15 @@ export default function Toasts() {
   return (
     <>
       {toasts.map((t, i) => (
-        <div key={t.id} className="tw-toast" style={{ bottom: 90 + i * 60 }}>
+        // Stack lifts each toast up. Base offset uses env(safe-area-
+        // inset-bottom) so on iPhone X+ landscape the toast doesn't
+        // hide behind the bottom nav. 90px clears the nav itself,
+        // then +60px per toast in the stack.
+        <div
+          key={t.id}
+          className="tw-toast"
+          style={{ bottom: `calc(90px + env(safe-area-inset-bottom) + ${i * 60}px)` }}
+        >
           {t.icon && <span style={{ marginRight: 8 }}>{t.icon}</span>}
           <strong>{t.title}</strong>
           {t.text && <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{t.text}</div>}

@@ -18,6 +18,7 @@ import InstallPrompt from "./InstallPrompt";
 import { I18nProvider } from "../i18n";
 import { tickLives, fetchStats } from "../store/statsSlice";
 import { fetchMe } from "../store/authSlice";
+import { fetchCatalog } from "../store/cosmeticsSlice";
 import { api, getToken } from "../api/client";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { setModal, pushToast } from "../store/uiSlice";
@@ -51,6 +52,9 @@ export default function App() {
 
     dispatch(tickLives());
     dispatch(fetchDailyMeta());
+    // Always fetch the cosmetics catalog so the Store renders fast on
+    // first navigation. Includes owned/equipped state when authed.
+    dispatch(fetchCatalog());
     if (getToken()) {
       dispatch(fetchStats());
       dispatch(fetchMe());

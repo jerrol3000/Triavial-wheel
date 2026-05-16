@@ -1,0 +1,43 @@
+[
+  {"id":"frame_default","category":"frame","name":"None","description":"No frame around your avatar.","price_coins":0,"rarity":"common","icon":"⚪","data":{"style":"none"},"sort_order":0},
+  {"id":"frame_bronze","category":"frame","name":"Bronze","description":"A warm bronze ring.","price_coins":250,"rarity":"common","icon":"🟫","data":{"style":"solid","color":"#cd7f32","width":3,"glow":"#cd7f32"},"sort_order":10},
+  {"id":"frame_silver","category":"frame","name":"Silver","description":"Polished silver ring.","price_coins":500,"rarity":"common","icon":"⬜","data":{"style":"solid","color":"#c0c0c0","width":3,"glow":"#c0c0c0"},"sort_order":20},
+  {"id":"frame_gold","category":"frame","name":"Gold","description":"Classic gold ring.","price_coins":1000,"rarity":"rare","icon":"🟨","data":{"style":"solid","color":"#ffd700","width":3,"glow":"#f5b800"},"sort_order":30},
+  {"id":"frame_neon","category":"frame","name":"Neon Pulse","description":"Bright cyan with a soft pulse.","price_coins":1500,"rarity":"rare","icon":"💎","data":{"style":"pulse","color":"#22d3ee","width":3,"glow":"#22d3ee"},"sort_order":40},
+  {"id":"frame_inferno","category":"frame","name":"Inferno","description":"Burning fire-gradient ring.","price_coins":2500,"rarity":"epic","icon":"🔥","data":{"style":"gradient","colors":["#fbbf24","#ef4444","#7c3aed"],"width":4,"glow":"#ef4444"},"sort_order":50},
+  {"id":"frame_galaxy","category":"frame","name":"Galaxy","description":"Cosmic purple-pink swirl.","price_coins":3500,"rarity":"epic","icon":"🌌","data":{"style":"gradient","colors":["#7c3aed","#ec4899","#06b6d4"],"width":4,"glow":"#ec4899"},"sort_order":60},
+  {"id":"frame_emerald","category":"frame","name":"Emerald Crown","description":"Royal green with deep glow.","price_coins":5000,"rarity":"epic","icon":"💚","data":{"style":"solid","color":"#10b981","width":4,"glow":"#10b981"},"sort_order":70},
+  {"id":"frame_diamond","category":"frame","name":"Diamond","description":"Animated rainbow shimmer.","price_coins":12000,"rarity":"legendary","icon":"💍","data":{"style":"shimmer","colors":["#22d3ee","#fbbf24","#ec4899","#10b981"],"width":4,"glow":"#ffffff"},"sort_order":80},
+  {"id":"frame_pro","category":"frame","name":"Pro Member","description":"Exclusive Pro-only ring.","price_coins":0,"rarity":"legendary","icon":"⭐","data":{"style":"gradient","colors":["#f59e0b","#ef4444"],"width":4,"glow":"#f59e0b"},"pro_only":1,"sort_order":90},
+
+  {"id":"pointer_default","category":"pointer","name":"Classic Arrow","description":"The default wheel pointer.","price_coins":0,"rarity":"common","icon":"▼","data":{"emoji":"▼"},"sort_order":0},
+  {"id":"pointer_star","category":"pointer","name":"Falling Star","description":"Aim with a star.","price_coins":500,"rarity":"common","icon":"⭐","data":{"emoji":"⭐"},"sort_order":10},
+  {"id":"pointer_lightning","category":"pointer","name":"Lightning Bolt","description":"Striking precision.","price_coins":1200,"rarity":"rare","icon":"⚡","data":{"emoji":"⚡"},"sort_order":20},
+  {"id":"pointer_rocket","category":"pointer","name":"Rocket","description":"Blast off to the answer.","price_coins":2000,"rarity":"rare","icon":"🚀","data":{"emoji":"🚀"},"sort_order":30},
+  {"id":"pointer_crown","category":"pointer","name":"Crown","description":"For the trivia royalty.","price_coins":3500,"rarity":"epic","icon":"👑","data":{"emoji":"👑"},"sort_order":40},
+  {"id":"pointer_dragon","category":"pointer","name":"Dragon","description":"Ancient power.","price_coins":7500,"rarity":"legendary","icon":"🐉","data":{"emoji":"🐉"},"sort_order":50},
+
+  {"id":"celebration_default","category":"celebration","name":"Default Confetti","description":"Standard win celebration.","price_coins":0,"rarity":"common","icon":"🎉","data":{"effect":"confetti"},"sort_order":0},
+  {"id":"celebration_fireworks","category":"celebration","name":"Fireworks","description":"Light up the sky.","price_coins":800,"rarity":"common","icon":"🎆","data":{"effect":"fireworks"},"sort_order":10},
+  {"id":"celebration_coins","category":"celebration","name":"Coin Shower","description":"Rain of gold coins.","price_coins":1500,"rarity":"rare","icon":"🪙","data":{"effect":"coins"},"sort_order":20},
+  {"id":"celebration_hearts","category":"celebration","name":"Heart Burst","description":"Pink hearts everywhere.","price_coins":1500,"rarity":"rare","icon":"💖","data":{"effect":"hearts"},"sort_order":30},
+  {"id":"celebration_stars","category":"celebration","name":"Star Explosion","description":"Galactic burst of stars.","price_coins":3000,"rarity":"epic","icon":"✨","data":{"effect":"stars"},"sort_order":40},
+  {"id":"celebration_rainbow","category":"celebration","name":"Rainbow Burst","description":"Pride of colors.","price_coins":4500,"rarity":"epic","icon":"🌈","data":{"effect":"rainbow"},"sort_order":50},
+  {"id":"celebration_legendary","category":"celebration","name":"Phoenix Rise","description":"Rise from the ashes — animated phoenix.","price_coins":15000,"rarity":"legendary","icon":"🦅","data":{"effect":"phoenix"},"sort_order":60},
+
+  {"id":"title_default","category":"title","name":"No Title","description":"Just your username.","price_coins":0,"rarity":"common","icon":"—","data":{"text":""},"sort_order":0},
+  {"id":"title_newbie","category":"title","name":"Newbie","description":"Just getting started.","price_coins":100,"rarity":"common","icon":"🌱","data":{"text":"Newbie","color":"#10b981"},"sort_order":10},
+  {"id":"title_thinker","category":"title","name":"Thinker","description":"Always considering.","price_coins":500,"rarity":"common","icon":"🤔","data":{"text":"Thinker","color":"#06b6d4"},"sort_order":20},
+  {"id":"title_genius","category":"title","name":"Genius","description":"Knows their stuff.","price_coins":1500,"rarity":"rare","icon":"🧠","data":{"text":"Genius","color":"#7c3aed"},"sort_order":30},
+  {"id":"title_master","category":"title","name":"Trivia Master","description":"Proven across categories.","price_coins":3000,"rarity":"rare","icon":"🎓","data":{"text":"Trivia Master","color":"#ec4899"},"sort_order":40},
+  {"id":"title_lord","category":"title","name":"Quiz Lord","description":"Bow down.","price_coins":5500,"rarity":"epic","icon":"👑","data":{"text":"Quiz Lord","color":"#fbbf24"},"sort_order":50},
+  {"id":"title_oracle","category":"title","name":"The Oracle","description":"Knows things before they're asked.","price_coins":8500,"rarity":"epic","icon":"🔮","data":{"text":"The Oracle","color":"#a855f7"},"sort_order":60},
+  {"id":"title_goat","category":"title","name":"G.O.A.T.","description":"Greatest of all trivia.","price_coins":20000,"rarity":"legendary","icon":"🐐","data":{"text":"G.O.A.T.","color":"#ef4444"},"sort_order":70},
+  {"id":"title_pro","category":"title","name":"Pro Member","description":"Exclusive title for Pro members.","price_coins":0,"rarity":"legendary","icon":"⭐","data":{"text":"PRO","color":"#f59e0b"},"pro_only":1,"sort_order":80},
+
+  {"id":"boost_xp_2x","category":"boost","name":"2× XP (30 min)","description":"Double XP earned for 30 minutes after activation.","price_coins":500,"rarity":"common","icon":"⚡","data":{"effect":"xp_2x","duration_ms":1800000},"consumable":1,"sort_order":10},
+  {"id":"boost_coins_2x","category":"boost","name":"2× Coins (30 min)","description":"Double coin payouts for 30 minutes.","price_coins":800,"rarity":"rare","icon":"💰","data":{"effect":"coins_2x","duration_ms":1800000},"consumable":1,"sort_order":20},
+  {"id":"boost_streak_shield","category":"boost","name":"Streak Shield","description":"Saves your daily streak once.","price_coins":300,"rarity":"common","icon":"🛡️","data":{"effect":"streak_shield"},"consumable":1,"sort_order":30},
+  {"id":"boost_refill_lives","category":"boost","name":"Full Lives Refill","description":"Refill all 5 lives instantly.","price_coins":250,"rarity":"common","icon":"❤️","data":{"effect":"lives_refill"},"consumable":1,"sort_order":40},
+  {"id":"boost_mystery_box","category":"boost","name":"Mystery Box","description":"Random reward: coins, powerups, or rare cosmetic.","price_coins":1500,"rarity":"rare","icon":"📦","data":{"effect":"mystery_box"},"consumable":1,"sort_order":50}
+]

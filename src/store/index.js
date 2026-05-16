@@ -6,9 +6,10 @@ import daily from "./dailySlice";
 import multiplayer from "./multiplayerSlice";
 import online from "./onlineSlice";
 import ui from "./uiSlice";
+import cosmetics from "./cosmeticsSlice";
 
 const store = configureStore({
-  reducer: { auth, stats, game, daily, multiplayer, online, ui },
+  reducer: { auth, stats, game, daily, multiplayer, online, ui, cosmetics },
   middleware: (gdm) => gdm({ serializableCheck: false }),
 });
 

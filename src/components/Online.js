@@ -289,13 +289,23 @@ function LiveMatch() {
 
       <div className="tw-card">
         <div className="tw-online-scoreboard">
-          <ScoreCard player={meSlot} highlight />
+          <ScoreCard player={meSlot} highlight answered={!!picked} />
           <div className="tw-online-vs">
             <div style={{ fontFamily: "Fredoka", fontSize: 12, color: "var(--text-dim)" }}>Q {room.index + 1}/{room.total}</div>
             <div style={{ fontFamily: "Fredoka", fontSize: 32, fontWeight: 700 }}>{countdown ?? "–"}</div>
           </div>
-          <ScoreCard player={opponent} typing={opponentAnswered} />
+          <ScoreCard player={opponent} answered={!!opponentAnswered} />
         </div>
+
+        {/* Live "whose answer is in" banner. Tells the player exactly
+            what to do or wait on without having to interpret icons. */}
+        {!reveal && (
+          <AnswerStatusBanner
+            picked={!!picked}
+            opponentAnswered={!!opponentAnswered}
+            opponentName={opponent?.username || "Opponent"}
+          />
+        )}
 
         {room.question && (
           <>
@@ -409,16 +419,45 @@ function PlayerSlot({ player, you }) {
   );
 }
 
-function ScoreCard({ player, highlight, typing }) {
+function ScoreCard({ player, highlight, answered }) {
   if (!player) return <div className="tw-online-score" />;
   return (
-    <div className={`tw-online-score ${highlight ? "you" : ""}`}>
+    <div className={`tw-online-score ${highlight ? "you" : ""} ${answered ? "answered" : "pending"}`}>
       <div className="tw-online-score-name">{player.username}{highlight && " ★"}</div>
       <div className="tw-online-score-value">{player.score}</div>
       <div className="tw-online-score-sub">{player.correct} right</div>
-      {typing && <div className="tw-online-typing">answered ✓</div>}
+      <div className={`tw-online-status ${answered ? "in" : "out"}`}>
+        {answered ? "✓ Locked in" : "Thinking…"}
+      </div>
     </div>
   );
+}
+
+// Banner spanning above the question to make the live answer state
+// unambiguous — what does the player do RIGHT NOW.
+function AnswerStatusBanner({ picked, opponentAnswered, opponentName }) {
+  let label, sub, tone;
+  if (picked && opponentAnswered) {
+    label = "Both answered — revealing…";
+    sub = "Hold tight, results in a moment.";
+    tone = "ok";
+  } else if (picked && !opponentAnswered) {
+    label = "Waiting on " + opponentName;
+    sub = "You locked in your answer. They're still thinking.";
+    tone = "waiting";
+  } else if (!picked && opponentAnswered) {
+    label = "Your move — lock in your answer!";
+    sub = opponentName + " already answered. Don't let them win this one.";
+    tone = "urgent";
+  } else {
+    label = "Both still answering";
+    sub = "First to lock in gets the speed bonus.";
+    tone = "race";
+  }
+  return <div className={`tw-online-status-banner ${tone}`}>
+    <div className="tw-online-status-banner-title">{label}</div>
+    <div className="tw-online-status-banner-sub">{sub}</div>
+  </div>;
 }
 
 // ─── Match End ──────────────────────────────────────────────────────────────

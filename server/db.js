@@ -230,6 +230,15 @@ ensureColumn("stats", "ads_today_date", "TEXT");
 ensureColumn("stats", "quests_date", "TEXT");
 ensureColumn("stats", "quests_json", "TEXT NOT NULL DEFAULT '[]'");
 
+// Boost timestamps + flag for the cosmetics store consumables.
+// xp/coins multipliers store expiry as ms; streak_saver is a 0/1 flag
+// consumed on the next missed-day daily streak check.
+ensureColumn("stats", "lives", "INTEGER NOT NULL DEFAULT 5");
+ensureColumn("stats", "lives_updated_at", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "xp_2x_until", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "coins_2x_until", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "streak_saver_active", "INTEGER NOT NULL DEFAULT 0");
+
 // 2FA columns on users (admin TOTP).
 ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");
@@ -256,6 +265,43 @@ db.exec(`
     PRIMARY KEY (user_id, question_id)
   );
   CREATE INDEX IF NOT EXISTS idx_seen_user_time ON seen_questions(user_id, seen_at DESC);
+`);
+
+// Cosmetics store. `cosmetics` is the catalog (seeded from a JSON file at
+// boot, idempotent by id), `user_cosmetics` is per-user ownership (qty
+// supports consumables like XP boosts), and `user_equipped` is the one-
+// equipped-per-category state (frames, pointers, celebrations, titles).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cosmetics (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    price_coins INTEGER NOT NULL DEFAULT 0,
+    rarity TEXT NOT NULL DEFAULT 'common',
+    icon TEXT,
+    data TEXT,
+    pro_only INTEGER NOT NULL DEFAULT 0,
+    consumable INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_cosmetics_category ON cosmetics(category, sort_order);
+
+  CREATE TABLE IF NOT EXISTS user_cosmetics (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cosmetic_id TEXT NOT NULL,
+    qty INTEGER NOT NULL DEFAULT 1,
+    purchased_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, cosmetic_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_equipped (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    cosmetic_id TEXT,
+    PRIMARY KEY (user_id, category)
+  );
 `);
 
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.

@@ -37,7 +37,7 @@ export default function Profile() {
     <div className="tw-col">
       <div className="tw-card" style={{ textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-          <Avatar value={user?.avatar} size={88} ring />
+          <Avatar value={user?.avatar} size={88} ring me={!!user} />
         </div>
         <div style={{ fontSize: 14, color: "var(--text-dim)" }}>{user ? `@${user.username}` : "Guest"}</div>
         <div style={{ fontFamily: "Fredoka", fontSize: 30, fontWeight: 700, margin: "4px 0" }}>

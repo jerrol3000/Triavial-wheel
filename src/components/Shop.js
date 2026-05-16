@@ -1,140 +1,298 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
-import { addCoins, grantPowerup, grantTheme, setActiveTheme, setPro, spendCoins, refillLives } from "../store/statsSlice";
+import { addCoins, refillLives, setPro, fetchStats } from "../store/statsSlice";
 import { pushToast, setModal } from "../store/uiSlice";
-import { THEME_LIST } from "../data/themes";
-import { POWERUP_LIST } from "../data/powerups";
 import { sfx } from "../utils/sound";
+import {
+  fetchCatalog, buyCosmetic, equipCosmetic, useBoost, isOwned, selectOwnedQty,
+} from "../store/cosmeticsSlice";
 import PayPalButton from "./PayPalButton";
 import StripeCheckoutButton from "./StripeCheckoutButton";
 import Icon from "./Icon";
 
-const COIN_PACKS = [
-  { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
-  { id: "medium", label: "Stack",       coins: 600,  price: "$2.99" },
-  { id: "large",  label: "Vault",       coins: 1500, price: "$5.99" },
+const TAB_DEFS = [
+  { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
+  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Customize the wheel pointer that lands on your category." },
+  { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
+  { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
+  { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
+  { id: "currency",    label: "Coins & Pro",   icon: "🪙", description: "Top up coins with real money or upgrade to Pro." },
 ];
 
-const POWERUP_PACKS = [
-  { id: "starter", label: "Starter Pack", desc: "5 of each power-up", price: "$0.99", grants: { fifty: 5, skip: 5, freeze: 5, double: 5 } },
-  { id: "mega",    label: "Mega Pack",    desc: "20 of each power-up", price: "$2.99", grants: { fifty: 20, skip: 20, freeze: 20, double: 20 } },
-];
+const RARITY_COLORS = {
+  common:    { border: "rgba(148,163,184,0.4)", text: "#94a3b8", glow: "rgba(148,163,184,0.15)" },
+  rare:      { border: "rgba(34,211,238,0.55)", text: "#22d3ee", glow: "rgba(34,211,238,0.18)" },
+  epic:      { border: "rgba(168,85,247,0.6)",  text: "#c084fc", glow: "rgba(168,85,247,0.25)" },
+  legendary: { border: "rgba(245,158,11,0.7)",  text: "#fbbf24", glow: "rgba(245,158,11,0.3)" },
+};
 
 export default function Shop() {
   const dispatch = useDispatch();
-  const stats = useSelector((s) => s.stats);
   const user = useSelector((s) => s.auth.user);
-  const [busy, setBusy] = useState(false);
-  const [payCfg, setPayCfg] = useState(null);
-  useEffect(() => {
-    api.get("/pay/config").then((r) => setPayCfg(r.data)).catch(() => setPayCfg({ paypal_enabled: false }));
-  }, []);
+  const stats = useSelector((s) => s.stats);
+  const catalog = useSelector((s) => s.cosmetics.catalog);
+  const loaded = useSelector((s) => s.cosmetics.loaded);
+  const [activeTab, setActiveTab] = useState("frame");
+
+  useEffect(() => { dispatch(fetchCatalog()); }, [dispatch]);
+
+  const itemsForTab = useMemo(() => {
+    if (activeTab === "currency") return null;
+    return catalog.filter((c) => c.category === activeTab)
+      .sort((a, b) => (a.sort_order - b.sort_order) || a.price_coins - b.price_coins);
+  }, [catalog, activeTab]);
+
+  return (
+    <div className="tw-col">
+      <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <Icon name="shop" size={32} /> Store
+        </h1>
+        <span className="tw-pill" title="Your coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 6px" }}>
+          <Icon name="coins" size={22} />
+          <strong>{stats.coins.toLocaleString()}</strong>
+        </span>
+      </div>
+
+      <div className="tw-store-tabs">
+        {TAB_DEFS.map((t) => (
+          <button
+            key={t.id}
+            className={`tw-store-tab ${activeTab === t.id ? "active" : ""}`}
+            onClick={() => { sfx.click(); setActiveTab(t.id); }}
+            title={t.description}
+          >
+            <span style={{ fontSize: 18 }}>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="tw-store-blurb">{TAB_DEFS.find((t) => t.id === activeTab)?.description}</div>
+
+      {activeTab === "currency"
+        ? <CurrencyPane />
+        : !loaded
+          ? <div className="tw-card" style={{ textAlign: "center", color: "var(--text-dim)" }}>Loading store…</div>
+          : (
+            <div className="tw-store-grid">
+              {itemsForTab.map((item) => (
+                <StoreItemCard key={item.id} item={item} />
+              ))}
+              {itemsForTab.length === 0 && (
+                <div className="tw-card" style={{ gridColumn: "1 / -1", textAlign: "center", color: "var(--text-dim)" }}>
+                  Nothing here yet — check back soon.
+                </div>
+              )}
+            </div>
+          )
+      }
+    </div>
+  );
+}
+
+function StoreItemCard({ item }) {
+  const dispatch = useDispatch();
+  const user = useSelector((s) => s.auth.user);
+  const coins = useSelector((s) => s.stats.coins);
+  const pro = useSelector((s) => s.stats.pro);
+  const equippedId = useSelector((s) => s.cosmetics.equipped[item.category]);
+  const owned = useSelector((s) => isOwned(s, item.id));
+  const qty = useSelector((s) => selectOwnedQty(s, item.id));
+  const isEquipped = equippedId === item.id;
+  const rar = RARITY_COLORS[item.rarity] || RARITY_COLORS.common;
 
   const requireAuth = () => {
-    if (!user) {
-      dispatch(setModal("auth"));
-      return false;
-    }
+    if (!user) { dispatch(setModal("auth")); return false; }
     return true;
   };
 
-  const buyPro = async () => {
+  const onBuy = async () => {
+    if (!requireAuth()) return;
+    if (item.pro_only && !pro) {
+      dispatch(pushToast({ icon: "🌟", title: "Pro members only", text: "Upgrade to Pro to unlock." }));
+      return;
+    }
+    if (coins < item.price_coins) {
+      dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: `Need ${item.price_coins - coins} more.` }));
+      return;
+    }
+    sfx.coin();
+    const r = await dispatch(buyCosmetic(item.id));
+    if (r.meta.requestStatus === "fulfilled") {
+      // Server returns the authoritative coins balance — sync via fetchStats
+      // so any side-effects (consumable qty, auto-equip) also refresh.
+      dispatch(fetchStats());
+      dispatch(pushToast({ icon: "✨", title: `Unlocked ${item.name}!`, text: item.consumable ? `Tap to use from your inventory.` : "Now equipped." }));
+    } else {
+      dispatch(pushToast({ icon: "⚠️", title: "Purchase failed", text: r.payload?.error || "Try again." }));
+    }
+  };
+
+  const onEquip = async () => {
     if (!requireAuth()) return;
     sfx.click();
+    const r = await dispatch(equipCosmetic(item.id));
+    if (r.meta.requestStatus === "fulfilled") {
+      dispatch(pushToast({ icon: "✓", title: `Equipped ${item.name}` }));
+    }
+  };
+
+  const onUse = async () => {
+    if (!requireAuth()) return;
+    sfx.coin();
+    const r = await dispatch(useBoost(item.id));
+    if (r.meta.requestStatus === "fulfilled") {
+      const a = r.payload.applied || {};
+      dispatch(fetchStats());
+      if (a.reward) {
+        const reward = a.reward;
+        const text = reward.kind === "coins" ? `+${reward.amount} coins`
+                   : reward.kind === "powerup" ? `+${reward.amount}× ${reward.type} power-up`
+                   : reward.kind === "cosmetic" ? `New cosmetic: ${reward.item.name}!`
+                   : "";
+        dispatch(pushToast({ icon: "🎁", title: "Mystery Box!", text }));
+      } else if (a.lives_refilled) {
+        dispatch(pushToast({ icon: "❤️", title: "Lives refilled" }));
+      } else if (a.active_until) {
+        const mins = Math.round((a.active_until - Date.now()) / 60000);
+        dispatch(pushToast({ icon: "⚡", title: `${item.name} active`, text: `${mins} minutes left.` }));
+      } else if (a.streak_shield_active) {
+        dispatch(pushToast({ icon: "🛡️", title: "Streak shield armed" }));
+      }
+    } else {
+      dispatch(pushToast({ icon: "⚠️", title: "Couldn't use", text: r.payload?.error || "Try again." }));
+    }
+  };
+
+  const canEquip = (item.price_coins === 0 || owned) && !item.consumable && !item.pro_only;
+  const canEquipPro = item.pro_only && pro;
+
+  return (
+    <div className="tw-store-card" style={{ border: `2px solid ${isEquipped ? "var(--primary-2)" : rar.border}`, boxShadow: isEquipped ? `0 0 24px ${rar.glow}` : `0 0 12px ${rar.glow}` }}>
+      <div className="tw-store-card-icon" style={{ background: rar.glow }}>
+        {item.category === "frame" ? <FramePreview item={item} /> : <span>{item.icon || "•"}</span>}
+      </div>
+      <div className="tw-store-card-body">
+        <div className="tw-row" style={{ gap: 6 }}>
+          <strong>{item.name}</strong>
+          <span style={{ fontSize: 10, textTransform: "uppercase", color: rar.text, letterSpacing: 0.5 }}>{item.rarity}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0 8px", minHeight: 30 }}>{item.description}</div>
+        {item.consumable && qty > 0 && (
+          <div style={{ fontSize: 11, color: "var(--good)", marginBottom: 6 }}>You own {qty}</div>
+        )}
+        <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+          {item.consumable ? (
+            <>
+              <button className="tw-btn ghost" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy} disabled={item.pro_only && !pro}>
+                {item.price_coins === 0 ? "Free" : `${item.price_coins} 🪙`}
+              </button>
+              {qty > 0 && (
+                <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onUse}>Use</button>
+              )}
+            </>
+          ) : isEquipped ? (
+            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} disabled>✓ Equipped</button>
+          ) : canEquip || canEquipPro ? (
+            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onEquip}>Equip</button>
+          ) : item.pro_only && !pro ? (
+            <button className="tw-btn ghost" style={{ flex: 1, padding: "6px 10px" }} disabled>🌟 Pro only</button>
+          ) : (
+            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy}>
+              {item.price_coins === 0 ? "Get" : `${item.price_coins} 🪙`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Inline frame preview so the user can see what they're buying. Uses
+// the same style data as the actual Avatar component renders.
+function FramePreview({ item }) {
+  const d = item.data || {};
+  const size = 56;
+  let style = { width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(236,72,153,0.3))", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#fff" };
+  if (d.style === "solid") {
+    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px ${d.color}, 0 0 12px ${d.glow || d.color}` };
+  } else if (d.style === "gradient") {
+    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px transparent, 0 0 14px ${d.glow}`, backgroundImage: `linear-gradient(rgba(15,12,41,1), rgba(15,12,41,1)), linear-gradient(135deg, ${(d.colors || ["#fff"]).join(",")})`, backgroundOrigin: "border-box", backgroundClip: "content-box, border-box", border: `${d.width || 3}px solid transparent` };
+  } else if (d.style === "pulse") {
+    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px ${d.color}, 0 0 18px ${d.glow}`, animation: "tw-frame-pulse 1.6s ease-in-out infinite" };
+  } else if (d.style === "shimmer") {
+    style = { ...style, boxShadow: `0 0 18px ${d.glow}`, backgroundImage: `linear-gradient(rgba(15,12,41,1), rgba(15,12,41,1)), linear-gradient(135deg, ${(d.colors || ["#fff"]).join(",")})`, backgroundOrigin: "border-box", backgroundClip: "content-box, border-box", border: `${d.width || 4}px solid transparent`, animation: "tw-frame-shimmer 3s linear infinite" };
+  }
+  return <div style={style}>👤</div>;
+}
+
+// ─── Currency / Pro pane ─────────────────────────────────────────────────
+function CurrencyPane() {
+  const dispatch = useDispatch();
+  const user = useSelector((s) => s.auth.user);
+  const stats = useSelector((s) => s.stats);
+  const [payCfg, setPayCfg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get("/pay/config").then((r) => setPayCfg(r.data)).catch(() => setPayCfg({}));
+  }, []);
+
+  const buyPro = async () => {
+    if (!user) { dispatch(setModal("auth")); return; }
     setBusy(true);
     try {
       const { data } = await api.post("/pro/checkout");
-      if (data.url) {
-        window.location.href = data.url;
-      } else if (data.devGranted) {
+      if (data.url) window.location.href = data.url;
+      else if (data.devGranted) {
         dispatch(setPro({ pro: true, pro_until: data.pro_until }));
-        dispatch(pushToast({ icon: "🌟", title: "Pro unlocked (dev grant)", text: "5 minutes. Configure Stripe for production." }));
+        dispatch(pushToast({ icon: "🌟", title: "Pro unlocked (dev grant)", text: "5 minutes." }));
       }
     } catch (e) {
-      dispatch(pushToast({ icon: "⚠️", title: "Couldn't start checkout", text: "Try again in a moment." }));
+      dispatch(pushToast({ icon: "⚠️", title: "Couldn't start checkout" }));
     }
     setBusy(false);
   };
 
   const buyCoinPack = async (pack) => {
-    if (!requireAuth()) return;
-    sfx.coin();
+    if (!user) { dispatch(setModal("auth")); return; }
     setBusy(true);
     try {
       const { data } = await api.post("/pro/buy-coins", { pack: pack.id });
       dispatch(addCoins(data.granted));
-      dispatch(pushToast({ icon: "🪙", title: `+${data.granted} coins`, text: "Dev grant — wire Stripe Checkout for production." }));
+      dispatch(pushToast({ icon: "🪙", title: `+${data.granted} coins` }));
     } catch (e) {
       dispatch(pushToast({ icon: "⚠️", title: "Purchase failed" }));
     }
     setBusy(false);
   };
 
-  const buyPowerupPack = (pack) => {
-    sfx.coin();
-    const totalCost = Object.values(pack.grants).reduce((sum, n) => sum + n * 10, 0);
-    if (stats.coins < totalCost) {
-      dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: `Need ${totalCost - stats.coins} more.` }));
-      return;
-    }
-    dispatch(spendCoins(totalCost));
-    Object.entries(pack.grants).forEach(([id, count]) => dispatch(grantPowerup({ id, count })));
-    dispatch(pushToast({ icon: "🎁", title: `${pack.label} unlocked!`, text: `Spent ${totalCost} 🪙` }));
-  };
-
-  const buyTheme = async (theme) => {
-    if (stats.themes.includes(theme.id)) {
-      dispatch(setActiveTheme(theme.id));
-      dispatch(pushToast({ icon: "🎨", title: `Theme set: ${theme.name}` }));
-      return;
-    }
-    if (theme.proOnly && !stats.pro) {
-      dispatch(pushToast({ icon: "🌟", title: "Pro only", text: "Subscribe to Pro to unlock." }));
-      return;
-    }
-    if (stats.coins < theme.cost) {
-      dispatch(pushToast({ icon: "🪙", title: "Not enough coins" }));
-      return;
-    }
-    sfx.coin();
-    if (user) {
-      try {
-        await api.post("/pro/buy-theme", { theme_id: theme.id });
-      } catch (e) {
-        // local fallback
-      }
-    }
-    dispatch(spendCoins(theme.cost));
-    dispatch(grantTheme(theme.id));
-    dispatch(setActiveTheme(theme.id));
-    dispatch(pushToast({ icon: "🎨", title: `Unlocked ${theme.name}` }));
-  };
-
   const buyLives = () => {
     if (stats.coins < 50) {
-      dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: "Refill lives costs 50 coins." }));
+      dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: "Refill lives costs 50." }));
       return;
     }
     sfx.coin();
-    dispatch(spendCoins(50));
     dispatch(refillLives());
     dispatch(pushToast({ icon: "♥", title: "Lives refilled!" }));
   };
 
-  return (
-    <div className="tw-col">
-      <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
-        <Icon name="shop" size={32} /> Shop
-      </h1>
+  const COIN_PACKS = [
+    { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
+    { id: "medium", label: "Stack",       coins: 600,  price: "$2.99" },
+    { id: "large",  label: "Coin vault",  coins: 1500, price: "$5.99" },
+  ];
 
-      {/* Pro */}
+  return (
+    <>
       <div className="tw-card" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(239,68,68,0.25))", borderColor: "rgba(245,158,11,0.5)" }}>
         <div className="tw-row" style={{ justifyContent: "space-between" }}>
           <div>
             <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700 }}>🌟 Trivia Pro</div>
             <div style={{ color: "var(--text-dim)", fontSize: 14 }}>
-              Unlimited lives · No ads · Premium categories & themes
+              Unlimited lives · No ads · Exclusive cosmetics · 2× coin pickups
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -148,7 +306,6 @@ export default function Shop() {
         </button>
       </div>
 
-      {/* Quick refills */}
       <div className="tw-card">
         <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Quick refills</div>
         <button className="tw-btn ghost block" onClick={buyLives} disabled={stats.lives >= 5 || stats.pro}>
@@ -156,139 +313,26 @@ export default function Shop() {
         </button>
       </div>
 
-      {/* Power-up packs */}
       <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Power-up packs</div>
-        {POWERUP_PACKS.map((p) => {
-          const cost = Object.values(p.grants).reduce((s, n) => s + n * 10, 0);
-          return (
-            <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{p.label}</div>
-                <div style={{ color: "var(--text-dim)", fontSize: 13 }}>{p.desc}</div>
-              </div>
-              <button className="tw-btn" onClick={() => buyPowerupPack(p)}>{cost} 🪙</button>
-            </div>
-          );
-        })}
-        <div className="tw-grid-2" style={{ marginTop: 10 }}>
-          {POWERUP_LIST.map((p) => (
-            <div key={p.id} className="tw-stat">
-              <div style={{ fontSize: 18 }}>{p.icon}</div>
-              <div className="tw-stat-label">{p.name}</div>
-              <div className="tw-stat-value">x{stats.powerups[p.id] || 0}</div>
-            </div>
-          ))}
+        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy coins with real money</div>
+        <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
+          Use coins to unlock cosmetics, boosts, and power-ups.
         </div>
-      </div>
-
-      {/* Real-money packs — both PayPal and Stripe shown side-by-side (no preferred method). */}
-      {payCfg && (payCfg.paypal_enabled || payCfg.stripe_enabled) && (
-        <div className="tw-card">
-          <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy with real money</div>
-          <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
-            Pick your payment method — both go straight to the same purchase.
-            {payCfg.paypal_mode === "sandbox" && <em> (PayPal sandbox)</em>}
-          </div>
-          {[
-            { id: "freespins_10", label: "10 Free Spins", price: "$1.99", desc: "Skip the wait — 10 spins of the wheel" },
-            { id: "coins_small", label: "Small coin bag · 200 🪙", price: "$0.99", desc: "Power-up some power-ups" },
-            { id: "coins_medium", label: "Coin stack · 600 🪙", price: "$2.99", desc: "Best value for coins" },
-            { id: "powerups_starter", label: "Starter Pack · 5 of each", price: "$0.99", desc: "5× each power-up" },
-            { id: "powerups_mega", label: "Mega Pack · 20 of each", price: "$2.99", desc: "Stock up for the week" },
-            { id: "freespins_30", label: "30 Free Spins", price: "$4.99", desc: "A month's worth of spins" },
-            { id: "coins_large", label: "Coin vault · 1500 🪙", price: "$5.99", desc: "Whale tier 🐳" },
-          ].map((p) => (
-            <div key={p.id} style={{ padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div className="tw-row" style={{ justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{p.label}</div>
-                  <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.desc} · <strong>{p.price}</strong></div>
-                </div>
-              </div>
-              {user ? (
-                <div className="tw-grid-2" style={{ marginTop: 8 }}>
-                  {payCfg.paypal_enabled && <PayPalButton productId={p.id} clientId={payCfg.paypal_client_id} />}
-                  {payCfg.stripe_enabled && <StripeCheckoutButton productId={p.id} />}
-                </div>
-              ) : (
-                <button className="tw-btn block" style={{ marginTop: 8 }} onClick={() => dispatch(setModal("auth"))}>
-                  Sign in to buy
-                </button>
-              )}
-            </div>
-          ))}
-          <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center", marginTop: 10 }}>
-            All payments processed by {[payCfg.paypal_enabled && "PayPal", payCfg.stripe_enabled && "Stripe"].filter(Boolean).join(" or ")}. No card details touch our servers.
-          </div>
-        </div>
-      )}
-
-      {payCfg && !payCfg.paypal_enabled && !payCfg.stripe_enabled && (
-        <div className="tw-card" style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)" }}>
-          <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700 }}>💳 Real-money packs (admin)</div>
-          <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
-            Add PayPal or Stripe credentials in <code>server/.env</code> to enable real billing. See <code>DEPLOY.md</code>.
-          </div>
-        </div>
-      )}
-
-      {/* Coin packs — coin-purchased dev convenience (instant grant, no real money) */}
-      <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Coin packs (dev)</div>
-        <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8 }}>Instant dev grants — use the real-money packs above when ready.</div>
         {COIN_PACKS.map((p) => (
-          <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div>
-              <div style={{ fontWeight: 600 }}>{p.label}</div>
-              <div style={{ color: "var(--text-dim)", fontSize: 13 }}>+{p.coins} 🪙</div>
+              <div style={{ fontWeight: 600 }}>{p.label} · +{p.coins.toLocaleString()} 🪙</div>
+              <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.price}</div>
             </div>
             <button className="tw-btn" onClick={() => buyCoinPack(p)} disabled={busy}>{p.price}</button>
           </div>
         ))}
+        {payCfg && (payCfg.paypal_enabled || payCfg.stripe_enabled) && user && (
+          <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-dim)" }}>
+            Real-money payments processed by {[payCfg.paypal_enabled && "PayPal", payCfg.stripe_enabled && "Stripe"].filter(Boolean).join(" / ")}.
+          </div>
+        )}
       </div>
-
-      {/* Themes */}
-      <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Themes</div>
-        <div className="tw-grid-2">
-          {THEME_LIST.map((t) => {
-            const owned = stats.themes.includes(t.id);
-            const active = stats.active_theme === t.id;
-            return (
-              <button key={t.id}
-                className="tw-card"
-                onClick={() => buyTheme(t)}
-                style={{
-                  cursor: "pointer", padding: 12, textAlign: "left",
-                  border: active ? "2px solid var(--primary-2)" : undefined,
-                }}
-              >
-                <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                  {t.wheelColors.map((c, i) => (
-                    <span key={i} style={{ width: 18, height: 18, borderRadius: 4, background: c, border: "1px solid rgba(255,255,255,0.2)" }} />
-                  ))}
-                </div>
-                <div style={{ fontWeight: 600 }}>{t.name}</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                  {owned ? (active ? "✓ Active" : "Tap to use") : t.proOnly ? "🌟 Pro" : `${t.cost} 🪙`}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tip jar */}
-      <div className="tw-card" style={{ textAlign: "center" }}>
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700 }}>☕ Buy us a coffee</div>
-        <div style={{ color: "var(--text-dim)", fontSize: 14, margin: "6px 0 12px" }}>
-          We're a tiny team. Tips keep the lights on.
-        </div>
-        <a className="tw-btn block" href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer">
-          Tip ☕
-        </a>
-      </div>
-    </div>
+    </>
   );
 }

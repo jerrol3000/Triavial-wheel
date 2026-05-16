@@ -48,8 +48,10 @@ const questionRoutes = require("./routes/questions");
 const adminRoutes = require("./routes/admin");
 const paymentRoutes = require("./routes/payments");
 const friendsRoutes = require("./routes/friends");
+const storeRoutes = require("./routes/store");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
+const { seedCatalog } = require("./cosmetics");
 const realtime = require("./realtime");
 
 const app = express();
@@ -112,6 +114,7 @@ app.use("/api/questions", questionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pay", paymentRoutes);
 app.use("/api/friends", friendsRoutes);
+app.use("/api/store", storeRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -140,5 +143,11 @@ httpServer.listen(PORT, () => {
     }
   } catch (e) {
     console.error("[questions] init failed", e);
+  }
+  try {
+    const n = seedCatalog();
+    console.log(`[cosmetics] catalog seeded with ${n} items`);
+  } catch (e) {
+    console.error("[cosmetics] catalog seed failed", e);
   }
 });

@@ -37,12 +37,17 @@ export default function DailyBonusModal({ data }) {
           </div>
         </div>
         <div className="tw-streak-ladder">
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <div key={d} className={`tw-streak-day ${d <= streak ? "claimed" : ""} ${d === streak ? "current" : ""}`}>
-              <span style={{ fontSize: 14 }}>Day {d}</span>
-              <span style={{ fontSize: 11 }}>{d <= 2 ? "🎡" : "🎡🎡"}{d > 5 ? "🎡" : ""}</span>
-            </div>
-          ))}
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+            // 1-2 → 1 spin, 3-5 → 2 spins, 6-7 → 3 spins. Single emoji
+            // + ×N counter reads cleaner than mixed-length emoji rows.
+            const spins = d <= 2 ? 1 : d <= 5 ? 2 : 3;
+            return (
+              <div key={d} className={`tw-streak-day ${d <= streak ? "claimed" : ""} ${d === streak ? "current" : ""}`}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Day {d}</span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)", fontFeatureSettings: '"tnum"' }}>🎡 ×{spins}</span>
+              </div>
+            );
+          })}
         </div>
         <button className="tw-btn block" style={{ marginTop: 16 }} onClick={() => dispatch(closeModal())}>
           Awesome

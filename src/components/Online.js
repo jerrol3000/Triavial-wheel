@@ -624,14 +624,14 @@ function MatchEnd() {
             {oppWaiting && <div style={{ marginTop: 8, color: "var(--warn)", fontSize: 12 }}>You're in — waiting on {opp?.username || "opponent"}…</div>}
             {oppDeclined && <div style={{ marginTop: 8, color: "var(--bad)", fontSize: 12 }}>{opp?.username || "Opponent"} declined.</div>}
 
-            <div className="tw-row" style={{ justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
+            <div className="tw-row" style={{ justifyContent: "center", marginTop: 12, flexWrap: "wrap", gap: 6 }}>
               {myVote == null && (
                 <>
-                  <button className="tw-btn" onClick={() => vote(true)}>Yes — rematch</button>
-                  <button className="tw-btn ghost" onClick={() => vote(false)}>No</button>
+                  <button className="tw-btn" onClick={() => vote(true)}>Rematch</button>
+                  <button className="tw-btn ghost" onClick={() => vote(false)}>Decline</button>
                 </>
               )}
-              {!isFriendly && <button className="tw-btn ghost" onClick={findNew}>Find new opponent</button>}
+              {!isFriendly && <button className="tw-btn ghost" onClick={findNew}>New opponent</button>}
               <button className="tw-btn ghost" onClick={goHome}>Home</button>
             </div>
           </div>

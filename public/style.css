@@ -1534,3 +1534,120 @@ img.tw-avatar { background: none; }
   text-align: left;
 }
 .tw-gift-menu button:hover { background: rgba(255,255,255,0.08); }
+
+/* ─── Polish pass: visual consistency across the app ─────────────────── */
+
+/* Tabular numbers everywhere a stat / score can update — keeps digit
+   width fixed so values don't jitter as they tick up. Targets every
+   "this is a number that changes" surface in the app. */
+.tw-online-score-value,
+.tw-livelb-score,
+.tw-mp-score-value,
+.tw-stat-value,
+.tw-banner-stats .tw-pill,
+.tw-countdown,
+.tw-quest-counter,
+.tw-online-vs > div:last-child {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Text-dim contrast bump — previous #cbd5e1 dropped below WCAG AA on
+   the lighter rare-glow store cards. Slight brighten + opacity. */
+:root { --text-dim: #d6ddea; }
+
+/* Card border-radius unified — every card-ish surface lands at 14-16px.
+   Was a mix of 12 / 14 / 18px across components. */
+.tw-livelb,
+.tw-store-card,
+.tw-quest,
+.tw-online-slot,
+.tw-online-status-banner,
+.tw-store-blurb {
+  border-radius: 14px;
+}
+.tw-card { border-radius: 16px; }
+
+/* Toasts: respect the safe-area inset AND lift above the bottom nav so
+   the first toast never lands under the install prompt or nav row. */
+.tw-toasts {
+  bottom: calc(96px + env(safe-area-inset-bottom));
+}
+
+/* Standardize PRO/limited gradient direction (135deg, warm-amber → red)
+   across the app so the brand language stays consistent. */
+.tw-store-limited {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+}
+
+/* Modal pop-in — was just a fade backdrop. Now the inner card scales
+   from 96% to 100% so it feels intentional, not a layout shift. */
+@keyframes tw-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+.tw-modal {
+  animation: tw-modal-in 0.18s ease-out;
+}
+
+/* Store cards: stretch action row to bottom so cards in the same grid
+   row share the same height regardless of name/desc wrap differences. */
+.tw-store-card { min-height: 100%; }
+.tw-store-card-body { flex: 1; display: flex; flex-direction: column; }
+.tw-store-card-body > .tw-row:last-child { margin-top: auto; padding-top: 4px; }
+
+/* Inventory equipped check badge in the top-right corner — visual
+   shorthand for "this is the active one in its category". */
+.tw-inv-card { position: relative; }
+.tw-inv-card-check {
+  position: absolute;
+  top: -6px; right: -6px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--good);
+  color: #fff;
+  font-weight: 800;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(15,12,41,0.95);
+  box-shadow: 0 2px 8px rgba(16,185,129,0.4);
+}
+.tw-inv-card.equipped { opacity: 0.85; }
+
+/* BadgesPanel equip popup must not clip on narrow screens or when the
+   triggering card is in the rightmost grid column. */
+.tw-badge-equip-menu {
+  max-width: calc(100vw - 24px);
+}
+@media (max-width: 480px) {
+  .tw-badge-equip-menu {
+    left: auto;
+    right: 0;
+    transform: none;
+  }
+}
+
+/* Wheel pointer overlay — was overflow + filter doubling. Constrain
+   the emoji to the actual flap area + remove the extra shadow that
+   compounded with the flap's own. */
+.tw-wheel3d-pointer-emoji {
+  font-size: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  inset: auto;
+}
+
+/* Room code in friend lobby — pad the right side so the trailing
+   letter-spacing doesn't push the last char up against the border. */
+.tw-room-code { padding-right: 8px; }
+
+/* Input + button height alignment in horizontal forms (friend add,
+   room code join). Was 6px difference, very visible. */
+.tw-row > .tw-input + .tw-btn,
+.tw-row > .tw-btn + .tw-input { align-self: stretch; }

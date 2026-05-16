@@ -118,13 +118,12 @@ function InventoryCard({ item, equipped, onEquip }) {
       disabled={equipped}
       title={item.description}
     >
+      {equipped && <span className="tw-inv-card-check" aria-hidden="true">✓</span>}
       <div className="tw-inv-card-icon">{item.icon || "•"}</div>
       <div className="tw-inv-card-name">{item.name}</div>
-      {equipped ? (
-        <div className="tw-inv-card-status equipped">✓ Equipped</div>
-      ) : (
-        <div className="tw-inv-card-status">Tap to equip</div>
-      )}
+      <div className={`tw-inv-card-status ${equipped ? "equipped" : ""}`}>
+        {equipped ? "Equipped" : "Tap to equip"}
+      </div>
     </button>
   );
 }

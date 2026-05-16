@@ -39,8 +39,12 @@ export default function Banner() {
         <span>Trivia&nbsp;Wheel</span>
       </button>
       <div className="tw-row tw-banner-stats">
-        <span className="tw-pill" title="Lives">
-          {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}
+        <span className="tw-pill" title={stats.pro ? "Pro — unlimited lives" : `${stats.lives}/${LIVES_MAX_EXPORT} lives`} aria-label={stats.pro ? "Pro: unlimited lives" : `${stats.lives} of ${LIVES_MAX_EXPORT} lives`}>
+          {/* Fixed-line-height container so the heart glyphs align with
+              the PNG icons in the neighboring pills. */}
+          <span style={{ display: "inline-flex", alignItems: "center", lineHeight: 1 }}>
+            {stats.pro ? "♥ ∞" : `${"♥".repeat(stats.lives)}${"♡".repeat(Math.max(0, LIVES_MAX_EXPORT - stats.lives))}`}
+          </span>
           {livesNext() && <span className="tw-banner-hide-sm" style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
         </span>
         {stats.free_spins > 0 && (

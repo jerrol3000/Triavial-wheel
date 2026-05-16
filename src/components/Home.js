@@ -253,14 +253,15 @@ function OutOfSpinsCard() {
       <div className="tw-out-of-spins-title">🎡 Out of spins</div>
       <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
       <div className="tw-out-of-spins-actions">
+        {/* Free path is the PRIMARY CTA — no reason to push spending. */}
         <button
-          className="tw-btn ghost"
+          className="tw-btn"
           onClick={() => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } })}
           title="Watch a short ad for a free spin">
           <Icon name="free_spin" size={22} /> Watch ad — 1 spin
         </button>
         <button
-          className="tw-btn"
+          className="tw-btn ghost"
           onClick={() => dispatch(setView("shop"))}
           title="Buy a spin pack with your coins">
           🛒 Buy spin pack

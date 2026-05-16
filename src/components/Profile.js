@@ -96,11 +96,14 @@ export default function Profile() {
         )}
       </div>
 
-      <div className="tw-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+      <div className="tw-store-tabs">
         {["stats", "inventory", "badges", "achievements", "leaderboard", "friends", "history"].map((t) => (
-          <button key={t} className="tw-pill"
-                  style={{ cursor: "pointer", background: tab === t ? "rgba(124,58,237,0.4)" : undefined, textTransform: "capitalize" }}
-                  onClick={() => setTab(t)}>{t}</button>
+          <button key={t}
+                  className={`tw-store-tab ${tab === t ? "active" : ""}`}
+                  onClick={() => setTab(t)}
+                  style={{ textTransform: "capitalize" }}>
+            <span>{t}</span>
+          </button>
         ))}
       </div>
 

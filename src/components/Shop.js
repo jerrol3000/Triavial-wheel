@@ -219,7 +219,13 @@ function StoreItemCard({ item, onNeedCoins }) {
       {item.available_until && (
         <span className="tw-store-limited">⏰ LIMITED</span>
       )}
-      <div className="tw-store-card-icon" style={{ background: rar.glow }}>
+      <div className="tw-store-card-icon" style={{
+        // Subtle constant bg + rarity tinted ring around the icon —
+        // common items used to look empty when the rarity glow was
+        // near-transparent. Now every card has visible framing.
+        background: "rgba(255,255,255,0.06)",
+        boxShadow: `inset 0 0 0 1px ${rar.border}, 0 0 18px ${rar.glow}`,
+      }}>
         {item.category === "frame" ? <FramePreview item={item} /> : <span>{item.icon || "•"}</span>}
       </div>
       <div className="tw-store-card-body">
@@ -229,12 +235,7 @@ function StoreItemCard({ item, onNeedCoins }) {
         </div>
         <div style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0 8px", minHeight: 30 }}>{item.description}</div>
         {item.category === "bundle" && Array.isArray(item.bundle_contents) && (
-          <div className="tw-store-bundle-list">
-            <strong style={{ fontSize: 11, color: "var(--text-dim)" }}>Includes:</strong>
-            <ul style={{ margin: "4px 0 8px", padding: "0 0 0 14px", fontSize: 11, color: "var(--text-dim)" }}>
-              {item.bundle_contents.map((id) => <li key={id}>{id.replace(/_/g, " ")}</li>)}
-            </ul>
-          </div>
+          <BundleContents ids={item.bundle_contents} spinsBonus={item.data && item.data.spins_bonus} />
         )}
         {item.consumable && qty > 0 && (
           <div style={{ fontSize: 11, color: "var(--good)", marginBottom: 6 }}>You own {qty}</div>
@@ -420,5 +421,34 @@ function CurrencyPane() {
         )}
       </div>
     </>
+  );
+}
+
+// Resolves bundle child ids to human-readable item names with their
+// icons. Replaces the previous raw `"frame_bronze"` → "frame bronze"
+// placeholder display.
+function BundleContents({ ids, spinsBonus }) {
+  const catalog = useSelector((s) => s.cosmetics.catalog);
+  const items = ids
+    .map((id) => catalog.find((c) => c.id === id))
+    .filter(Boolean);
+  return (
+    <div className="tw-store-bundle-list">
+      <strong style={{ fontSize: 11, color: "var(--text-dim)" }}>Includes:</strong>
+      <ul style={{ margin: "4px 0 8px", padding: "0 0 0 4px", fontSize: 11, color: "var(--text-dim)", listStyle: "none" }}>
+        {items.map((it) => (
+          <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0" }}>
+            <span style={{ width: 14, display: "inline-flex", justifyContent: "center" }}>{it.icon || "•"}</span>
+            <span>{it.name}</span>
+          </li>
+        ))}
+        {spinsBonus > 0 && (
+          <li style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0", color: "var(--warn)", fontWeight: 700 }}>
+            <span style={{ width: 14, display: "inline-flex", justifyContent: "center" }}>🎡</span>
+            <span>+{spinsBonus} free spins</span>
+          </li>
+        )}
+      </ul>
+    </div>
   );
 }

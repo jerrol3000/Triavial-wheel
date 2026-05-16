@@ -1,17 +1,22 @@
 import { getToken } from "../api/client";
 
-// API_BASE_URL is "http://host/api" in dev, "/api" in prod (via netlify proxy).
-// The WS endpoint is at /ws on the same host as the API.
+// API_BASE_URL is "http://host/api" in dev, "/api" in prod (via Netlify proxy).
+// WS_BASE_URL is the full ws:// or wss:// origin to connect to — defaults
+// to deriving from API_BASE_URL in dev, and is pinned to the Fly backend
+// in prod since Netlify doesn't proxy WebSocket upgrades.
 function wsUrl() {
-  const apiBase = process.env.API_BASE_URL || "/api";
-  let origin;
-  if (apiBase.startsWith("http")) {
-    origin = new URL(apiBase).origin;
-  } else {
-    origin = window.location.origin;
+  let origin = process.env.WS_BASE_URL || "";
+  if (!origin) {
+    const apiBase = process.env.API_BASE_URL || "/api";
+    if (apiBase.startsWith("http")) {
+      origin = new URL(apiBase).origin;
+    } else {
+      origin = window.location.origin;
+    }
   }
-  const protocol = origin.startsWith("https") ? "wss:" : "ws:";
-  const host = origin.replace(/^https?:/, "");
+  // Normalize to ws/wss scheme regardless of how the origin came in.
+  const protocol = /^https|^wss/.test(origin) ? "wss:" : "ws:";
+  const host = origin.replace(/^(https?|wss?):/, "");
   const token = getToken();
   return `${protocol}${host}/ws?token=${encodeURIComponent(token || "")}`;
 }

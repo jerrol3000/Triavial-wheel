@@ -6,6 +6,11 @@ const webpack = require("webpack");
 module.exports = (env, argv) => {
   const isProd = argv.mode === "production";
   const apiBase = process.env.API_BASE_URL || (isProd ? "/api" : "http://localhost:4000/api");
+  // WebSocket origin — Netlify doesn't proxy /ws, so in production the
+  // client connects DIRECTLY to the Fly backend. Override with WS_BASE_URL
+  // if you ever host the API somewhere else.
+  const wsBase = process.env.WS_BASE_URL
+    || (isProd ? "wss://trigger-happy-trivia-wheel876.fly.dev" : "");
 
   return {
     entry: {
@@ -34,6 +39,7 @@ module.exports = (env, argv) => {
       }),
       new webpack.DefinePlugin({
         "process.env.API_BASE_URL": JSON.stringify(apiBase),
+        "process.env.WS_BASE_URL": JSON.stringify(wsBase),
       }),
     ],
     module: {

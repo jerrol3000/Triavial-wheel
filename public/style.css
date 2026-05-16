@@ -817,9 +817,7 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 /* When an icon appears inside a pill button, nudge baseline alignment. */
 .tw-pill .tw-icon { vertical-align: text-bottom; }
 
-/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
-   The VS / online tab gets the hero treatment: bigger icon, no label,
-   elevated above the row so it reads as the primary social call-to-action. */
+/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
@@ -828,24 +826,58 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   height: 32px;
   margin-bottom: 2px;
 }
-.tw-nav-icon.tw-nav-icon-lg {
-  width: 52px;
-  height: 52px;
-  margin-top: -14px;       /* lift the bigger icon so it floats above the row */
+
+/* Empty slot reserved for the absolute-positioned VS hero — same flex
+   weight as a real tab so the row stays balanced and VS lands at 50%. */
+.tw-nav-hero-slot {
+  flex: 1;
+  max-width: 110px;
+  pointer-events: none;
 }
-.tw-nav-icon-lg .tw-icon {
-  filter:
-    drop-shadow(0 4px 8px rgba(124, 58, 237, 0.55))
-    drop-shadow(0 0 14px rgba(236, 72, 153, 0.4));
-  transition: transform 160ms ease;
+
+/* VS hero — circular FAB-style centerpiece, floats above the nav bar at
+   exact 50% horizontally with a glowing brand-gradient halo. */
+.tw-nav-hero {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+
+  appearance: none;
+  cursor: pointer;
+  padding: 0;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 4px solid rgba(15, 12, 41, 0.95);   /* "punched out" of the nav */
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.95), rgba(236, 72, 153, 0.95));
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow:
+    0 10px 28px rgba(124, 58, 237, 0.55),
+    0 0 22px rgba(236, 72, 153, 0.35),
+    inset 0 1px 2px rgba(255, 255, 255, 0.18);
+
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
-.tw-nav button.hero {
-  flex: 0 0 auto;
-  padding-top: 0;
+.tw-nav-hero:hover {
+  transform: translateX(-50%) translateY(-3px);
+  box-shadow:
+    0 14px 32px rgba(124, 58, 237, 0.65),
+    0 0 28px rgba(236, 72, 153, 0.5),
+    inset 0 1px 2px rgba(255, 255, 255, 0.22);
 }
-.tw-nav button.hero:hover .tw-nav-icon-lg .tw-icon,
-.tw-nav button.hero.active .tw-nav-icon-lg .tw-icon {
-  transform: scale(1.08);
+.tw-nav-hero.active {
+  box-shadow:
+    0 12px 30px rgba(236, 72, 153, 0.7),
+    0 0 28px rgba(236, 72, 153, 0.55),
+    inset 0 1px 2px rgba(255, 255, 255, 0.25);
+}
+.tw-nav-hero .tw-icon {
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
 }
 
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */

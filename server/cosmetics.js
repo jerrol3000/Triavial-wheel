@@ -120,7 +120,8 @@ function buyItem(userId, cosmeticId, isPro) {
   const already = db.prepare(
     `SELECT qty FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?`
   ).get(userId, cosmeticId);
-  if (already && !item.consumable && item.category !== "bundle") return { error: "already_owned" };
+  // Spins + bundles are always re-buyable; equippable cosmetics one-shot.
+  if (already && !item.consumable && item.category !== "bundle" && item.category !== "spins") return { error: "already_owned" };
 
   const cost = item.price_coins;
   const grantedItems = [];
@@ -165,6 +166,25 @@ function buyItem(userId, cosmeticId, isPro) {
         if (childOwned && !childItem.consumable) continue;
         grantOne(childItem);
       }
+      // Bundles can also include a bonus pile of free spins as part of
+      // the value pitch — granted in the same transaction.
+      const spinsBonus = item.data && Number(item.data.spins_bonus) | 0;
+      if (spinsBonus > 0) {
+        db.prepare(`UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?`)
+          .run(spinsBonus, Date.now(), userId);
+      }
+    } else if (item.category === "spins") {
+      // Direct spin packs grant their `data.spins` count immediately —
+      // there's nothing to "use later" since spins ARE the consumable.
+      const n = (item.data && Number(item.data.spins)) | 0;
+      if (n > 0) {
+        db.prepare(`UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?`)
+          .run(n, Date.now(), userId);
+      }
+      // Record the purchase so spending badges + ownership badges fire.
+      db.prepare(`INSERT OR IGNORE INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
+        .run(userId, item.id, Date.now());
+      grantedItems.push(item);
     } else {
       grantOne(item);
     }

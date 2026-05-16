@@ -128,20 +128,30 @@ export default function Home() {
             />
           </div>
 
-          <button
-            className="tw-btn tw-btn-spin block"
-            disabled={spinning || ((stats.free_spins || 0) === 0 && stats.lives <= 0 && !stats.pro)}
-            onClick={onSpin}
-            title={spinning ? "Wheel is spinning" : "Spin the wheel to start a round"}
-          >
-            {spinning
-              ? "Spinning..."
-              : (stats.free_spins || 0) > 0
-                ? `SPIN  ·  🎡 ${stats.free_spins} free`
-                : stats.lives <= 0 && !stats.pro
-                  ? "Out of lives — get more"
-                  : "SPIN"}
-          </button>
+          {/* Aggregate "spins left" = free_spins + lives (for non-Pro).
+              When zero, swap the SPIN button for an action card pointing
+              players at the ways to replenish (ads / store). Pro players
+              never see the gate — unlimited lives = infinite spins. */}
+          {(() => {
+            const spinsLeft = (stats.free_spins || 0) + (stats.pro ? 99 : (stats.lives || 0));
+            if (spinsLeft <= 0 && !stats.pro) {
+              return <OutOfSpinsCard />;
+            }
+            return (
+              <button
+                className="tw-btn tw-btn-spin block"
+                disabled={spinning}
+                onClick={onSpin}
+                title={spinning ? "Wheel is spinning" : "Spin the wheel to start a round"}
+              >
+                {spinning
+                  ? "Spinning..."
+                  : (stats.free_spins || 0) > 0
+                    ? `SPIN  ·  🎡 ${stats.free_spins} free`
+                    : "SPIN"}
+              </button>
+            );
+          })()}
         </div>
       </section>
 
@@ -208,6 +218,37 @@ function EarnMoreStrip() {
             </span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// When the player has used every spin (free_spins + lives both 0 and
+// not Pro) the SPIN button is replaced with this card — three clear
+// paths back into play: watch an ad, hop to the spin packs in the
+// Store, or upgrade to Pro for unlimited.
+function OutOfSpinsCard() {
+  const dispatch = useDispatch();
+  return (
+    <div className="tw-out-of-spins">
+      <div className="tw-out-of-spins-title">🎡 Out of spins</div>
+      <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
+      <div className="tw-out-of-spins-actions">
+        <button
+          className="tw-btn ghost"
+          onClick={() => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } })}
+          title="Watch a short ad for a free spin">
+          <Icon name="free_spin" size={22} /> Watch ad — 1 spin
+        </button>
+        <button
+          className="tw-btn"
+          onClick={() => dispatch(setView("shop"))}
+          title="Buy a spin pack with your coins">
+          🛒 Buy spin pack
+        </button>
+      </div>
+      <div className="tw-out-of-spins-pro">
+        Or <button className="tw-link" onClick={() => dispatch(setView("shop"))}>upgrade to Pro</button> for unlimited.
       </div>
     </div>
   );

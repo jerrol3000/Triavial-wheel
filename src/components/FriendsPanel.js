@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { pushToast, setModal } from "../store/uiSlice";
+import { fetchStats } from "../store/statsSlice";
 import Avatar from "./Avatar";
 
 // Friends list + add-by-username + pending requests. Rendered on Profile and
@@ -106,16 +107,66 @@ export default function FriendsPanel({ compact = false }) {
         </div>
       ) : (
         friends.slice(0, compact ? 5 : 50).map((f) => (
-          <div key={f.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="tw-row" style={{ gap: 8 }}>
+          <div key={f.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap", gap: 6 }}>
+            <div className="tw-row" style={{ gap: 8, minWidth: 0 }}>
               <Avatar value={f.avatar} size={28} ring={f.online_now} />
-              <span>@{f.username}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{f.username}</span>
               <span className={`tw-online-dot ${f.online_now ? "on" : ""}`} title={f.online_now ? "Online now" : "Offline"} />
               <span style={{ color: "var(--text-dim)", fontSize: 12 }}>L{f.level} · ⭐ {f.online_rating}</span>
             </div>
-            <button className="tw-btn ghost sm" title="Remove friend" onClick={() => remove(f.id)}>×</button>
+            <div className="tw-row" style={{ gap: 4 }}>
+              <GiftButton friend={f} />
+              <button className="tw-btn ghost sm" title="Remove friend" onClick={() => remove(f.id)}>×</button>
+            </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+// Gift button — sends a small amount of coins or free spins to a
+// friend. Daily caps enforced server-side: 200 coins / 5 spins per
+// friend per UTC day. Each click prompts for the kind + amount inline.
+function GiftButton({ friend }) {
+  const dispatch = useDispatch();
+  const [open, setOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+
+  const send = async (kind, amount) => {
+    setBusy(true);
+    try {
+      await api.post("/friends/gift", { to: friend.id, kind, amount });
+      dispatch(pushToast({ icon: "🎁", title: `Sent ${amount} ${kind === "free_spins" ? "spins" : "coins"} to @${friend.username}` }));
+      dispatch(fetchStats());
+      setOpen(false);
+    } catch (e) {
+      const err = e?.response?.data;
+      if (err?.error === "daily_cap") {
+        dispatch(pushToast({ icon: "⚠️", title: "Daily cap reached", text: `You've already sent ${err.sent_today} ${kind === "free_spins" ? "spins" : "coins"} to @${friend.username} today.` }));
+      } else if (err?.error === "insufficient_coins" || err?.error === "insufficient_spins") {
+        dispatch(pushToast({ icon: "⚠️", title: "Not enough to gift", text: "Top up first." }));
+      } else {
+        dispatch(pushToast({ icon: "⚠️", title: "Couldn't send gift" }));
+      }
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="tw-btn ghost sm" title="Send a gift" onClick={() => setOpen((v) => !v)} disabled={busy}>🎁</button>
+      {open && (
+        <div className="tw-gift-menu">
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>Gift to @{friend.username}</div>
+          <button onClick={() => send("coins", 50)}>🪙 50 coins</button>
+          <button onClick={() => send("coins", 100)}>🪙 100 coins</button>
+          <button onClick={() => send("coins", 200)}>🪙 200 coins (cap)</button>
+          <div style={{ height: 4 }} />
+          <button onClick={() => send("free_spins", 1)}>🎡 1 spin</button>
+          <button onClick={() => send("free_spins", 3)}>🎡 3 spins</button>
+          <button onClick={() => send("free_spins", 5)}>🎡 5 spins (cap)</button>
+        </div>
       )}
     </div>
   );

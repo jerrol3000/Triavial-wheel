@@ -41,9 +41,13 @@
   {"id":"boost_refill_lives","category":"boost","name":"Full Lives Refill","description":"Refill all 5 lives instantly.","price_coins":250,"rarity":"common","icon":"❤️","data":{"effect":"lives_refill"},"consumable":1,"sort_order":40},
   {"id":"boost_mystery_box","category":"boost","name":"Mystery Box","description":"Random reward: coins, powerups, or rare cosmetic.","price_coins":1500,"rarity":"rare","icon":"📦","data":{"effect":"mystery_box"},"consumable":1,"sort_order":50},
 
-  {"id":"bundle_starter","category":"bundle","name":"Starter Pack","description":"Bronze frame + Falling Star pointer + Newbie title. Save 35%.","price_coins":550,"rarity":"common","icon":"🎁","data":{},"sort_order":10,"bundle_contents":["frame_bronze","pointer_star","title_newbie"]},
-  {"id":"bundle_collector","category":"bundle","name":"Collector's Bundle","description":"Gold frame + Lightning pointer + Genius title + 2 boosts. Save 40%.","price_coins":2900,"rarity":"rare","icon":"🎀","data":{},"sort_order":20,"bundle_contents":["frame_gold","pointer_lightning","title_genius","boost_xp_2x","boost_coins_2x"]},
-  {"id":"bundle_elite","category":"bundle","name":"Elite Pack","description":"Galaxy frame + Crown pointer + Quiz Lord title + Mystery box. Save 45%.","price_coins":8200,"rarity":"epic","icon":"🏆","data":{},"sort_order":30,"bundle_contents":["frame_galaxy","pointer_crown","title_lord","boost_mystery_box"]},
+  {"id":"spins_5","category":"spins","name":"5 Spins","description":"5 wheel spins. Quick top-up.","price_coins":150,"rarity":"common","icon":"🎡","data":{"spins":5},"sort_order":10},
+  {"id":"spins_15","category":"spins","name":"15 Spins","description":"15 wheel spins. Better value.","price_coins":400,"rarity":"common","icon":"🎡","data":{"spins":15},"sort_order":20},
+  {"id":"spins_50","category":"spins","name":"50 Spins","description":"50 wheel spins. Best value.","price_coins":1200,"rarity":"rare","icon":"🎡","data":{"spins":50},"sort_order":30},
+
+  {"id":"bundle_starter","category":"bundle","name":"Starter Pack","description":"Bronze frame + Falling Star pointer + Newbie title + 10 spins. Save 35%.","price_coins":550,"rarity":"common","icon":"🎁","data":{"spins_bonus":10},"sort_order":10,"bundle_contents":["frame_bronze","pointer_star","title_newbie"]},
+  {"id":"bundle_collector","category":"bundle","name":"Collector's Bundle","description":"Gold frame + Lightning pointer + Genius title + 25 spins + 2 boosts. Save 40%.","price_coins":2900,"rarity":"rare","icon":"🎀","data":{"spins_bonus":25},"sort_order":20,"bundle_contents":["frame_gold","pointer_lightning","title_genius","boost_xp_2x","boost_coins_2x"]},
+  {"id":"bundle_elite","category":"bundle","name":"Elite Pack","description":"Galaxy frame + Crown pointer + Quiz Lord title + 60 spins + Mystery box. Save 45%.","price_coins":8200,"rarity":"epic","icon":"🏆","data":{"spins_bonus":60},"sort_order":30,"bundle_contents":["frame_galaxy","pointer_crown","title_lord","boost_mystery_box"]},
 
   {"id":"frame_launch","category":"frame","name":"Launch Edition","description":"Limited-edition silver-pink ring for early players. Get it while it's here.","price_coins":750,"rarity":"epic","icon":"🚀","data":{"style":"gradient","colors":["#c0c0c0","#ec4899"],"width":4,"glow":"#ec4899"},"sort_order":35,"available_until":1781308800000}
 ]

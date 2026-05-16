@@ -14,7 +14,9 @@ const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 // ─── State ──────────────────────────────────────────────────────────────────
 const connections = new Map();   // userId → ws
 const rooms = new Map();          // code → room
-let waitingForMatch = null;        // userId of the player in quick-match queue
+// One queue slot per difficulty bracket. Players only match against
+// others who selected the same difficulty before queueing.
+const quickQueues = { easy: null, medium: null, hard: null };
 
 function makeCode() {
   const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // unambiguous
@@ -64,6 +66,8 @@ function publicRoom(room) {
   return {
     code: room.code,
     kind: room.kind,
+    difficulty: room.difficulty,
+    hostId: room.hostId,
     players: room.players.map(publicPlayer),
     index: room.index,
     total: room.questions.length,
@@ -73,6 +77,11 @@ function publicRoom(room) {
     started: room.started,
     finished: room.finished,
     startedAt: room.startedAt,
+    rounds: room.rounds,
+    continueDeadline: room.continueDeadline,
+    continueVotes: room.continueVotes,
+    pendingDifficulty: room.pendingDifficulty,
+    difficultyVotes: room.difficultyVotes,
   };
 }
 
@@ -98,31 +107,52 @@ function shuffleAnswers(q) {
   return arr;
 }
 
-function loadQuestions(amount, players) {
+const DIFFICULTIES = new Set(["easy", "medium", "hard"]);
+// Difficulty multipliers — rewards scale so hard matches pay out more.
+// Applied to both the win-coins and the rating delta.
+const DIFFICULTY_MULT = { easy: 0.7, medium: 1.0, hard: 1.6 };
+// Continue-vote timeout: after a match ends both players have this long
+// to opt into a rematch. If either bails or doesn't decide, the room is
+// torn down cleanly (no penalty).
+const CONTINUE_VOTE_MS = 20 * 1000;
+
+function loadQuestions(amount, players, difficulty) {
   // For multiplayer matches: exclude questions either player has already
   // seen. The same set is served to both — if pool is too small, the
   // picker falls back to repeats and cycles their seen history.
   const userIds = (players || []).filter((p) => p && p.id).map((p) => p.id);
-  const rows = getRandomQuestions({ difficulty: "medium", amount, userIds });
+  const diff = DIFFICULTIES.has(difficulty) ? difficulty : "medium";
+  const rows = getRandomQuestions({ difficulty: diff, amount, userIds });
   // Add a stable shuffled order so both players see same.
   return rows.map((r) => ({ ...r, shuffled: shuffleAnswers(r) }));
 }
 
-function makeRoom({ kind, code }) {
+function makeRoom({ kind, code, difficulty = "medium", hostId = null }) {
   const room = {
     code,
-    kind,
+    kind,                              // "quick" | "private"
+    difficulty: DIFFICULTIES.has(difficulty) ? difficulty : "medium",
+    hostId,                            // initiator for private rooms — picks initial difficulty
     players: [],
     questions: [],
     index: 0,
     questionEndsAt: 0,
-    answers: {},          // questionIdx → { userId: { answer, time, correct } }
+    answers: {},                       // questionIdx → { userId: { answer, time, correct } }
     chat: [],
     started: false,
     finished: false,
     startedAt: 0,
     timeoutId: null,
     emptyAt: 0,
+    // Continue-rematch state: both players must vote "yes" within the
+    // window to start round 2. Pending difficulty-change requests live
+    // alongside so the next round can pick the new value.
+    continueVotes: {},                 // userId → bool
+    continueDeadline: 0,
+    continueTimeoutId: null,
+    rounds: 0,
+    pendingDifficulty: null,           // initiator-proposed change between rounds
+    difficultyVotes: {},               // userId → bool
   };
   rooms.set(code, room);
   return room;
@@ -143,9 +173,16 @@ function startMatch(room) {
   if (room.started) return;
   if (room.players.filter(Boolean).length < 2) return;
   room.started = true;
+  room.finished = false;
   room.startedAt = Date.now();
-  room.questions = loadQuestions(QUESTIONS_PER_MATCH, room.players);
+  room.questions = loadQuestions(QUESTIONS_PER_MATCH, room.players, room.difficulty);
   room.index = 0;
+  room.answers = {};
+  // Reset per-player counters so a rematch starts from zero.
+  for (const p of room.players) {
+    if (p) { p.score = 0; p.correct = 0; }
+  }
+  room.rounds += 1;
   advanceQuestion(room, /* first */ true);
 }
 
@@ -215,6 +252,7 @@ function recordAnswer(room, userId, answer) {
 function endMatch(room, opts = {}) {
   if (room.finished) return;
   room.finished = true;
+  room.started = false;
   if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
   const [p1, p2] = room.players;
   const winner = !p1 ? p2 : !p2 ? p1 : (p1.score === p2.score ? null : (p1.score > p2.score ? p1 : p2));
@@ -223,18 +261,43 @@ function endMatch(room, opts = {}) {
       INSERT INTO matches (kind, player1_id, player2_id, player1_score, player2_score, winner_id, started_at, finished_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(room.kind, p1.id, p2.id, p1.score, p2.score, winner ? winner.id : null, room.startedAt, Date.now());
-    applyMatchRewards(p1, p2, winner, opts.forfeiterId);
+    applyMatchRewards(p1, p2, winner, opts.forfeiterId, room.kind, room.difficulty);
   }
+
+  // Reset continue-vote state for the rematch decision window.
+  room.continueVotes = {};
+  room.continueDeadline = Date.now() + CONTINUE_VOTE_MS;
+  if (room.continueTimeoutId) clearTimeout(room.continueTimeoutId);
+  room.continueTimeoutId = setTimeout(() => endRoom(room, "continue_timeout"), CONTINUE_VOTE_MS + 200);
+
   broadcastRoom(room, {
     type: "match_end",
     winnerId: winner ? winner.id : null,
     forfeiterId: opts.forfeiterId || null,
+    kind: room.kind,
+    difficulty: room.difficulty,
+    continueDeadline: room.continueDeadline,
     players: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct } : null),
   });
-  setTimeout(() => rooms.delete(room.code), 30 * 1000);
 }
 
-function applyMatchRewards(p1, p2, winner, forfeiterId) {
+// Final teardown after the continue window closes (timeout, decline,
+// disconnect, etc.). Removes the room and notifies players so the
+// client can navigate them home.
+function endRoom(room, reason) {
+  if (!rooms.has(room.code)) return;
+  if (room.continueTimeoutId) { clearTimeout(room.continueTimeoutId); room.continueTimeoutId = null; }
+  broadcastRoom(room, { type: "session_ended", reason: reason || "ended" });
+  rooms.delete(room.code);
+}
+
+function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty) {
+  // FRIENDLY matches (kind=private): no leaderboard rating change, no
+  // win/loss stats, no forfeit penalty. Just a small participation
+  // reward so it still feels worthwhile. Quest progression still counts.
+  const isFriendly = kind === "private";
+  const mult = DIFFICULTY_MULT[difficulty] || 1;
+
   const updateStats = db.prepare(`
     UPDATE stats SET
       online_wins = online_wins + ?,
@@ -250,19 +313,36 @@ function applyMatchRewards(p1, p2, winner, forfeiterId) {
     const isWinner = winner && winner.id === p.id;
     const isTie = !winner;
     const isForfeiter = forfeiterId && p.id === forfeiterId;
-    const wonInc = isWinner ? 1 : 0;
-    const lostInc = (!isWinner && !isTie) ? 1 : 0;
-    // Forfeiter eats a harsher penalty: no coins, -30 rating (vs -10 for a normal loss).
-    const spinsReward = isWinner ? 2 : (isTie ? 1 : 0);
-    const coinsReward = isWinner ? 50 : (isTie ? 15 : (isForfeiter ? 0 : 5));
-    const ratingDelta = isWinner ? 20 : (isTie ? 0 : (isForfeiter ? -30 : -10));
+
+    let wonInc = 0, lostInc = 0, ratingDelta = 0, spinsReward = 0, coinsReward = 0;
+
+    if (isFriendly) {
+      // Friendly: a single free spin for showing up; winner gets a few
+      // bonus coins but nothing the leaderboard tracks.
+      spinsReward = 1;
+      coinsReward = isWinner ? 20 : (isTie ? 10 : 5);
+      // wonInc / lostInc / ratingDelta stay 0 — friendly results don't
+      // touch the online ladder.
+    } else {
+      // Competitive (quick match) — full rewards with difficulty multiplier.
+      // The "significantly more than solo, not crazy" cap: hard win = 80
+      // coins (vs solo round ~10-30); easy win = 35.
+      wonInc = isWinner ? 1 : 0;
+      lostInc = (!isWinner && !isTie) ? 1 : 0;
+      const baseSpins = isWinner ? 2 : (isTie ? 1 : 0);
+      const baseCoins = isWinner ? 50 : (isTie ? 15 : (isForfeiter ? 0 : 5));
+      const baseRating = isWinner ? 20 : (isTie ? 0 : (isForfeiter ? -30 : -10));
+      spinsReward = baseSpins;
+      coinsReward = Math.round(baseCoins * mult);
+      ratingDelta = Math.round(baseRating * mult);
+    }
+
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
-    // Quest progression — every online match counts as 1 play, wins
-    // additionally bump the wins-today metric for the relevant quests.
+
     try {
       const stats = require("./routes/stats");
       const events = [{ metric: "online_played_today", amount: 1 }];
-      if (isWinner) events.push({ metric: "online_wins_today", amount: 1 });
+      if (isWinner && !isFriendly) events.push({ metric: "online_wins_today", amount: 1 });
       if (stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
     } catch (e) {}
   }
@@ -306,7 +386,9 @@ function setupConnection(ws, user) {
 
   ws.on("close", () => {
     if (connections.get(user.id) === ws) connections.delete(user.id);
-    if (waitingForMatch === user.id) waitingForMatch = null;
+    for (const d of Object.keys(quickQueues)) {
+      if (quickQueues[d] === user.id) quickQueues[d] = null;
+    }
     const room = findRoomForUser(user.id);
     if (room && !room.finished) {
       // If match in progress and the other player is still here, give them the win after a grace period.
@@ -339,28 +421,33 @@ function handleMessage(ws, user, msg) {
         send(ws, { type: "room_state", room: publicRoom(existingRoom) });
         return;
       }
-      if (waitingForMatch && waitingForMatch !== user.id) {
-        const otherId = waitingForMatch;
+      const reqDiff = DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : "medium";
+      // Per-difficulty queue: only matches players who picked the same
+      // difficulty so the harder bracket can't ambush easy players.
+      const queue = quickQueues[reqDiff] || (quickQueues[reqDiff] = null);
+      if (queue && queue !== user.id) {
+        const otherId = queue;
         const otherWs = connections.get(otherId);
-        waitingForMatch = null;
+        quickQueues[reqDiff] = null;
         if (otherWs && otherWs.readyState === 1) {
           const code = makeCode();
-          const room = makeRoom({ kind: "quick", code });
-          joinRoom(room, { id: otherId, username: otherWs.username });
-          joinRoom(room, { id: user.id, username: user.username });
+          const room = makeRoom({ kind: "quick", code, difficulty: reqDiff });
+          joinRoom(room, { id: otherId, username: otherWs.username, avatar: otherWs.avatar });
+          joinRoom(room, { id: user.id, username: user.username, avatar: user.avatar });
           broadcastRoom(room, { type: "match_found", room: publicRoom(room) });
-          // Auto-start after a 3s "get ready" countdown.
           setTimeout(() => startMatch(room), 3000);
           return;
         }
       }
-      waitingForMatch = user.id;
-      send(ws, { type: "waiting" });
+      quickQueues[reqDiff] = user.id;
+      send(ws, { type: "waiting", difficulty: reqDiff });
       return;
     }
 
     case "cancel_quick_match": {
-      if (waitingForMatch === user.id) waitingForMatch = null;
+      for (const d of Object.keys(quickQueues)) {
+        if (quickQueues[d] === user.id) quickQueues[d] = null;
+      }
       send(ws, { type: "queue_cancelled" });
       return;
     }
@@ -368,9 +455,73 @@ function handleMessage(ws, user, msg) {
     case "create_room": {
       let code;
       do { code = makeCode(); } while (rooms.has(code));
-      const room = makeRoom({ kind: "private", code });
+      const reqDiff = DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : "medium";
+      // Friend room initiator sets the difficulty AND becomes hostId so
+      // the change-difficulty vote knows who can propose changes later.
+      const room = makeRoom({ kind: "private", code, difficulty: reqDiff, hostId: user.id });
       joinRoom(room, user);
       send(ws, { type: "room_state", room: publicRoom(room) });
+      return;
+    }
+
+    // Initiator (or anyone in a friend room) proposes a new difficulty
+    // for the next round. Counts as a YES from the proposer.
+    case "change_difficulty": {
+      const room = findRoomForUser(user.id);
+      if (!room || room.kind !== "private") { send(ws, { type: "error", error: "not_a_friend_room" }); return; }
+      if (!room.finished) { send(ws, { type: "error", error: "round_in_progress" }); return; }
+      const next = DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : null;
+      if (!next || next === room.difficulty) return;
+      room.pendingDifficulty = next;
+      room.difficultyVotes = { [user.id]: true };
+      broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
+      return;
+    }
+
+    // Other player accepts (or declines) the proposed difficulty change.
+    case "vote_difficulty": {
+      const room = findRoomForUser(user.id);
+      if (!room || !room.pendingDifficulty) return;
+      room.difficultyVotes[user.id] = !!msg.accept;
+      const players = room.players.filter(Boolean);
+      const allVoted = players.every((p) => p.id in room.difficultyVotes);
+      const allYes = players.every((p) => room.difficultyVotes[p.id] === true);
+      if (allVoted && allYes) {
+        room.difficulty = room.pendingDifficulty;
+        room.pendingDifficulty = null;
+        room.difficultyVotes = {};
+      } else if (allVoted) {
+        // Someone declined — drop the proposal, keep current difficulty.
+        room.pendingDifficulty = null;
+        room.difficultyVotes = {};
+      }
+      broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
+      return;
+    }
+
+    // Rematch vote — both players must say yes within continueDeadline
+    // or the room shuts down (no penalty, just navigates home).
+    case "continue_vote": {
+      const room = findRoomForUser(user.id);
+      if (!room || !room.finished) return;
+      const accept = !!msg.accept;
+      room.continueVotes[user.id] = accept;
+      const players = room.players.filter(Boolean);
+      if (!accept) {
+        // One decline is enough to tear the room down — saves the other
+        // player from waiting out the full timeout.
+        endRoom(room, "declined");
+        return;
+      }
+      const allYes = players.length === 2 && players.every((p) => room.continueVotes[p.id] === true);
+      if (allYes) {
+        // Both yes — clear the timeout and start a fresh round in the
+        // (possibly updated) difficulty.
+        if (room.continueTimeoutId) { clearTimeout(room.continueTimeoutId); room.continueTimeoutId = null; }
+        startMatch(room);
+      } else {
+        broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
+      }
       return;
     }
 
@@ -407,13 +558,38 @@ function handleMessage(ws, user, msg) {
         return;
       }
       if (!room.finished) {
-        // Mid-game forfeit: opponent gets a boost, leaver eats a harsher rating drop.
+        // Mid-game leave behaviour depends on the match kind:
+        //  - QUICK (competitive): forfeit penalty + opponent score boost
+        //    so it counts as a legitimate competitive loss.
+        //  - PRIVATE (friend): no penalty, no rating change, no opponent
+        //    boost — friendly matches let you bail without fallout, the
+        //    "appropriate" penalty for friends is just losing the round.
         const opponent = room.players.find((p) => p && p.id !== user.id);
-        if (opponent) opponent.score += 100;
-        logEvent("online_forfeit", user.id, null, { code: room.code });
-        endMatch(room, { forfeiterId: user.id });
+        if (room.kind === "quick") {
+          if (opponent) opponent.score += 100;
+          logEvent("online_forfeit", user.id, null, { code: room.code });
+          endMatch(room, { forfeiterId: user.id });
+        } else {
+          logEvent("friend_leave", user.id, null, { code: room.code });
+          endMatch(room, {});                  // ends as a normal match — opponent just wins on score
+        }
       }
       send(ws, { type: "left_room" });
+      return;
+    }
+
+    // Mid-match "skip this opponent" for quick-match — penalty is applied
+    // via the same applySkipPenalty path leave_room uses, but framed as
+    // a skip (the player wants a new opponent, not to quit playing).
+    case "skip_opponent": {
+      const room = findRoomForUser(user.id);
+      if (!room || room.kind !== "quick" || !room.started || room.finished) return;
+      const opponent = room.players.find((p) => p && p.id !== user.id);
+      if (opponent) opponent.score += 100;
+      logEvent("online_skip_midmatch", user.id, null, { code: room.code });
+      const skip = applySkipPenalty(user.id);
+      endMatch(room, { forfeiterId: user.id });
+      send(ws, { type: "left_room", skip });
       return;
     }
 

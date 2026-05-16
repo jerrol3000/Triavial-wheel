@@ -40,6 +40,18 @@ export default function Online() {
         case "chat_muted":    dispatch(setChatNotice({ kind: "muted", until: msg.until, at: Date.now() })); break;
         case "reaction":      dispatch(pushReaction({ ...msg, at: Date.now() })); setTimeout(() => dispatch(pushReaction(null)), 1500); break;
         case "match_end":     sfx.win(); dispatch(setMatchEnd(msg)); dispatch(fetchStats()); break;
+        case "session_ended": {
+          // Continue-vote timed out, opponent declined, or room closed.
+          // No penalty — just navigate the player home cleanly.
+          dispatch(leftRoom());
+          const reason = msg.reason;
+          const text = reason === "declined" ? "Opponent decided not to continue."
+                     : reason === "continue_timeout" ? "Rematch timer ran out."
+                     : "Session ended.";
+          dispatch(pushToast({ icon: "👋", title: "Game over", text }));
+          dispatch(fetchStats());
+          break;
+        }
         case "left_room": {
           dispatch(leftRoom());
           if (msg.skip && msg.skip.applied) {
@@ -81,20 +93,24 @@ function Lobby() {
   const dispatch = useDispatch();
   const [joinCode, setJoinCode] = useState("");
   const [creatingRoom, setCreatingRoom] = useState(false);
+  // Difficulty for both quick match queueing AND friend room creation.
+  // Saved to state so the player can switch and re-click without losing
+  // their choice. Defaults to medium (most populated bracket).
+  const [difficulty, setDifficulty] = useState("medium");
   const stats = useSelector((s) => s.stats);
   const connected = useSelector((s) => s.online.connected);
 
   const quickMatch = () => {
     if (!connected) return;
-    sfx.click(); rt.send({ type: "quick_match" }); dispatch(setWaiting(true));
+    sfx.click();
+    rt.send({ type: "quick_match", difficulty });
+    dispatch(setWaiting(true));
   };
   const createRoom = () => {
     if (!connected) return;
     sfx.click();
     setCreatingRoom(true);
-    rt.send({ type: "create_room" });
-    // Server replies with room_state; once that lands, parent re-renders and we leave Lobby.
-    // Safety: if no reply in 5s, reset the spinner so the button is clickable again.
+    rt.send({ type: "create_room", difficulty });
     setTimeout(() => setCreatingRoom(false), 5000);
   };
   const join = (e) => {
@@ -110,23 +126,49 @@ function Lobby() {
         <Icon name="vs" size={32} /> Play with Friends
       </h1>
       {!connected && <ConnectionStatus />}
+
+      {/* Difficulty selector — applies to both Quick Match (queues you
+          into the same-difficulty bracket) AND Invite a Friend (host
+          picks; can be re-voted between rounds). Multipliers shown so
+          players understand higher difficulty = higher rewards. */}
+      <div className="tw-card">
+        <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+          <div style={{ fontFamily: "Fredoka", fontWeight: 700 }}>Difficulty</div>
+          <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Higher difficulty = bigger reward</span>
+        </div>
+        <div className="tw-row" style={{ gap: 8 }}>
+          {[
+            { id: "easy",   label: "Easy",   mult: "0.7×", desc: "warm-up" },
+            { id: "medium", label: "Medium", mult: "1.0×", desc: "standard" },
+            { id: "hard",   label: "Hard",   mult: "1.6×", desc: "elite" },
+          ].map((d) => (
+            <button key={d.id}
+              className={`tw-diff-pill ${difficulty === d.id ? "active" : ""}`}
+              onClick={() => { sfx.click(); setDifficulty(d.id); }}>
+              <strong>{d.label}</strong>
+              <span style={{ fontSize: 11, opacity: 0.8 }}>{d.mult} · {d.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="tw-grid-2">
         <div className="tw-card tw-online-card">
           <div style={{ fontSize: 26 }}>⚡</div>
           <div className="tw-online-title">Quick Match</div>
-          <div className="tw-online-desc">Pair you with a random player around your skill level. Best of 5.</div>
+          <div className="tw-online-desc">Pair you with a random player. Wins count for the leaderboard.</div>
           <button className="tw-btn block" onClick={quickMatch} disabled={!connected}
-            title={connected ? "Find an opponent now" : "Connecting first…"}>
-            {connected ? "Find an opponent" : "Connecting…"}
+            title={connected ? `Find a ${difficulty} opponent now` : "Connecting first…"}>
+            {connected ? `Find a ${difficulty} opponent` : "Connecting…"}
           </button>
         </div>
         <div className="tw-card tw-online-card">
           <div style={{ fontSize: 26 }}>🔗</div>
           <div className="tw-online-title">Invite a Friend</div>
-          <div className="tw-online-desc">Generate a 6-letter code and share it. They join, you both play.</div>
+          <div className="tw-online-desc">Friendly match — score kept, but no leaderboard impact. Bail any time.</div>
           <button className="tw-btn block" onClick={createRoom} disabled={!connected || creatingRoom}
-            title={!connected ? "Connecting first…" : "Generate a code"}>
-            {creatingRoom ? "Creating…" : "Generate code"}
+            title={!connected ? "Connecting first…" : `Generate a ${difficulty} code`}>
+            {creatingRoom ? "Creating…" : `Generate code (${difficulty})`}
           </button>
         </div>
       </div>
@@ -285,9 +327,29 @@ function LiveMatch() {
     );
   }
 
+  const isFriendly = room.kind === "private";
+  const skipOpponent = () => {
+    if (isFriendly) return;
+    if (!confirm("Skip this opponent? You'll take a rating hit (free once a day for non-supporters).")) return;
+    rt.send({ type: "skip_opponent" });
+  };
+
   return (
     <div className="tw-col">
-      <button className="tw-pill" onClick={leave} style={{ alignSelf: "flex-start" }}>← Forfeit</button>
+      <div className="tw-row" style={{ justifyContent: "space-between" }}>
+        <button className="tw-pill" onClick={leave}>
+          ← {isFriendly ? "Leave (no penalty)" : "Forfeit"}
+        </button>
+        <span className="tw-pill" title="Match difficulty">
+          {room.difficulty === "easy" ? "🟢 Easy" : room.difficulty === "hard" ? "🔴 Hard" : "🟡 Medium"}
+          {isFriendly && " · Friendly"}
+        </span>
+        {!isFriendly && (
+          <button className="tw-pill" onClick={skipOpponent} title="Skip this opponent — finds you a new one">
+            Skip ⏭
+          </button>
+        )}
+      </div>
 
       <div className="tw-card">
         <div className="tw-online-scoreboard">
@@ -470,15 +532,51 @@ function AnswerStatusBanner({ picked, opponentAnswered, opponentName }) {
 }
 
 // ─── Match End ──────────────────────────────────────────────────────────────
+// Doubles as the rematch-vote screen. Both players have a short window
+// (room.continueDeadline) to opt into another round. If either declines
+// or the timer runs out, the server tears the room down and we go home.
 function MatchEnd() {
   const dispatch = useDispatch();
   const matchEnd = useSelector((s) => s.online.matchEnd);
+  const room = useSelector((s) => s.online.room);
   const me = useSelector((s) => s.auth.user);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 250);
+    return () => clearInterval(id);
+  }, []);
+
   if (!matchEnd) return null;
   const won = me && matchEnd.winnerId === me.id;
   const tie = !matchEnd.winnerId;
   const mine = matchEnd.players.find((p) => p && me && p.id === me.id);
   const opp = matchEnd.players.find((p) => p && (!me || p.id !== me.id));
+  const isFriendly = matchEnd.kind === "private" || room?.kind === "private";
+
+  const deadline = room?.continueDeadline || matchEnd.continueDeadline;
+  const remaining = deadline ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : null;
+  const myVote = room?.continueVotes?.[me?.id];
+  const oppVote = opp && room?.continueVotes?.[opp.id];
+  const oppWaiting = myVote === true && oppVote == null;
+  const oppDeclined = oppVote === false;
+
+  const vote = (accept) => {
+    sfx.click();
+    rt.send({ type: "continue_vote", accept });
+  };
+  const findNew = () => {
+    sfx.click();
+    rt.send({ type: "continue_vote", accept: false });
+    dispatch(leftRoom());
+    rt.send({ type: "quick_match", difficulty: matchEnd.difficulty || room?.difficulty || "medium" });
+    dispatch(setWaiting(true));
+  };
+  const goHome = () => {
+    rt.send({ type: "continue_vote", accept: false });
+    dispatch(leftRoom());
+    dispatch(setView("home"));
+  };
 
   return (
     <div className="tw-col">
@@ -486,9 +584,9 @@ function MatchEnd() {
         <div style={{ fontFamily: "Fredoka", fontSize: 32, fontWeight: 700 }}>
           {tie ? "🤝 Tie!" : won ? "🏆 You Win!" : "Good game"}
         </div>
-        {won && <div style={{ color: "var(--good)", margin: "8px 0" }}>+2 free spins · +50 coins · +20 rating</div>}
-        {tie && <div style={{ color: "var(--warn)", margin: "8px 0" }}>+1 free spin · +15 coins</div>}
-        {!won && !tie && <div style={{ color: "var(--text-dim)", margin: "8px 0" }}>+5 coins for trying</div>}
+        <div style={{ marginTop: 4, color: "var(--text-dim)", fontSize: 12 }}>
+          {isFriendly ? "Friendly match — score kept, leaderboard unaffected" : `Quick Match · ${matchEnd.difficulty || "medium"} bracket`}
+        </div>
 
         <div className="tw-row" style={{ justifyContent: "center", marginTop: 14, gap: 24 }}>
           <div>
@@ -502,10 +600,36 @@ function MatchEnd() {
           </div>
         </div>
 
-        <div className="tw-row" style={{ justifyContent: "center", marginTop: 18 }}>
-          <button className="tw-btn" onClick={() => { dispatch(leftRoom()); rt.send({ type: "quick_match" }); dispatch(setWaiting(true)); }}>Play again</button>
-          <button className="tw-btn ghost" onClick={() => { dispatch(leftRoom()); dispatch(setView("home")); }}>Home</button>
-        </div>
+        {/* Continue vote area — only renders while the window is open. */}
+        {remaining > 0 && (
+          <div className="tw-card" style={{ marginTop: 18, background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.4)" }}>
+            <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 16 }}>
+              Play another round?
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4 }}>
+              Both players must agree within <strong>{remaining}s</strong>. No penalty either way.
+            </div>
+            {oppWaiting && <div style={{ marginTop: 8, color: "var(--warn)", fontSize: 12 }}>You're in — waiting on {opp?.username || "opponent"}…</div>}
+            {oppDeclined && <div style={{ marginTop: 8, color: "var(--bad)", fontSize: 12 }}>{opp?.username || "Opponent"} declined.</div>}
+
+            <div className="tw-row" style={{ justifyContent: "center", marginTop: 12, flexWrap: "wrap" }}>
+              {myVote == null && (
+                <>
+                  <button className="tw-btn" onClick={() => vote(true)}>Yes — rematch</button>
+                  <button className="tw-btn ghost" onClick={() => vote(false)}>No</button>
+                </>
+              )}
+              {!isFriendly && <button className="tw-btn ghost" onClick={findNew}>Find new opponent</button>}
+              <button className="tw-btn ghost" onClick={goHome}>Home</button>
+            </div>
+          </div>
+        )}
+
+        {remaining === 0 && (
+          <div className="tw-row" style={{ justifyContent: "center", marginTop: 18 }}>
+            <button className="tw-btn ghost" onClick={goHome}>Home</button>
+          </div>
+        )}
       </div>
     </div>
   );

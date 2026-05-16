@@ -116,4 +116,72 @@ router.delete("/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Friend gifts (coins / spins) ────────────────────────────────────────
+// Players can send coins or free spins to confirmed friends. Daily caps
+// per recipient prevent farming. Sender's balance is checked + deducted
+// atomically with the recipient's credit.
+const GIFT_DAILY_CAPS = { coins: 200, free_spins: 5 };
+
+router.post("/gift", (req, res) => {
+  const me = req.user.id;
+  const recipientId = Number(req.body && req.body.to);
+  const kind = String(req.body && req.body.kind || "");
+  const amount = Math.max(1, Math.min(GIFT_DAILY_CAPS[kind] || 0, Math.floor(req.body && req.body.amount || 0)));
+  if (!recipientId || recipientId === me) return res.status(400).json({ error: "invalid_recipient" });
+  if (!(kind in GIFT_DAILY_CAPS)) return res.status(400).json({ error: "invalid_kind" });
+  if (!amount) return res.status(400).json({ error: "invalid_amount" });
+
+  // Confirm friendship — only accepted (status='accepted') pairs may gift.
+  const [a, b] = pair(me, recipientId);
+  const friendship = db.prepare(
+    `SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ? AND status = 'accepted'`
+  ).get(a, b);
+  if (!friendship) return res.status(403).json({ error: "not_friends" });
+
+  // Cap by today's gifts received by this recipient from this sender.
+  // Tracked via a lightweight events row to avoid a new table.
+  const today = todayKey();
+  const sentToday = db.prepare(
+    `SELECT COALESCE(SUM(json_extract(meta, '$.amount')), 0) AS total
+     FROM events
+     WHERE kind = 'friend_gift' AND user_id = ? AND target = ?
+       AND json_extract(meta, '$.date') = ? AND json_extract(meta, '$.gift_kind') = ?`
+  ).get(me, String(recipientId), today, kind).total || 0;
+  if (sentToday + amount > GIFT_DAILY_CAPS[kind]) {
+    return res.status(429).json({
+      error: "daily_cap",
+      sent_today: sentToday,
+      cap: GIFT_DAILY_CAPS[kind],
+      remaining: Math.max(0, GIFT_DAILY_CAPS[kind] - sentToday),
+    });
+  }
+
+  const senderStats = db.prepare("SELECT coins, free_spins FROM stats WHERE user_id = ?").get(me);
+  if (!senderStats) return res.status(404).json({ error: "no_sender_stats" });
+  if (kind === "coins" && senderStats.coins < amount) return res.status(402).json({ error: "insufficient_coins" });
+  if (kind === "free_spins" && senderStats.free_spins < amount) return res.status(402).json({ error: "insufficient_spins" });
+
+  const tx = db.transaction(() => {
+    if (kind === "coins") {
+      db.prepare("UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), me);
+      db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), recipientId);
+    } else {
+      db.prepare("UPDATE stats SET free_spins = free_spins - ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), me);
+      db.prepare("UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), recipientId);
+    }
+    db.prepare(
+      `INSERT INTO events (kind, user_id, target, meta, created_at) VALUES (?, ?, ?, ?, ?)`
+    ).run("friend_gift", me, String(recipientId), JSON.stringify({ gift_kind: kind, amount, date: today }), Date.now());
+  });
+  try { tx(); }
+  catch (e) { return res.status(500).json({ error: "gift_failed" }); }
+
+  res.json({ ok: true, kind, amount });
+});
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 module.exports = router;

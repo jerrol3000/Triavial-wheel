@@ -14,7 +14,8 @@ import Icon from "./Icon";
 
 const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
-  { id: "bundle",      label: "Bundles",       icon: "🎁", description: "Save by buying multiple items together." },
+  { id: "spins",       label: "Spins",         icon: "🎡", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
+  { id: "bundle",      label: "Bundles",       icon: "🎁", description: "Save by buying multiple items together. Most include bonus spins." },
   { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
   { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
   { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },

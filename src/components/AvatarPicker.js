@@ -9,6 +9,22 @@ import { pushToast } from "../store/uiSlice";
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024; // 3MB encoded — matches server limit
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
+// DiceBear options — each style produces an infinitely variable set of
+// avatars from a seed. Free, no signup, served from their CDN. The
+// pre-seeded list below is what we show in the picker grid; players
+// can also tap "🎲 Shuffle" to roll a fresh random seed within a style.
+const DICEBEAR_STYLES = [
+  { id: "adventurer",  label: "Adventurer" },
+  { id: "fun-emoji",   label: "Fun" },
+  { id: "lorelei",     label: "Lorelei" },
+  { id: "bottts",      label: "Bots" },
+  { id: "pixel-art",   label: "Pixel" },
+  { id: "big-smile",   label: "Smiles" },
+];
+// Twelve handpicked seeds per style — picked from English words so the
+// resulting avatars are easy to remember and feel curated.
+const DICEBEAR_SEEDS = ["cosmo", "willow", "sage", "river", "blaze", "luna", "atlas", "echo", "nova", "rio", "ember", "wren"];
+
 // Lets the user pick a preset emoji avatar OR upload a custom image/GIF.
 // Used inline in Settings, and inside the signup modal as a compact picker.
 //
@@ -21,10 +37,17 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
   const [busy, setBusy] = useState(false);
-  // Mirror `value` locally so the picker reflects the latest pick instantly
-  // even when `save="auto"` and the server roundtrip is mid-flight.
+  const [dbStyle, setDbStyle] = useState(DICEBEAR_STYLES[0].id);
   const [localValue, setLocalValue] = useState(value);
   React.useEffect(() => { setLocalValue(value); }, [value]);
+
+  // Roll a fresh random seed within the current DiceBear style — used by
+  // the "🎲 Shuffle" button so players who don't see a face they like
+  // can keep rolling until they do.
+  const shuffleDicebear = () => {
+    const seed = Math.random().toString(36).slice(2, 10);
+    set(`dicebear:${dbStyle}:${seed}`);
+  };
 
   const set = async (next) => {
     setLocalValue(next);
@@ -131,6 +154,44 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
             </button>
           );
         })}
+      </div>
+
+      {/* DiceBear section — free generated avatars. Style selector at
+          the top, 12 seeded variations below, plus a Shuffle button to
+          roll a fresh random seed. */}
+      <div className="tw-avpicker-dicebear">
+        <div className="tw-row" style={{ justifyContent: "space-between", margin: "12px 0 6px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Generated avatars</div>
+          <button className="tw-pill" type="button" onClick={shuffleDicebear} disabled={busy} title="Roll a random one"
+                  style={{ cursor: "pointer", padding: "4px 10px" }}>
+            🎲 Shuffle
+          </button>
+        </div>
+        <div className="tw-row" style={{ gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+          {DICEBEAR_STYLES.map((s) => (
+            <button key={s.id} type="button"
+                    className={`tw-pill ${dbStyle === s.id ? "selected" : ""}`}
+                    style={{ cursor: "pointer", padding: "3px 10px", fontSize: 11,
+                             background: dbStyle === s.id ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
+                             border: dbStyle === s.id ? "none" : undefined, color: "#fff" }}
+                    onClick={() => setDbStyle(s.id)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="tw-avpicker-grid">
+          {DICEBEAR_SEEDS.map((seed) => {
+            const val = `dicebear:${dbStyle}:${seed}`;
+            const selected = localValue === val;
+            return (
+              <button key={seed} type="button" disabled={busy}
+                      className={`tw-avpicker-cell ${selected ? "selected" : ""}`}
+                      onClick={() => set(val)} title={seed}>
+                <Avatar value={val} size={compact ? 36 : 44} />
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

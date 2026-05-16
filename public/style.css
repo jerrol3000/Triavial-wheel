@@ -1667,3 +1667,37 @@ img.tw-avatar { background: none; }
   background: linear-gradient(90deg, #f59e0b, #fbbf24);
   box-shadow: 0 0 10px rgba(245,158,11,0.6);
 }
+
+/* ─── In-app SVG icons + empty-state composite ─────────────────────── */
+.tw-spin { animation: tw-svg-spin 1.1s linear infinite; }
+@keyframes tw-svg-spin { to { transform: rotate(360deg); } }
+
+.tw-empty-state {
+  text-align: center;
+  padding: 36px 24px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.tw-empty-state-icon {
+  display: inline-flex;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 6px 18px rgba(124,58,237,0.25));
+}
+.tw-empty-state-title {
+  font-family: "Fredoka";
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text);
+}
+.tw-empty-state-hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 380px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.45;
+}

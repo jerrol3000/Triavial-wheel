@@ -16,6 +16,13 @@ export default function OtherAvatar({ value, size = 32, cosmetics, className = "
     if (!value) {
       return <span className={cls} style={sz} title={title}><span className="tw-avatar-emoji">👤</span></span>;
     }
+    if (typeof value === "string" && value.startsWith("dicebear:")) {
+      const [, style, ...seedParts] = value.split(":");
+      const seed = seedParts.join(":") || "anon";
+      const url = `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`;
+      if (failed) return <span className={cls} style={sz} title={title}><span className="tw-avatar-emoji">👤</span></span>;
+      return <img className={cls} style={sz} src={url} alt="" title={title} onError={() => setFailed(true)} draggable={false} />;
+    }
     if (typeof value === "string" && value.startsWith("preset:")) {
       const preset = getPresetById(value.slice(7));
       if (!preset) return <span className={cls} style={sz} title={title}><span className="tw-avatar-emoji">👤</span></span>;

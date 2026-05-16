@@ -2,8 +2,9 @@ import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { equipCosmetic, unequipCategory, useBoost, isOwned, selectOwnedQty } from "../store/cosmeticsSlice";
 import { fetchStats } from "../store/statsSlice";
-import { pushToast } from "../store/uiSlice";
+import { pushToast, setView } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
+import { EmptyInventoryIcon, EmptyState, SpinnerIcon } from "./SvgIcons";
 
 // Player inventory — one place to see every owned cosmetic + every
 // consumable in stock, equip / unequip equippables, and burn boosts
@@ -23,13 +24,38 @@ export default function Inventory() {
   const equipped = useSelector((s) => s.cosmetics.equipped);
 
   if (!catalog.length) {
-    return <div className="tw-card" style={{ textAlign: "center", color: "var(--text-dim)" }}>Loading inventory…</div>;
+    return (
+      <div className="tw-card" style={{ textAlign: "center" }}>
+        <SpinnerIcon size={32} />
+        <div style={{ marginTop: 8, color: "var(--text-dim)" }}>Loading inventory…</div>
+      </div>
+    );
   }
 
   const ownedIds = new Set(owned.map((o) => o.cosmetic_id));
   const ownedConsumables = owned
     .map((o) => ({ ...o, item: catalog.find((c) => c.id === o.cosmetic_id) }))
     .filter((o) => o.item && o.item.consumable && o.qty > 0);
+
+  // Player has literally nothing — render a full empty state with a CTA
+  // to the Store instead of three "Nothing owned yet" cards stacked.
+  const hasAnyOwnedEquippable = EQUIPPABLE_CATS.some((cat) =>
+    catalog.filter((c) => c.category === cat.id).some((c) => isOwnedHelper(c, ownedIds))
+  );
+  if (!hasAnyOwnedEquippable && ownedConsumables.length === 0) {
+    return (
+      <EmptyState
+        icon={<EmptyInventoryIcon size={120} />}
+        title="Your inventory is empty"
+        hint="Visit the Store to grab frames, celebrations, titles, or a spin pack to get rolling."
+        action={
+          <button className="tw-btn" onClick={() => dispatch(setView("shop"))}>
+            Open Store
+          </button>
+        }
+      />
+    );
+  }
 
   return (
     <div className="tw-col">

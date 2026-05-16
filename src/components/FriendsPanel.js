@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { pushToast, setModal } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import Avatar from "./Avatar";
+import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
 
 // Friends list + add-by-username + pending requests. Rendered on Profile and
 // inside the Online lobby.
@@ -110,8 +111,10 @@ export default function FriendsPanel({ compact = false }) {
       )}
 
       {friends.length === 0 ? (
-        <div style={{ color: "var(--text-dim)", fontSize: 13, padding: "10px 0", textAlign: "center" }}>
-          No friends yet. Add someone by their username above.
+        <div style={{ textAlign: "center", padding: "16px 8px" }}>
+          <EmptyFriendsIcon size={88} />
+          <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 600, marginTop: 8 }}>No friends yet</div>
+          <div style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 4 }}>Add someone by their username above to challenge them.</div>
         </div>
       ) : (
         friends.slice(0, compact ? 5 : 50).map((f) => (
@@ -163,7 +166,10 @@ function GiftButton({ friend }) {
 
   return (
     <div style={{ position: "relative" }}>
-      <button className="tw-btn ghost sm" title="Send a gift" onClick={() => setOpen((v) => !v)} disabled={busy}>🎁</button>
+      <button className="tw-btn ghost sm" title="Send a gift" onClick={() => setOpen((v) => !v)} disabled={busy}
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px" }}>
+        <GiftIcon size={18} />
+      </button>
       {open && (
         <div className="tw-gift-menu">
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>Gift to @{friend.username}</div>

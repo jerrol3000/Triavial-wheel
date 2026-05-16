@@ -23,6 +23,22 @@ export default function Avatar({ value, size = 32, ring = false, className = "",
     if (!value) {
       return <span className={cls} style={sz} title={title} aria-label="avatar"><span className="tw-avatar-emoji">👤</span></span>;
     }
+    // DiceBear avatar — format: "dicebear:<style>:<seed>". Renders the
+    // SVG straight from their free API. No signup needed, no per-request
+    // cost. Each (style, seed) combo is deterministic so the same value
+    // always produces the same picture.
+    if (typeof value === "string" && value.startsWith("dicebear:")) {
+      const [, style, ...seedParts] = value.split(":");
+      const seed = seedParts.join(":") || "anon";
+      const url = `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`;
+      if (failed) {
+        return <span className={cls} style={sz} title={title}><span className="tw-avatar-emoji">👤</span></span>;
+      }
+      return (
+        <img className={cls} style={sz} src={url} alt="" title={title}
+             onError={() => setFailed(true)} draggable={false} />
+      );
+    }
     if (typeof value === "string" && value.startsWith("preset:")) {
       const id = value.slice(7);
       const preset = getPresetById(id);

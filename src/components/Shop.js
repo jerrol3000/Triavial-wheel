@@ -11,6 +11,7 @@ import { awardLocal } from "../store/badgesSlice";
 import PayPalButton from "./PayPalButton";
 import StripeCheckoutButton from "./StripeCheckoutButton";
 import Icon from "./Icon";
+import { SpinnerIcon, EmptyStoreIcon, EmptyState } from "./SvgIcons";
 
 const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
@@ -111,19 +112,23 @@ export default function Shop() {
       {activeTab === "currency"
         ? <CurrencyPane />
         : !loaded
-          ? <div className="tw-card" style={{ textAlign: "center", color: "var(--text-dim)" }}>Loading store…</div>
-          : (
-            <div className="tw-store-grid">
-              {itemsForTab.map((item) => (
-                <StoreItemCard key={item.id} item={item} onNeedCoins={() => setActiveTab("currency")} />
-              ))}
-              {itemsForTab.length === 0 && (
-                <div className="tw-card" style={{ gridColumn: "1 / -1", textAlign: "center", color: "var(--text-dim)" }}>
-                  Nothing here yet — check back soon.
-                </div>
-              )}
+          ? <div className="tw-card" style={{ textAlign: "center", padding: 32 }}>
+              <SpinnerIcon size={36} />
+              <div style={{ marginTop: 10, color: "var(--text-dim)" }}>Loading store…</div>
             </div>
-          )
+          : itemsForTab.length === 0
+            ? <EmptyState
+                icon={<EmptyStoreIcon size={120} />}
+                title="Nothing here yet"
+                hint="Featured items rotate daily — check back tomorrow for fresh picks."
+              />
+            : (
+              <div className="tw-store-grid">
+                {itemsForTab.map((item) => (
+                  <StoreItemCard key={item.id} item={item} onNeedCoins={() => setActiveTab("currency")} />
+                ))}
+              </div>
+            )
       }
     </div>
   );

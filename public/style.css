@@ -221,8 +221,8 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 
 .tw-nav {
   position: fixed; bottom: 0; left: 0; right: 0;
-  display: flex; justify-content: space-around;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  display: flex; justify-content: space-around; align-items: flex-end;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   background: rgba(15, 12, 41, 0.9);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -233,8 +233,8 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   flex: 1; max-width: 110px;
   appearance: none; border: none; background: none;
   color: var(--text-dim); font-family: inherit; font-size: 12px; font-weight: 600;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 8px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 4px 4px 2px;
   cursor: pointer;
 }
 .tw-nav button.active { color: var(--primary-2); }
@@ -817,67 +817,18 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 /* When an icon appears inside a pill button, nudge baseline alignment. */
 .tw-pill .tw-icon { vertical-align: text-bottom; }
 
-/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform. */
+/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
+   `big` tabs (Shop, VS) get a larger icon slot for visual hierarchy. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  margin-bottom: 2px;
 }
-
-/* Empty slot reserved for the absolute-positioned VS hero — same flex
-   weight as a real tab so the row stays balanced and VS lands at 50%. */
-.tw-nav-hero-slot {
-  flex: 1;
-  max-width: 110px;
-  pointer-events: none;
-}
-
-/* VS hero — circular FAB-style centerpiece, floats above the nav bar at
-   exact 50% horizontally with a glowing brand-gradient halo. */
-.tw-nav-hero {
-  position: absolute;
-  left: 50%;
-  bottom: calc(14px + env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-
-  appearance: none;
-  cursor: pointer;
-  padding: 0;
-  width: 76px;
-  height: 76px;
-  border-radius: 50%;
-  border: 4px solid rgba(15, 12, 41, 0.95);   /* "punched out" of the nav */
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.95), rgba(236, 72, 153, 0.95));
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  box-shadow:
-    0 10px 28px rgba(124, 58, 237, 0.55),
-    0 0 22px rgba(236, 72, 153, 0.35),
-    inset 0 1px 2px rgba(255, 255, 255, 0.18);
-
-  transition: transform 180ms ease, box-shadow 180ms ease;
-}
-.tw-nav-hero:hover {
-  transform: translateX(-50%) translateY(-3px);
-  box-shadow:
-    0 14px 32px rgba(124, 58, 237, 0.65),
-    0 0 28px rgba(236, 72, 153, 0.5),
-    inset 0 1px 2px rgba(255, 255, 255, 0.22);
-}
-.tw-nav-hero.active {
-  box-shadow:
-    0 12px 30px rgba(236, 72, 153, 0.7),
-    0 0 28px rgba(236, 72, 153, 0.55),
-    inset 0 1px 2px rgba(255, 255, 255, 0.25);
-}
-.tw-nav-hero .tw-icon {
-  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
+.tw-nav button.big .tw-nav-icon {
+  width: 48px;
+  height: 48px;
 }
 
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */

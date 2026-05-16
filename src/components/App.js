@@ -76,15 +76,6 @@ export default function App() {
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
 
-    // Open the WebSocket as soon as we have an auth token. The bell
-    // subscribes to it for live `notification` pushes (gifts, friend
-    // requests) so the badge updates instantly instead of waiting on
-    // its 30s poll. Idempotent — Online.js calls connect() again when
-    // it mounts and the realtime client short-circuits.
-    if (getToken()) {
-      try { rt.connect(); } catch (e) {}
-    }
-
     // When any authed request hits 401, the API client clears the token and
     // dispatches this event — surface a clear "your session expired" notice
     // and open the auth modal so the user can sign back in. Most common
@@ -109,6 +100,21 @@ export default function App() {
       window.removeEventListener("trivia_auth_expired", onExpired);
     };
   }, [dispatch]);
+
+  // Open the WebSocket whenever we have an authed user, close it on
+  // logout. Lives in its own effect (keyed on user) because the boot
+  // effect above runs only once at mount — without this, a user who
+  // logs in after page load via the AuthModal would never connect to
+  // the WS, and live push notifications (gifts, friend requests)
+  // would silently never arrive. Idempotent: rt.connect() short-
+  // circuits if a socket is already open or connecting.
+  useEffect(() => {
+    if (!user) {
+      try { rt.disconnect(); } catch (e) {}
+      return;
+    }
+    try { rt.connect(); } catch (e) {}
+  }, [user && user.id]);
 
   const ViewComp = VIEWS[view] || Home;
   return (

@@ -833,11 +833,26 @@ function getOnlineUserIds() {
 // `notification` event so the recipient's bell updates instantly
 // instead of waiting on the 30s poll. Silent no-op if the user isn't
 // currently connected — the next /api/notifications poll will catch
-// them up once they're back.
+// them up once they're back. Logs the deliver/skip decision so a
+// "notifications aren't arriving" report can be diagnosed from server
+// logs alone (was the recipient connected? was the socket healthy?).
 function sendToUser(userId, msg) {
   const ws = connections.get(userId);
-  if (ws && ws.readyState === 1) {
-    try { ws.send(JSON.stringify(msg)); } catch (e) {}
+  if (!ws) {
+    console.log(`[realtime] sendToUser(${userId}, ${msg && msg.type}) → recipient offline, skipped`);
+    return false;
+  }
+  if (ws.readyState !== 1) {
+    console.log(`[realtime] sendToUser(${userId}, ${msg && msg.type}) → socket readyState=${ws.readyState}, skipped`);
+    return false;
+  }
+  try {
+    ws.send(JSON.stringify(msg));
+    console.log(`[realtime] sendToUser(${userId}, ${msg && msg.type}) → delivered`);
+    return true;
+  } catch (e) {
+    console.log(`[realtime] sendToUser(${userId}, ${msg && msg.type}) → send threw ${e.message}`);
+    return false;
   }
 }
 

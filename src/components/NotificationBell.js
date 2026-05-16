@@ -65,6 +65,11 @@ export default function NotificationBell() {
     const off = rt.on((msg) => {
       if (!msg || msg.type !== "notification" || !msg.notification) return;
       const n = msg.notification;
+      // Console hint so a "notifications not arriving" report can be
+      // verified in DevTools — if you SEE this line the WS delivered;
+      // if you don't, the WS side is broken (server not deployed, no
+      // socket open, etc.).
+      console.info("[notif] received via WS:", n.type, n.title);
       setItems((prev) => {
         if (prev.some((it) => it.id === n.id)) return prev;
         return [{ ...n, unread: true }, ...prev].slice(0, 30);

@@ -2,7 +2,7 @@ import { createSlice } from "@reduxjs/toolkit";
 import { load, save } from "../utils/storage";
 import { setSoundEnabled } from "../utils/sound";
 
-const initial = load("ui", { soundOn: true, view: "home", modal: null, toasts: [] });
+const initial = { ...load("ui", { soundOn: true, view: "home", modal: null, toasts: [] }), profileTab: null };
 setSoundEnabled(initial.soundOn);
 
 let toastId = 1;
@@ -13,8 +13,14 @@ const slice = createSlice({
   reducers: {
     setView: (s, a) => {
       s.view = a.payload;
+      // Clearing any pinned profileTab on navigation away keeps Profile's
+      // default landing tab behavior intact for normal nav.
+      if (a.payload !== "profile") s.profileTab = null;
       save("ui", { soundOn: s.soundOn, view: s.view, modal: null, toasts: [] });
     },
+    // Lets other views deep-link to a specific tab when opening Profile
+    // (e.g., the Store's "Inventory" pill opens Profile → inventory tab).
+    setProfileTab: (s, a) => { s.profileTab = a.payload; },
     setModal: (s, a) => { s.modal = a.payload; },
     closeModal: (s) => { s.modal = null; },
     toggleSound: (s) => {
@@ -31,5 +37,5 @@ const slice = createSlice({
   },
 });
 
-export const { setView, setModal, closeModal, toggleSound, pushToast, dismissToast } = slice.actions;
+export const { setView, setProfileTab, setModal, closeModal, toggleSound, pushToast, dismissToast } = slice.actions;
 export default slice.reducer;

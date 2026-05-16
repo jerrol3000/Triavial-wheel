@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { addCoins, refillLives, setPro, fetchStats } from "../store/statsSlice";
-import { pushToast, setModal } from "../store/uiSlice";
+import { pushToast, setModal, setView, setProfileTab } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import {
   fetchCatalog, buyCosmetic, equipCosmetic, useBoost, isOwned, selectOwnedQty,
@@ -16,12 +16,15 @@ const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
   { id: "bundle",      label: "Bundles",       icon: "🎁", description: "Save by buying multiple items together." },
   { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
-  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Customize the wheel pointer." },
   { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
   { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
   { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
   { id: "currency",    label: "Coins & Pro",   icon: "🪙", description: "Top up coins with real money or upgrade to Pro." },
 ];
+
+// Categories hidden from the store tabs but still present in the catalog
+// (so already-owned items keep working). Featured rotation also skips them.
+const HIDDEN_CATEGORIES = new Set(["pointer"]);
 
 // Deterministic daily rotation — picks 4 items keyed off today's date so
 // every player sees the same featured set today but tomorrow it changes.
@@ -29,7 +32,7 @@ function pickFeatured(catalog) {
   if (!catalog.length) return [];
   const day = Math.floor(Date.now() / 86_400_000);
   const ranked = catalog
-    .filter((c) => c.category !== "boost" && c.category !== "bundle" && c.price_coins > 0 && !c.pro_only)
+    .filter((c) => c.category !== "boost" && c.category !== "bundle" && c.price_coins > 0 && !c.pro_only && !HIDDEN_CATEGORIES.has(c.category))
     .map((c) => ({ c, score: hash(c.id + ":" + day) }))
     .sort((a, b) => a.score - b.score)
     .slice(0, 4)
@@ -68,14 +71,24 @@ export default function Shop() {
 
   return (
     <div className="tw-col">
-      <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+      <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
           <Icon name="shop" size={32} /> Store
         </h1>
-        <span className="tw-pill" title="Your coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 6px" }}>
-          <Icon name="coins" size={22} />
-          <strong>{stats.coins.toLocaleString()}</strong>
-        </span>
+        <div className="tw-row" style={{ gap: 6 }}>
+          {user && (
+            <button className="tw-pill"
+                    style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+                    onClick={() => { dispatch(setProfileTab("inventory")); dispatch(setView("profile")); }}
+                    title="View your owned cosmetics + boosts">
+              🎒 Inventory
+            </button>
+          )}
+          <span className="tw-pill" title="Your coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px 6px 6px" }}>
+            <Icon name="coins" size={22} />
+            <strong>{stats.coins.toLocaleString()}</strong>
+          </span>
+        </div>
       </div>
 
       <div className="tw-store-tabs">
@@ -101,7 +114,7 @@ export default function Shop() {
           : (
             <div className="tw-store-grid">
               {itemsForTab.map((item) => (
-                <StoreItemCard key={item.id} item={item} />
+                <StoreItemCard key={item.id} item={item} onNeedCoins={() => setActiveTab("currency")} />
               ))}
               {itemsForTab.length === 0 && (
                 <div className="tw-card" style={{ gridColumn: "1 / -1", textAlign: "center", color: "var(--text-dim)" }}>
@@ -115,7 +128,7 @@ export default function Shop() {
   );
 }
 
-function StoreItemCard({ item }) {
+function StoreItemCard({ item, onNeedCoins }) {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
   const coins = useSelector((s) => s.stats.coins);
@@ -138,7 +151,10 @@ function StoreItemCard({ item }) {
       return;
     }
     if (coins < item.price_coins) {
-      dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: `Need ${item.price_coins - coins} more.` }));
+      // Surface a toast AND jump straight to the Coins & Pro tab so the
+      // player has a one-tap path to top up. Beats just blocking them.
+      dispatch(pushToast({ icon: "🪙", title: "Need more coins", text: `Short by ${(item.price_coins - coins).toLocaleString()}. Grab a pack below.` }));
+      if (onNeedCoins) onNeedCoins();
       return;
     }
     sfx.coin();

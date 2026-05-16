@@ -1356,3 +1356,45 @@ img.tw-avatar { background: none; }
 
 .tw-store-bundle-list ul { list-style: none; padding-left: 0; }
 .tw-store-bundle-list li::before { content: "• "; color: var(--primary-2); }
+
+/* ─── Inventory grid (Profile → Inventory tab) ───────────────────────── */
+.tw-inv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.tw-inv-card {
+  appearance: none;
+  background: rgba(255,255,255,0.05);
+  border: 2px solid var(--card-border);
+  border-radius: 14px;
+  padding: 12px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+}
+.tw-inv-card:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(124,58,237,0.5); }
+.tw-inv-card.equipped {
+  border-color: var(--primary-2);
+  background: rgba(124,58,237,0.18);
+  cursor: default;
+}
+.tw-inv-card.boost { cursor: default; }
+.tw-inv-card-icon { font-size: 32px; line-height: 1; }
+.tw-inv-card-name { font-weight: 700; font-size: 13px; }
+.tw-inv-card-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.tw-inv-card-status.equipped { color: var(--good); font-weight: 700; }
+.tw-inv-card-qty {
+  font-size: 12px;
+  color: var(--warn);
+  font-weight: 700;
+}

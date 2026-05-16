@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchLeaderboard, fetchStats } from "../store/statsSlice";
-import { setModal } from "../store/uiSlice";
+import { setModal, setProfileTab } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { ACHIEVEMENTS, ACHIEVEMENT_MAP } from "../data/achievements";
 import { api } from "../api/client";
@@ -11,14 +11,26 @@ import CategoryMastery from "./CategoryMastery";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
 import BadgesPanel from "./BadgesPanel";
+import Inventory from "./Inventory";
 import { BadgeCase } from "./PlayerFlair";
 
 export default function Profile() {
   const dispatch = useDispatch();
   const stats = useSelector((s) => s.stats);
   const user = useSelector((s) => s.auth.user);
-  const [tab, setTab] = useState("stats");
+  const deepLinkTab = useSelector((s) => s.ui.profileTab);
+  const [tab, setTab] = useState(deepLinkTab || "stats");
   const [rank, setRank] = useState(null);
+
+  // Honor incoming deep-link from other views (e.g., Store's Inventory
+  // pill), then clear the signal so default landing stays at "stats" on
+  // subsequent Profile visits.
+  useEffect(() => {
+    if (deepLinkTab) {
+      setTab(deepLinkTab);
+      dispatch(setProfileTab(null));
+    }
+  }, [deepLinkTab, dispatch]);
 
   useEffect(() => {
     dispatch(fetchLeaderboard());
@@ -85,13 +97,14 @@ export default function Profile() {
       </div>
 
       <div className="tw-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
-        {["stats", "badges", "achievements", "leaderboard", "friends", "history"].map((t) => (
+        {["stats", "inventory", "badges", "achievements", "leaderboard", "friends", "history"].map((t) => (
           <button key={t} className="tw-pill"
                   style={{ cursor: "pointer", background: tab === t ? "rgba(124,58,237,0.4)" : undefined, textTransform: "capitalize" }}
                   onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
 
+      {tab === "inventory" && <Inventory />}
       {tab === "badges" && <BadgesPanel />}
 
       {tab === "stats" && (

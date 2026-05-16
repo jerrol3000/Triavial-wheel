@@ -54,7 +54,11 @@ router.post("/register", (req, res) => {
     const info = db.prepare(
       "INSERT INTO users (email, username, password_hash, is_admin, country, language, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     ).run(email.toLowerCase(), username, hash, isAdmin, cc, ln, av, now);
-    db.prepare("INSERT INTO stats (user_id, updated_at) VALUES (?, ?)").run(info.lastInsertRowid, now);
+    // Every new account starts with the regen-floor amount of spins so
+    // they can hit the wheel immediately. Explicit value (vs relying on
+    // the column DEFAULT) covers prod DBs that were created before the
+    // default was bumped from 3 → 5.
+    db.prepare("INSERT INTO stats (user_id, free_spins, updated_at) VALUES (?, 5, ?)").run(info.lastInsertRowid, now);
     db.prepare("INSERT INTO leaderboard (user_id, updated_at) VALUES (?, ?)").run(info.lastInsertRowid, now);
     logEvent("signup", info.lastInsertRowid, null, { country: cc, language: ln });
     const user = { id: info.lastInsertRowid, username, is_admin: !!isAdmin, country: cc, language: ln, avatar: av };

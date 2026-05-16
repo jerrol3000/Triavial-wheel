@@ -217,7 +217,7 @@ ensureColumn("users", "country", "TEXT");
 ensureColumn("users", "language", "TEXT");
 
 // v3 schema additions: free spins economy + online match stats + daily login streak.
-ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 3");
+ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 5");
 ensureColumn("stats", "last_login_date", "TEXT");
 ensureColumn("stats", "login_streak", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "online_wins", "INTEGER NOT NULL DEFAULT 0");

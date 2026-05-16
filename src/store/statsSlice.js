@@ -4,7 +4,7 @@ import { load, save } from "../utils/storage";
 import { levelForXp } from "../utils/level";
 
 const STORAGE_KEY = "stats";
-const STORAGE_VERSION = 3;  // bumped after merging lives → free_spins (single resource)
+const STORAGE_VERSION = 4;  // bumped: starting spins 0 → 5 for new guests
 const VERSION_KEY = "stats_version";
 
 const DEFAULT_STATS = {
@@ -37,7 +37,7 @@ const DEFAULT_STATS = {
   online_wins: 0,
   online_losses: 0,
   online_rating: 1000,
-  free_spins: 0,
+  free_spins: 5,
   coins_spent_total: 0,
   cosmetics_owned_count: 0,
   pro_lifetime_months: 0,

@@ -11,6 +11,7 @@ import { markCategoryPlayed } from "../store/statsSlice";
 import { api } from "../api/client";
 import QuestsPanel from "./QuestsPanel";
 import LiveLeaderboard from "./LiveLeaderboard";
+import Icon from "./Icon";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -163,7 +164,7 @@ function EarnMoreStrip() {
   const items = [];
   items.push({
     key: "spin",
-    icon: "📺",
+    icon: <Icon name="free_spin" size={26} />,
     text: "Free spin",
     sub: "Watch ad",
     onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } }),
@@ -182,7 +183,7 @@ function EarnMoreStrip() {
   }
   items.push({
     key: "coins",
-    icon: "🪙",
+    icon: <Icon name="coins" size={26} />,
     text: "+30 coins",
     sub: "Watch ad",
     onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "coins" } } }),
@@ -191,7 +192,7 @@ function EarnMoreStrip() {
   if (user) {
     items.push({
       key: "shop",
-      icon: "🛒",
+      icon: <Icon name="shop" size={26} />,
       text: "Buy more",
       sub: "Shop",
       onClick: () => dispatch(setView("shop")),

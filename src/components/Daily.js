@@ -6,6 +6,7 @@ import { setView, pushToast } from "../store/uiSlice";
 import { safeNavigate } from "../utils/navigate";
 import { addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement } from "../store/statsSlice";
 import QuestionCard from "./QuestionCard";
+import Icon from "./Icon";
 import { sfx } from "../utils/sound";
 import { buildDailyShareText, shareText } from "../utils/share";
 import { ACHIEVEMENT_MAP } from "../data/achievements";
@@ -115,7 +116,9 @@ export default function Daily() {
 
       {phase === "intro" && (
         <div className="tw-card" style={{ textAlign: "center" }}>
-          <div style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: 700 }}>📅 Daily Challenge</div>
+          <div style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
+            <Icon name="daily" size={30} /> Daily Challenge
+          </div>
           <div style={{ color: "var(--text-dim)", margin: "6px 0 14px" }}>
             Same 10 questions for everyone, today only.<br />
             Date: <strong>{daily.date}</strong> · Category teaser: <strong>{daily.category?.option || "—"}</strong>

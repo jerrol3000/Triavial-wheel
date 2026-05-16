@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { toggleSound, pushToast, setView } from "../store/uiSlice";
 import { logout, fetchMe } from "../store/authSlice";
 import AvatarPicker from "./AvatarPicker";
+import Icon from "./Icon";
 
 export default function Settings() {
   const dispatch = useDispatch();
@@ -47,7 +48,9 @@ export default function Settings() {
 
   return (
     <div className="tw-col">
-      <h1 style={{ margin: "8px 0" }}>⚙️ {t("settings.title")}</h1>
+      <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
+        <Icon name="settings" size={32} /> {t("settings.title")}
+      </h1>
 
       {user && (
         <div className="tw-card">

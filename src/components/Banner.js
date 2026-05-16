@@ -46,26 +46,26 @@ export default function Banner() {
           {livesNext() && <span style={{ marginLeft: 6, color: "var(--text-dim)" }}>{livesNext()}</span>}
         </span>
         {stats.free_spins > 0 && (
-          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <Icon name="free_spin" size={16} /> {stats.free_spins}
+          <span className="tw-pill" title="Free spins" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(236,72,153,0.4))", border: "none", color: "#fff", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
+            <Icon name="free_spin" size={20} /> {stats.free_spins}
           </span>
         )}
-        <span className="tw-pill" title="Coins" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <Icon name="coins" size={16} /> {stats.coins}
+        <span className="tw-pill" title="Coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
+          <Icon name="coins" size={20} /> {stats.coins}
         </span>
         <span className="tw-pill" title={`Level ${level} • ${xpInLevel}/${xpForNext} XP`}>
           ⭐ L{level} · {percent}%
         </span>
         {stats.pro && <span className="tw-pill" style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none" }}>PRO</span>}
-        <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer" }}>
-          {soundOn ? <Icon name="sound" size={16} /> : "🔇"}
+        <button className="tw-pill" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer", padding: "4px 8px" }}>
+          {soundOn ? <Icon name="sound" size={20} /> : <span style={{ fontSize: 18 }}>🔇</span>}
         </button>
-        <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer" }}>
-          <Icon name="settings" size={16} />
+        <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
+          <Icon name="settings" size={20} />
         </button>
         {user && user.is_admin && (
-          <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <Icon name="admin" size={16} /> Admin
+          <a className="tw-pill" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
+            <Icon name="admin" size={20} /> Admin
           </a>
         )}
         {user ? (

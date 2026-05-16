@@ -8,6 +8,7 @@ import { POWERUP_LIST } from "../data/powerups";
 import { sfx } from "../utils/sound";
 import PayPalButton from "./PayPalButton";
 import StripeCheckoutButton from "./StripeCheckoutButton";
+import Icon from "./Icon";
 
 const COIN_PACKS = [
   { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
@@ -123,7 +124,9 @@ export default function Shop() {
 
   return (
     <div className="tw-col">
-      <h1 style={{ margin: "8px 0" }}>🛒 Shop</h1>
+      <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
+        <Icon name="shop" size={32} /> Shop
+      </h1>
 
       {/* Pro */}
       <div className="tw-card" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(239,68,68,0.25))", borderColor: "rgba(245,158,11,0.5)" }}>

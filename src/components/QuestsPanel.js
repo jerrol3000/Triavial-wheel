@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { fetchStats } from "../store/statsSlice";
 import { pushToast } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
+import Icon from "./Icon";
 
 export default function QuestsPanel() {
   const dispatch = useDispatch();
@@ -53,8 +54,9 @@ export default function QuestsPanel() {
 
   return (
     <div className="tw-card">
-      <div className="tw-row" style={{ marginBottom: 10 }}>
-        <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 16 }}>📋 Daily Quests</div>
+      <div className="tw-row" style={{ marginBottom: 10, gap: 8 }}>
+        <Icon name="daily_quest" size={26} />
+        <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 16 }}>Daily Quests</div>
         <div style={{ flex: 1 }} />
         <span className="tw-pill" title="Quests reset at midnight UTC">{completedCount}/{quests.length} done</span>
       </div>

@@ -1,33 +1,33 @@
 // Central icon registry. The app references icons by name (e.g. "vs"); the
-// <Icon name="vs" /> component renders either a PNG from /public/icons/<name>.png
-// (when the file exists) or falls back to the emoji.
+// <Icon name="vs" /> component renders either an image from /icons/<file>
+// (when the file exists) or falls back to the emoji on 404.
 //
-// To use the custom illustrated icons:
-//   1. Drop each PNG into public/icons/ with the matching filename
-//   2. The Icon component auto-detects and uses them (with emoji as fallback
-//      while loading or if a file 404s).
+// File names below match the actual assets in public/icons/. Filenames are
+// case-sensitive on Linux/Netlify — leave them exactly as committed.
 export const ICONS = {
-  // UI / navigation
-  vs:            { emoji: "🆚", file: "vs.png",            label: "VS / Online" },
-  stats:         { emoji: "📊", file: "stats.png",         label: "My Stats" },
-  shop:          { emoji: "🛒", file: "shop.png",          label: "Shop" },
-  daily_bonus:   { emoji: "🎁", file: "daily-bonus.png",   label: "Daily Login Prize" },
-  free_spin:     { emoji: "🎡", file: "free-spin.png",     label: "Free Spin" },
-  coins:         { emoji: "🪙", file: "coins.png",         label: "Gold Coins" },
-  sound:         { emoji: "🔊", file: "sound.png",         label: "Sound" },
-  admin:         { emoji: "🛠️", file: "admin.png",         label: "Admin Panel" },
-  daily_quest:   { emoji: "📋", file: "daily-quest.png",   label: "Daily Quest" },
-  leaderboard:   { emoji: "🌍", file: "leaderboard.png",   label: "World Leaderboard" },
-  // Extras
-  play:          { emoji: "🎡", file: "play.png",          label: "Play" },
-  daily:         { emoji: "📅", file: "daily.png",         label: "Daily Challenge" },
-  settings:      { emoji: "⚙️", file: "settings.png",      label: "Settings" },
-  me:            { emoji: "👤", file: "me.png",            label: "Me" },
-  back:          { emoji: "←",  file: "back.png",          label: "Back" },
+  // UI / navigation — real illustrated icons
+  vs:            { emoji: "🆚", file: "VS.jpg",           label: "VS / Online" },
+  stats:         { emoji: "📊", file: "My_stats.jpg",     label: "My Stats" },
+  shop:          { emoji: "🛒", file: "Shop.jpg",         label: "Shop" },
+  daily_bonus:   { emoji: "🎁", file: "daily_prize.PNG",  label: "Daily Login Prize" },
+  free_spin:     { emoji: "🎡", file: "free_spin.PNG",    label: "Free Spin" },
+  coins:         { emoji: "🪙", file: "coins.jpg",        label: "Gold Coins" },
+  sound:         { emoji: "🔊", file: "sound.jpg",        label: "Sound" },
+  admin:         { emoji: "🛠️", file: "admin_panel.jpg",  label: "Admin Panel" },
+  daily_quest:   { emoji: "📋", file: "daily_quest.jpg",  label: "Daily Quest" },
+  leaderboard:   { emoji: "🌍", file: "leader_board.jpg", label: "World Leaderboard" },
+
+  // Nav / utility — fall back to emoji until you drop in custom files.
+  // Drop e.g. public/icons/play.png and set `file` here to enable it.
+  play:          { emoji: "🎡", file: null, label: "Play" },
+  daily:         { emoji: "📅", file: null, label: "Daily Challenge" },
+  settings:      { emoji: "⚙️", file: null, label: "Settings" },
+  me:            { emoji: "👤", file: null, label: "Me" },
+  back:          { emoji: "←",  file: null, label: "Back" },
 };
 
-// Preset profile-picture avatars. Each renders as an emoji; you can replace
-// with PNGs by saving files to public/icons/avatars/<key>.png — same
+// Preset profile-picture avatars. Each renders as an emoji; replace with
+// custom PNGs by saving files to public/icons/avatars/<key>.png — same
 // fallback semantics as ICONS.
 export const AVATAR_PRESETS = [
   { id: "cool",      emoji: "😎", file: "avatars/cool.png" },

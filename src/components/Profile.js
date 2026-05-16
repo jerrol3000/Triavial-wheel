@@ -9,6 +9,7 @@ import FriendsPanel from "./FriendsPanel";
 import MatchHistory from "./MatchHistory";
 import CategoryMastery from "./CategoryMastery";
 import Avatar from "./Avatar";
+import Icon from "./Icon";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -120,7 +121,9 @@ export default function Profile() {
 
       {tab === "leaderboard" && (
         <div className="tw-card">
-          <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Global high scores</div>
+          <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 8, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Icon name="leaderboard" size={22} /> Global high scores
+          </div>
           {stats.leaderboard.length === 0 ? (
             <div style={{ color: "var(--text-dim)" }}>No scores yet. Be the first!</div>
           ) : (

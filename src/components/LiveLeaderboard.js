@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { api } from "../api/client";
 import { useT } from "../i18n";
 import Avatar from "./Avatar";
+import Icon from "./Icon";
 
 // Polls the global leaderboard every POLL_MS and animates row position
 // changes via CSS transforms. Each row keeps a stable DOM node (keyed by
@@ -75,7 +76,10 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
   return (
     <div className={`tw-livelb ${compact ? "compact" : ""}`}>
       <div className="tw-livelb-header">
-        <span className="tw-livelb-title">🌍 {t("home.leaderboard.title").replace("🌍 ", "")}</span>
+        <span className="tw-livelb-title" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Icon name="leaderboard" size={22} />
+          {t("home.leaderboard.title").replace("🌍 ", "")}
+        </span>
         <div className="tw-row" style={{ gap: 6 }}>
           <span className="tw-livelb-dot" title={`Updated every ${Math.round(POLL_MS / 1000)}s`} />
           <span style={{ fontSize: 10, color: "var(--text-dim)", letterSpacing: 1 }}>LIVE</span>

@@ -803,6 +803,31 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   .tw-quick-badge { font-size: 9px; padding: 2px 5px; }
 }
 
+/* ─── Custom icons (rendered by <Icon name="..." />) ─────────────────────── */
+.tw-icon {
+  display: inline-block;
+  object-fit: contain;
+  vertical-align: middle;
+  flex: 0 0 auto;
+  /* Subtle shadow so dark-themed illustrated icons separate from the background. */
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+.tw-icon.rounded { border-radius: 6px; }
+
+/* When an icon appears inside a pill button, give it a touch more spacing. */
+.tw-pill .tw-icon { vertical-align: text-bottom; }
+
+/* Nav icons live inside .tw-nav-icon span — keep them centered + uniform. */
+.tw-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 2px;
+}
+.tw-nav-icon .tw-icon { border-radius: 8px; }
+
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */
 .tw-avatar {
   display: inline-flex;

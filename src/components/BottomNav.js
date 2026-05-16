@@ -33,7 +33,7 @@ export default function BottomNav() {
             title={it.label}
           >
             <span className="tw-nav-icon">
-              {showAvatar ? <Avatar value={user.avatar} size={26} ring={active} /> : <Icon name={it.icon} size={24} />}
+              {showAvatar ? <Avatar value={user.avatar} size={28} ring={active} /> : <Icon name={it.icon} size={28} />}
             </span>
             <span>{it.label}</span>
           </button>

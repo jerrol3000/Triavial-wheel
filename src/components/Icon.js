@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { ICONS } from "../data/icons";
 
-// Renders a named icon. Prefers /icons/<file>.png; falls back to the emoji
-// if the image fails to load (file missing, network error). This lets you
-// drop in custom illustrations later without touching component code.
-export default function Icon({ name, size = 22, className = "", style = {} }) {
+// Renders a named icon. Prefers /icons/<file>; falls back to the emoji
+// if the image fails to load. The image is rendered inside a square
+// container with the icon contained (preserves aspect, no stretching),
+// rounded corners, and a soft drop shadow for depth on dark backgrounds.
+export default function Icon({ name, size = 22, rounded = true, className = "", style = {} }) {
   const def = ICONS[name];
   const [failed, setFailed] = useState(false);
   if (!def) return null;
@@ -12,7 +13,7 @@ export default function Icon({ name, size = 22, className = "", style = {} }) {
     return (
       <span
         className={className}
-        style={{ fontSize: size, lineHeight: 1, display: "inline-block", ...style }}
+        style={{ fontSize: Math.round(size * 0.95), lineHeight: 1, display: "inline-block", ...style }}
         aria-label={def.label}
       >
         {def.emoji}
@@ -25,10 +26,11 @@ export default function Icon({ name, size = 22, className = "", style = {} }) {
       alt={def.label || name}
       width={size}
       height={size}
-      className={className}
-      style={{ display: "inline-block", verticalAlign: "middle", ...style }}
+      className={`tw-icon ${rounded ? "rounded" : ""} ${className}`}
+      style={{ width: size, height: size, ...style }}
       onError={() => setFailed(true)}
       draggable={false}
+      loading="lazy"
     />
   );
 }

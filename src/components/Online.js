@@ -8,6 +8,7 @@ import {
 import { setView, setModal, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import ChatPanel from "./ChatPanel";
+import Icon from "./Icon";
 import { sfx } from "../utils/sound";
 import { safeNavigate } from "../utils/navigate";
 
@@ -103,7 +104,9 @@ function Lobby() {
 
   return (
     <div className="tw-col">
-      <h1 style={{ margin: "8px 0" }}>🧑‍🤝‍🧑 Play with Friends</h1>
+      <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
+        <Icon name="vs" size={32} /> Play with Friends
+      </h1>
       {!connected && <ConnectionStatus />}
       <div className="tw-grid-2">
         <div className="tw-card tw-online-card">

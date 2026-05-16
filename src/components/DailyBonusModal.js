@@ -2,6 +2,7 @@ import React from "react";
 import { useDispatch } from "react-redux";
 import { closeModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
+import Icon from "./Icon";
 
 export default function DailyBonusModal({ data }) {
   const dispatch = useDispatch();
@@ -12,19 +13,25 @@ export default function DailyBonusModal({ data }) {
   return (
     <div className="tw-modal-backdrop" onClick={() => dispatch(closeModal())}>
       <div className="tw-modal" onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 48 }}>🎁</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+          <Icon name="daily_bonus" size={56} />
+        </div>
         <div style={{ fontFamily: "Fredoka", fontSize: 26, fontWeight: 700 }}>Daily Bonus!</div>
         <div style={{ color: "var(--text-dim)", margin: "6px 0 16px" }}>
           Day {streak} login streak — keep showing up for bigger rewards.
         </div>
         <div className="tw-grid-2" style={{ marginBottom: 16 }}>
           <div className="tw-stat">
-            <div style={{ fontSize: 28 }}>🎡</div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Icon name="free_spin" size={32} />
+            </div>
             <div className="tw-stat-value">+{spinsReward}</div>
             <div className="tw-stat-label">Free Spins</div>
           </div>
           <div className="tw-stat">
-            <div style={{ fontSize: 28 }}>🪙</div>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <Icon name="coins" size={32} />
+            </div>
             <div className="tw-stat-value">+{coinsReward}</div>
             <div className="tw-stat-label">Coins</div>
           </div>

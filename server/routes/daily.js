@@ -30,18 +30,26 @@ router.get("/questions", (req, res) => {
 });
 
 router.post("/submit", requireAuth, (req, res) => {
-  const { score, correct, total, time_ms } = req.body || {};
-  if (typeof score !== "number" || typeof correct !== "number" || typeof total !== "number" || typeof time_ms !== "number") {
+  const body = req.body || {};
+  if (typeof body.score !== "number" || typeof body.correct !== "number" || typeof body.total !== "number" || typeof body.time_ms !== "number") {
     return res.status(400).json({ error: "invalid payload" });
   }
+  // Sanity caps on every client-supplied number — the daily is 10
+  // questions, so anything outside these ranges is a tampered client.
+  const total = Math.max(1, Math.min(10, Math.floor(body.total)));
+  const correct = Math.max(0, Math.min(total, Math.floor(body.correct)));
+  // Max possible score is ~250/question with mystery + streak multipliers
+  // → ~2500 for a perfect daily. Cap generously at 5000.
+  const score = Math.max(0, Math.min(5000, Math.floor(body.score)));
+  // Reading + answering 10 questions can't realistically take under 8s.
+  // Reject anything faster — that's a tampered client.
+  const time_ms = Math.max(8000, Math.min(30 * 60 * 1000, Math.floor(body.time_ms)));
   const date = todayKey();
 
-  // Use INSERT OR IGNORE + check changes for race-safe single-submission.
-  // The previous check-then-insert pattern crashed when two requests
-  // arrived in the same tick (PRIMARY KEY violation on the second).
+  // INSERT OR IGNORE + check changes for race-safe single-submission.
   const ins = db.prepare(
     "INSERT OR IGNORE INTO daily_scores (user_id, date, score, correct, total, time_ms, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).run(req.user.id, date, Math.floor(score), Math.floor(correct), Math.floor(total), Math.floor(time_ms), Date.now());
+  ).run(req.user.id, date, score, correct, total, time_ms, Date.now());
   if (ins.changes === 0) return res.status(409).json({ error: "already submitted today" });
 
   // Update daily streak.
@@ -60,7 +68,8 @@ router.post("/submit", requireAuth, (req, res) => {
   // Bump today's "Play Daily Challenge" quest if it's in this user's set.
   try {
     const stats = require("./stats");
-    if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "daily_played_today", amount: 1 }]);
+    if (stats.progressAllQuestsFor) stats.progressAllQuestsFor(req.user.id, [{ metric: "daily_played_today", amount: 1 }]);
+    else if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "daily_played_today", amount: 1 }]);
   } catch (e) {}
 
   res.json({ ok: true, streak: newStreak });

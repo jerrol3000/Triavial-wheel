@@ -10,6 +10,7 @@ import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed, consumeFreeSpin } from "../store/statsSlice";
 import { api } from "../api/client";
 import QuestsPanel from "./QuestsPanel";
+import WeeklyQuestsPanel from "./WeeklyQuestsPanel";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 
@@ -107,6 +108,7 @@ export default function Home() {
       <aside className="tw-home-left">
         <EarnMoreStrip />
         <QuestsPanel />
+        <WeeklyQuestsPanel />
       </aside>
 
       {/* CENTER — the focal point: title, mode pills, wheel, SPIN. */}

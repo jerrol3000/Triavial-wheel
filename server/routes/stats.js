@@ -50,62 +50,79 @@ function todayKey() {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 router.post("/daily-login", requireAuth, (req, res) => {
+  // Wrapped in a transaction so two near-simultaneous boots can't both
+  // grant the daily login bonus (or both spend the streak_saver flag).
+  // Re-checks `last_login_date === today` INSIDE the tx as the lock.
   const today = todayKey();
-  const row = db.prepare("SELECT last_login_date, login_streak, powerups_json FROM stats WHERE user_id = ?").get(req.user.id);
-  if (row && row.last_login_date === today) {
-    return res.json({ alreadyClaimed: true, streak: row.login_streak, stats: loadStats(req.user.id) });
+  let response;
+  try {
+    const tx = db.transaction(() => {
+      const row = db.prepare(
+        "SELECT last_login_date, login_streak, powerups_json, streak_saver_active FROM stats WHERE user_id = ?"
+      ).get(req.user.id);
+      if (!row) { response = { error: "no_stats_row" }; return; }
+      if (row.last_login_date === today) {
+        response = { alreadyClaimed: true, streak: row.login_streak };
+        return;
+      }
+      const [y, m, d] = today.split("-").map(Number);
+      const yesterday = new Date(Date.UTC(y, m - 1, d));
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const ystr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, "0")}-${String(yesterday.getUTCDate()).padStart(2, "0")}`;
+      const continued = row.last_login_date === ystr;
+      let streakSaverUsed = false;
+      let newStreak;
+      if (continued) {
+        newStreak = row.login_streak + 1;
+      } else if (row.last_login_date && row.login_streak > 0) {
+        let powerups = {};
+        try { powerups = JSON.parse(row.powerups_json || "{}") || {}; } catch (e) {}
+        if (row.streak_saver_active) {
+          streakSaverUsed = true;
+          newStreak = row.login_streak + 1;
+          db.prepare("UPDATE stats SET streak_saver_active = 0 WHERE user_id = ?").run(req.user.id);
+        } else if ((powerups.streak_saver || 0) > 0) {
+          powerups.streak_saver -= 1;
+          streakSaverUsed = true;
+          newStreak = row.login_streak + 1;
+          db.prepare("UPDATE stats SET powerups_json = ? WHERE user_id = ?").run(JSON.stringify(powerups), req.user.id);
+        } else {
+          newStreak = 1;
+        }
+      } else {
+        newStreak = 1;
+      }
+      const tier = Math.min(7, newStreak);
+      const spinsReward = tier <= 2 ? 1 : tier <= 5 ? 2 : 3;
+      const coinsReward = Math.min(100, 25 * tier);
+      // The single-row guard against double-credit: only update if
+      // last_login_date is still NOT today (race-safe).
+      const upd = db.prepare(`
+        UPDATE stats SET
+          last_login_date = ?, login_streak = ?,
+          free_spins = free_spins + ?, coins = coins + ?, updated_at = ?
+        WHERE user_id = ? AND (last_login_date IS NULL OR last_login_date != ?)
+      `).run(today, newStreak, spinsReward, coinsReward, Date.now(), req.user.id, today);
+      if (upd.changes === 0) {
+        // Another request just won the race — treat as already claimed.
+        response = { alreadyClaimed: true, streak: newStreak };
+        return;
+      }
+      response = {
+        alreadyClaimed: false,
+        streak: newStreak,
+        streak_saver_used: streakSaverUsed,
+        spinsReward,
+        coinsReward,
+      };
+    });
+    tx();
+  } catch (e) {
+    console.error("[daily-login] failed", e);
+    return res.status(500).json({ error: "daily_login_failed" });
   }
-  // Yesterday continues streak; anything older resets — unless the user has a streak_saver power-up.
-  const [y, m, d] = today.split("-").map(Number);
-  const yesterday = new Date(Date.UTC(y, m - 1, d));
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  const ystr = `${yesterday.getUTCFullYear()}-${String(yesterday.getUTCMonth() + 1).padStart(2, "0")}-${String(yesterday.getUTCDate()).padStart(2, "0")}`;
-  const continued = row && row.last_login_date === ystr;
-  let streakSaverUsed = false;
-  let newStreak;
-  if (continued) {
-    newStreak = row.login_streak + 1;
-  } else if (row && row.last_login_date && row.login_streak > 0) {
-    // Broken streak. Use the streak_saver_active flag (from the store
-    // boost) FIRST so players can spend coins on protection; otherwise
-    // fall back to the legacy powerup in powerups_json.
-    let powerups = {};
-    try { powerups = JSON.parse(row.powerups_json || "{}"); } catch (e) {}
-    const flagRow = db.prepare("SELECT streak_saver_active FROM stats WHERE user_id = ?").get(req.user.id);
-    const hasBoostShield = flagRow && flagRow.streak_saver_active;
-    if (hasBoostShield) {
-      streakSaverUsed = true;
-      newStreak = row.login_streak + 1;
-      db.prepare("UPDATE stats SET streak_saver_active = 0 WHERE user_id = ?").run(req.user.id);
-    } else if ((powerups.streak_saver || 0) > 0) {
-      powerups.streak_saver -= 1;
-      streakSaverUsed = true;
-      newStreak = row.login_streak + 1;
-      db.prepare("UPDATE stats SET powerups_json = ? WHERE user_id = ?").run(JSON.stringify(powerups), req.user.id);
-    } else {
-      newStreak = 1;
-    }
-  } else {
-    newStreak = 1;
-  }
-  // Reward grows with streak, capped: day 1 = 1 spin + 25 coins, day 7+ = 3 spins + 100 coins.
-  const tier = Math.min(7, newStreak);
-  const spinsReward = tier <= 2 ? 1 : tier <= 5 ? 2 : 3;
-  const coinsReward = Math.min(100, 25 * tier);
-  db.prepare(`
-    UPDATE stats SET
-      last_login_date = ?, login_streak = ?,
-      free_spins = free_spins + ?, coins = coins + ?, updated_at = ?
-    WHERE user_id = ?
-  `).run(today, newStreak, spinsReward, coinsReward, Date.now(), req.user.id);
-  res.json({
-    alreadyClaimed: false,
-    streak: newStreak,
-    streak_saver_used: streakSaverUsed,
-    spinsReward,
-    coinsReward,
-    stats: loadStats(req.user.id),
-  });
+  if (response.error) return res.status(404).json(response);
+  res.json({ ...response, stats: loadStats(req.user.id) });
 });
 
 // Watch a rewarded ad and claim the reward.
@@ -153,16 +170,21 @@ router.post("/watch-ad-reward", requireAuth, (req, res) => {
   );
 
   logEvent("ad_watch", req.user.id, null, { reward });
-  progressQuestsFor(req.user.id, [{ metric: "ads_watched_today", amount: 1 }]);
+  progressAllQuestsFor(req.user.id, [{ metric: "ads_watched_today", amount: 1 }]);
   res.json({ ...grant, ads_today_count: count + 1, daily_limit: AD_DAILY_LIMIT });
 });
 
 // Spend one free spin (called when the user spins the wheel if they have any).
 router.post("/use-free-spin", requireAuth, (req, res) => {
+  // Atomic decrement guarded by `free_spins > 0` in the WHERE clause.
+  // The previous read-then-write let two concurrent requests both
+  // pass the check and drop the column to -1.
+  const upd = db.prepare(
+    "UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ? AND free_spins > 0"
+  ).run(Date.now(), req.user.id);
+  if (upd.changes === 0) return res.status(400).json({ error: "no_free_spins" });
   const row = db.prepare("SELECT free_spins FROM stats WHERE user_id = ?").get(req.user.id);
-  if (!row || row.free_spins <= 0) return res.status(400).json({ error: "no_free_spins" });
-  db.prepare("UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ?").run(Date.now(), req.user.id);
-  res.json({ ok: true, free_spins: row.free_spins - 1 });
+  res.json({ ok: true, free_spins: row ? row.free_spins : 0 });
 });
 
 // Daily quests — 3 quests generated per UTC date, deterministic per user
@@ -231,6 +253,124 @@ function ensureQuests(userId) {
   return chosen;
 }
 
+// ─── Weekly quests ──────────────────────────────────────────────────────
+// Bigger targets, fatter rewards, fresh pool every Monday 00:00 UTC.
+// Metric names mirror the daily ones but with a `_this_week` suffix so
+// progressWeeklyQuestsFor can sum across the full week independently of
+// daily progress (which resets every midnight).
+const WEEKLY_QUEST_TEMPLATES = [
+  // Volume — multi-day commitments
+  { id: "w_play_25",       text: "Play 25 rounds this week",         target: 25,  metric: "rounds_this_week",        reward: { coins: 250, free_spins: 5 } },
+  { id: "w_play_75",       text: "Play 75 rounds this week",         target: 75,  metric: "rounds_this_week",        reward: { coins: 750, free_spins: 10 } },
+  { id: "w_correct_150",   text: "Get 150 questions right this week",target: 150, metric: "correct_this_week",       reward: { coins: 400, free_spins: 5 } },
+  { id: "w_correct_500",   text: "Get 500 questions right this week",target: 500, metric: "correct_this_week",       reward: { coins: 1000, free_spins: 12 } },
+  { id: "w_earn_coins_2k", text: "Earn 2,000 coins from play",       target: 2000,metric: "coins_earned_this_week",  reward: { coins: 400, free_spins: 5 } },
+  { id: "w_earn_xp_3k",    text: "Earn 3,000 XP this week",          target: 3000,metric: "xp_earned_this_week",     reward: { coins: 500, free_spins: 5 } },
+
+  // Skill / accuracy
+  { id: "w_streak_15",     text: "Hit a 15-correct streak",          target: 15,  metric: "best_streak_this_week",   reward: { coins: 500, free_spins: 5 } },
+  { id: "w_streak_25",     text: "Hit a 25-correct streak",          target: 25,  metric: "best_streak_this_week",   reward: { coins: 1000, free_spins: 10 } },
+  { id: "w_perfect_5",     text: "Get 5 perfect rounds this week",   target: 5,   metric: "perfect_rounds_this_week",reward: { coins: 800, free_spins: 8 } },
+
+  // Daily ritual
+  { id: "w_daily_3",       text: "Play the Daily Challenge 3 times", target: 3,   metric: "daily_played_this_week",  reward: { coins: 300, free_spins: 5 } },
+  { id: "w_daily_7",       text: "Complete the Daily every day",     target: 7,   metric: "daily_played_this_week",  reward: { coins: 1500, free_spins: 15 } },
+
+  // Online / social
+  { id: "w_online_play_5", text: "Play 5 online matches",            target: 5,   metric: "online_played_this_week", reward: { coins: 350, free_spins: 5 } },
+  { id: "w_online_win_5",  text: "Win 5 online matches",             target: 5,   metric: "online_wins_this_week",   reward: { coins: 700, free_spins: 8 } },
+  { id: "w_online_win_15", text: "Win 15 online matches",            target: 15,  metric: "online_wins_this_week",   reward: { coins: 1800, free_spins: 15 } },
+
+  // Engagement
+  { id: "w_spin_30",       text: "Spin the wheel 30 times",          target: 30,  metric: "spins_this_week",         reward: { coins: 300, free_spins: 5 } },
+  { id: "w_watch_ads_10",  text: "Watch 10 reward ads",              target: 10,  metric: "ads_watched_this_week",   reward: { coins: 250, free_spins: 5 } },
+  { id: "w_powerups_15",   text: "Use 15 power-ups",                 target: 15,  metric: "powerups_used_this_week", reward: { coins: 350, free_spins: 5 } },
+
+  // Exploration / collection
+  { id: "w_categories_all",text: "Play all 10 categories this week", target: 10,  metric: "categories_this_week",    reward: { coins: 600, free_spins: 8 } },
+  { id: "w_buy_2",         text: "Buy 2 things from the store",      target: 2,   metric: "purchases_this_week",     reward: { coins: 400, free_spins: 5 } },
+  { id: "w_level_up_3",    text: "Level up 3 times this week",       target: 3,   metric: "level_ups_this_week",     reward: { coins: 700, free_spins: 8 } },
+];
+
+// ISO week key — same week for all timezones because we always use UTC.
+function weekKey(d = new Date()) {
+  // ISO 8601: week starts Monday; week containing the first Thursday of
+  // the year is week 1.
+  const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+function ensureWeeklyQuests(userId) {
+  const wk = weekKey();
+  const row = db.prepare("SELECT weekly_quests_week, weekly_quests_json FROM stats WHERE user_id = ?").get(userId);
+  if (row && row.weekly_quests_week === wk) {
+    try { const parsed = JSON.parse(row.weekly_quests_json); if (Array.isArray(parsed)) return parsed; } catch (e) {}
+  }
+  // Deterministic shuffle from a different hash space than dailies so
+  // a player's weekly + daily quests rarely overlap on the same metric.
+  const seedStr = `weekly|${userId}|${wk}`;
+  let h = 0;
+  for (let i = 0; i < seedStr.length; i++) { h = (h * 31 + seedStr.charCodeAt(i)) >>> 0; }
+  const pool = [...WEEKLY_QUEST_TEMPLATES];
+  const chosen = [];
+  while (chosen.length < 3 && pool.length) {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    const idx = h % pool.length;
+    chosen.push({ ...pool[idx], progress: 0, claimed: false });
+    pool.splice(idx, 1);
+  }
+  db.prepare("UPDATE stats SET weekly_quests_week = ?, weekly_quests_json = ?, updated_at = ? WHERE user_id = ?")
+    .run(wk, JSON.stringify(chosen), Date.now(), userId);
+  return chosen;
+}
+
+// Same shape as progressQuestsFor but matches *_this_week metrics. All
+// quest progression is server-driven from the same event sources that
+// fire daily progression — see the call sites in /stats/game,
+// /watch-ad-reward, realtime.endMatch, /store/buy, /daily/submit.
+function progressWeeklyQuestsFor(userId, events) {
+  const quests = ensureWeeklyQuests(userId);
+  let changed = false;
+  for (const ev of events) {
+    const metric = String(ev.metric || "");
+    const amount = Math.max(0, Math.floor(ev.amount || 0));
+    for (const q of quests) {
+      if (q.metric === metric && !q.claimed) {
+        const prev = q.progress || 0;
+        const next = ev.setMode === "max"
+          ? Math.min(q.target, Math.max(prev, amount))
+          : Math.min(q.target, prev + amount);
+        if (next !== prev) { q.progress = next; changed = true; }
+      }
+    }
+  }
+  if (changed) {
+    db.prepare("UPDATE stats SET weekly_quests_json = ?, updated_at = ? WHERE user_id = ?")
+      .run(JSON.stringify(quests), Date.now(), userId);
+  }
+  return quests;
+}
+
+// One-stop helper for callers — bumps BOTH daily and weekly progress
+// from a single event list. Each `metric` should be the daily form
+// (e.g. "rounds_today") and this helper automatically also fires the
+// weekly variant ("rounds_this_week"). Saves having to call two
+// functions everywhere and risk forgetting one.
+function progressAllQuestsFor(userId, events) {
+  const dailyEvents = events;
+  const weeklyEvents = events.map((ev) => ({
+    ...ev,
+    metric: String(ev.metric || "").replace(/_today$/, "_this_week"),
+  })).filter((ev) => ev.metric.endsWith("_this_week"));
+  const daily = progressQuestsFor(userId, dailyEvents);
+  const weekly = progressWeeklyQuestsFor(userId, weeklyEvents);
+  return { daily, weekly };
+}
+
 router.get("/quests", requireAuth, (req, res) => {
   const quests = ensureQuests(req.user.id);
   res.json({ date: todayKey(), quests });
@@ -265,28 +405,92 @@ function progressQuestsFor(userId, events) {
   return quests;
 }
 
-// Public endpoint kept for clients that want to push (no harm).
+// Public endpoint REMOVED — was a giant exploit surface. The server
+// now drives all quest progression from authoritative event sources
+// (/stats/game, /watch-ad-reward, /daily/submit, online endMatch,
+// /store/buy). A client posting `events: [{metric:"perfect_rounds_
+// today", amount: 999}]` could complete every daily quest instantly
+// for free. Read-only progress is exposed via GET /stats/quests.
 router.post("/quests/progress", requireAuth, (req, res) => {
-  const updates = Array.isArray(req.body?.events) ? req.body.events : [];
-  const quests = progressQuestsFor(req.user.id, updates);
-  res.json({ quests });
+  res.status(410).json({
+    error: "endpoint_removed",
+    hint: "Quest progression is server-driven now.",
+  });
 });
 
 router.post("/quests/claim", requireAuth, (req, res) => {
   const id = String(req.body?.id || "");
-  const quests = ensureQuests(req.user.id);
-  const q = quests.find((x) => x.id === id);
-  if (!q) return res.status(404).json({ error: "no_such_quest" });
-  if (q.claimed) return res.status(400).json({ error: "already_claimed" });
-  if ((q.progress || 0) < q.target) return res.status(400).json({ error: "not_complete" });
-  q.claimed = true;
-  const reward = q.reward || {};
-  db.prepare(`
-    UPDATE stats SET
-      quests_json = ?, coins = coins + ?, free_spins = free_spins + ?, updated_at = ?
-    WHERE user_id = ?
-  `).run(JSON.stringify(quests), reward.coins || 0, reward.free_spins || 0, Date.now(), req.user.id);
-  res.json({ ok: true, reward, stats: loadStats(req.user.id) });
+  // Wrap the whole claim flow in a transaction with a re-check inside.
+  // Two concurrent claim calls for the same quest used to both pass the
+  // pre-tx `claimed:false` check and both UPDATE — second clobbered
+  // first's JSON but both applied the coin/spin grant.
+  let result;
+  try {
+    const tx = db.transaction(() => {
+      const row = db.prepare("SELECT quests_json FROM stats WHERE user_id = ?").get(req.user.id);
+      if (!row) { result = { status: 404, body: { error: "no_stats_row" } }; return; }
+      let quests = [];
+      try { quests = JSON.parse(row.quests_json || "[]"); } catch (e) { quests = []; }
+      const q = quests.find((x) => x.id === id);
+      if (!q) { result = { status: 404, body: { error: "no_such_quest" } }; return; }
+      if (q.claimed) { result = { status: 400, body: { error: "already_claimed" } }; return; }
+      if ((q.progress || 0) < q.target) { result = { status: 400, body: { error: "not_complete" } }; return; }
+      q.claimed = true;
+      const reward = q.reward || {};
+      db.prepare(`
+        UPDATE stats SET
+          quests_json = ?, coins = coins + ?, free_spins = free_spins + ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(JSON.stringify(quests), reward.coins || 0, reward.free_spins || 0, Date.now(), req.user.id);
+      result = { status: 200, body: { ok: true, reward } };
+    });
+    tx();
+  } catch (e) {
+    console.error("[quests/claim] failed", e);
+    return res.status(500).json({ error: "claim_failed" });
+  }
+  if (result.status !== 200) return res.status(result.status).json(result.body);
+  res.json({ ...result.body, stats: loadStats(req.user.id) });
+});
+
+// ─── Weekly quest endpoints (mirror of /quests) ────────────────────────
+router.get("/weekly-quests", requireAuth, (req, res) => {
+  const quests = ensureWeeklyQuests(req.user.id);
+  res.json({ week: weekKey(), quests });
+});
+
+router.post("/weekly-quests/claim", requireAuth, (req, res) => {
+  const id = String(req.body?.id || "");
+  // Same transactional pattern as /quests/claim — weekly rewards
+  // (up to 1800 coins + 15 spins) make the double-claim race even
+  // more attractive, so it MUST be race-safe.
+  let result;
+  try {
+    const tx = db.transaction(() => {
+      const row = db.prepare("SELECT weekly_quests_json FROM stats WHERE user_id = ?").get(req.user.id);
+      if (!row) { result = { status: 404, body: { error: "no_stats_row" } }; return; }
+      let quests = [];
+      try { quests = JSON.parse(row.weekly_quests_json || "[]"); } catch (e) { quests = []; }
+      const q = quests.find((x) => x.id === id);
+      if (!q) { result = { status: 404, body: { error: "no_such_quest" } }; return; }
+      if (q.claimed) { result = { status: 400, body: { error: "already_claimed" } }; return; }
+      if ((q.progress || 0) < q.target) { result = { status: 400, body: { error: "not_complete" } }; return; }
+      q.claimed = true;
+      const reward = q.reward || {};
+      db.prepare(`
+        UPDATE stats SET
+          weekly_quests_json = ?, coins = coins + ?, free_spins = free_spins + ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(JSON.stringify(quests), reward.coins || 0, reward.free_spins || 0, Date.now(), req.user.id);
+      result = { status: 200, body: { ok: true, reward } };
+    });
+    tx();
+  } catch (e) {
+    console.error("[weekly-quests/claim] failed", e);
+    return res.status(500).json({ error: "claim_failed" });
+  }
+  if (result.status !== 200) return res.status(result.status).json(result.body);
+  res.json({ ...result.body, stats: loadStats(req.user.id) });
 });
 
 // Where am I on the global leaderboard?
@@ -475,7 +679,7 @@ router.post("/game", requireAuth, (req, res) => {
   if (isPerfect) questEvents.push({ metric: "perfect_rounds_today", amount: 1 });
   if (leveledUp) questEvents.push({ metric: "level_ups_today", amount: 1 });
   if (category_id) questEvents.push({ metric: "categories_today", amount: 1 });
-  progressQuestsFor(req.user.id, questEvents);
+  progressAllQuestsFor(req.user.id, questEvents);
 
   // Award any newly-eligible badges from this game. New ones come back in
   // the response so the client can fire a celebration toast.
@@ -488,12 +692,26 @@ router.post("/game", requireAuth, (req, res) => {
   res.json({ ...loadStats(req.user.id), leveled_up: leveledUp, new_badges: newBadges });
 });
 
+// Whitelist of valid achievement ids. Must stay in sync with the
+// frontend's src/data/achievements.js. Stops clients from polluting
+// the achievements table with arbitrary strings and prevents future
+// rewards (if achievements ever pay out) from being exploitable.
+const VALID_ACHIEVEMENTS = new Set([
+  "first_round", "perfect_round", "ten_rounds", "fifty_rounds", "hundred_rounds",
+  "first_win_online", "ten_wins_online", "five_streak", "ten_streak", "twenty_streak",
+  "daily_3", "daily_7", "daily_30",
+  "level_5", "level_10", "level_25", "level_50",
+  "first_friend", "pro_subscriber", "first_theme", "all_themes",
+]);
+
 router.post("/achievement", requireAuth, (req, res) => {
   const { achievement_id } = req.body || {};
-  if (!achievement_id) return res.status(400).json({ error: "missing achievement_id" });
+  const id = String(achievement_id || "");
+  if (!id) return res.status(400).json({ error: "missing achievement_id" });
+  if (!VALID_ACHIEVEMENTS.has(id)) return res.status(400).json({ error: "unknown_achievement" });
   db.prepare(
     "INSERT OR IGNORE INTO achievements (user_id, achievement_id, unlocked_at) VALUES (?, ?, ?)"
-  ).run(req.user.id, String(achievement_id), Date.now());
+  ).run(req.user.id, id, Date.now());
   res.json(loadStats(req.user.id));
 });
 
@@ -520,3 +738,6 @@ router.get("/leaderboard", (req, res) => {
 module.exports = router;
 module.exports.loadStats = loadStats;
 module.exports.progressQuestsFor = progressQuestsFor;
+module.exports.progressAllQuestsFor = progressAllQuestsFor;
+module.exports.ensureWeeklyQuests = ensureWeeklyQuests;
+module.exports.weekKey = weekKey;

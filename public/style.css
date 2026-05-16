@@ -1651,3 +1651,19 @@ img.tw-avatar { background: none; }
    room code join). Was 6px difference, very visible. */
 .tw-row > .tw-input + .tw-btn,
 .tw-row > .tw-btn + .tw-input { align-self: stretch; }
+
+/* Weekly quests panel — same layout as daily but with a warm gold
+   accent on the header chip + completed bar so players can tell the
+   two ladders apart at a glance. Bigger rewards = brighter rail. */
+.tw-quests-weekly .tw-pill {
+  background: linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.25));
+  border-color: rgba(245,158,11,0.5);
+  color: #fff;
+}
+.tw-quests-weekly .tw-quest-progress > div {
+  background: linear-gradient(90deg, #f59e0b, #ec4899);
+}
+.tw-quests-weekly .tw-quest.complete:not(.claimed) .tw-quest-progress > div {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  box-shadow: 0 0 10px rgba(245,158,11,0.6);
+}

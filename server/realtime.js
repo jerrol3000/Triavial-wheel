@@ -247,6 +247,12 @@ function recordAnswer(room, userId, answer) {
   const q = room.questions[room.index];
   const ansMap = room.answers[room.index] || {};
   if (ansMap[userId]) return; // already answered
+  // Validate the answer is one of the shuffled options for THIS question.
+  // Prevents a client from sending arbitrary strings (e.g. an attempt to
+  // submit the correct_answer text directly from a scraped questions
+  // endpoint) instead of one of the four they were shown.
+  const validOptions = q.shuffled || q.answers || [];
+  if (!validOptions.includes(answer)) return;
   const isRight = answer === q.correct_answer;
   const timeUsed = QUESTION_TIME_MS - Math.max(0, room.questionEndsAt - Date.now());
   ansMap[userId] = { answer, time: timeUsed, correct: isRight };
@@ -282,7 +288,7 @@ function endMatch(room, opts = {}) {
       INSERT INTO matches (kind, player1_id, player2_id, player1_score, player2_score, winner_id, started_at, finished_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(room.kind, p1.id, p2.id, p1.score, p2.score, winner ? winner.id : null, room.startedAt, Date.now());
-    applyMatchRewards(p1, p2, winner, opts.forfeiterId, room.kind, room.difficulty);
+    applyMatchRewards(p1, p2, winner, opts.forfeiterId, room.kind, room.difficulty, room);
   }
 
   // Reset continue-vote state for the rematch decision window.
@@ -312,12 +318,20 @@ function endRoom(room, reason) {
   rooms.delete(room.code);
 }
 
-function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty) {
+function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty, room) {
   // FRIENDLY matches (kind=private): no leaderboard rating change, no
   // win/loss stats, no forfeit penalty. Just a small participation
-  // reward so it still feels worthwhile. Quest progression still counts.
+  // reward so it still feels worthwhile. Quest progression for the
+  // "play N online matches" metric is INTENTIONALLY skipped for
+  // friendly matches — otherwise two colluding accounts could spin up
+  // private rooms back-to-back to farm the weekly play-N quest.
   const isFriendly = kind === "private";
   const mult = DIFFICULTY_MULT[difficulty] || 1;
+  // Anti-farming: forfeits early in a match (fewer than 3 of 5 questions
+  // answered) award reduced rewards. Stops two accounts from queueing
+  // together → A immediately disconnects → B claims a "win" + rating.
+  const questionsCompleted = room ? room.index : 0;
+  const isMicroMatch = questionsCompleted < 3;
 
   const updateStats = db.prepare(`
     UPDATE stats SET
@@ -342,8 +356,13 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty) {
       // bonus coins but nothing the leaderboard tracks.
       spinsReward = 1;
       coinsReward = isWinner ? 20 : (isTie ? 10 : 5);
-      // wonInc / lostInc / ratingDelta stay 0 — friendly results don't
-      // touch the online ladder.
+    } else if (isMicroMatch && isWinner && !isForfeiter) {
+      // Anti-collusion: opponent forfeited before 3 questions answered.
+      // Bare-minimum reward — no rating jump, no spins, tiny coin bonus.
+      spinsReward = 0;
+      coinsReward = 10;
+      ratingDelta = 0;
+      wonInc = 0; // also don't count toward the leaderboard
     } else {
       // Competitive (quick match) — full rewards with difficulty multiplier.
       // The "significantly more than solo, not crazy" cap: hard win = 80
@@ -366,10 +385,18 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty) {
     // online-only players.
     try {
       const stats = require("./routes/stats");
-      const events = [{ metric: "online_played_today", amount: 1 }];
-      if (isWinner && !isFriendly) events.push({ metric: "online_wins_today", amount: 1 });
+      const events = [];
+      // Friendly matches DON'T progress the "play N online matches"
+      // quests — otherwise two colluding accounts could spin private
+      // rooms back-to-back to farm them. Only competitive quick
+      // matches count toward those quests + leaderboard.
+      if (!isFriendly) {
+        events.push({ metric: "online_played_today", amount: 1 });
+        if (isWinner) events.push({ metric: "online_wins_today", amount: 1 });
+      }
       if (coinsReward > 0) events.push({ metric: "coins_earned_today", amount: coinsReward });
-      if (stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
+      if (events.length && stats.progressAllQuestsFor) stats.progressAllQuestsFor(p.id, events);
+      else if (events.length && stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
     } catch (e) {}
 
     // Badges: online wins drive social/win-streak badges; solo

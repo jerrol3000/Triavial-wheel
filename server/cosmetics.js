@@ -102,7 +102,24 @@ function listEquipped(userId) {
   return out;
 }
 
+// Returns the catalog item if it's currently purchasable — enforces the
+// limited-edition window so a client who knows an expired SKU's id can't
+// /store/buy it after listCatalog stops showing it.
 function getItem(id) {
+  const now = Date.now();
+  const r = db.prepare(
+    `SELECT * FROM cosmetics
+     WHERE id = ? AND enabled = 1
+       AND (available_from IS NULL OR available_from <= ?)
+       AND (available_until IS NULL OR available_until >= ?)`
+  ).get(id, now, now);
+  return r ? rowToItem(r) : null;
+}
+
+// Same lookup as getItem but ignores the time-window — used by
+// listOwned-style flows where we want to render items the player
+// already owns even if they've since expired from the store.
+function getItemAnyTime(id) {
   const r = db.prepare(`SELECT * FROM cosmetics WHERE id = ? AND enabled = 1`).get(id);
   return r ? rowToItem(r) : null;
 }

@@ -63,7 +63,8 @@ router.post("/buy", requireAuth, (req, res) => {
   // Quest progression for the "buy something today" goal.
   try {
     const stats = require("./stats");
-    if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
+    if (stats.progressAllQuestsFor) stats.progressAllQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
+    else if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
   } catch (e) {}
   res.json({ ...result, new_badges: newBadges });
 });

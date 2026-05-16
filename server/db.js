@@ -230,6 +230,12 @@ ensureColumn("stats", "ads_today_date", "TEXT");
 ensureColumn("stats", "quests_date", "TEXT");
 ensureColumn("stats", "quests_json", "TEXT NOT NULL DEFAULT '[]'");
 
+// Weekly quest set — refreshed every Monday 00:00 UTC. Same shape as the
+// daily quests but with a separate templates pool and bigger targets /
+// rewards. weekly_quests_week is an ISO week key like "2026-W21".
+ensureColumn("stats", "weekly_quests_week", "TEXT");
+ensureColumn("stats", "weekly_quests_json", "TEXT NOT NULL DEFAULT '[]'");
+
 // Boost timestamps + flag for the cosmetics store consumables.
 // xp/coins multipliers store expiry as ms; streak_saver is a 0/1 flag
 // consumed on the next missed-day daily streak check.

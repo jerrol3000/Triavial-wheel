@@ -808,6 +808,69 @@ function handleMessage(ws, user, msg) {
       return;
     }
 
+    // Direct play invite from a friend. Creates a private room with
+    // the sender as host and pushes a live `notification` to the
+    // friend so their bell shows an Accept button. This is the WS
+    // path for "Play with friend" — recipients who happen to be
+    // offline get the invite on their next /api/notifications poll
+    // via the events derivation, though without the live banner.
+    case "play_invite": {
+      const friendId = Number(msg.friendId);
+      if (!friendId || friendId === user.id) {
+        send(ws, { type: "error", error: "invalid_friend" });
+        return;
+      }
+      // Friendship check — only accepted friends can invite each other.
+      const [a, b] = friendId < user.id ? [friendId, user.id] : [user.id, friendId];
+      const friendship = db.prepare(
+        `SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ? AND status = 'accepted'`
+      ).get(a, b);
+      if (!friendship) {
+        send(ws, { type: "error", error: "not_friends" });
+        return;
+      }
+      // Refuse if either party is already in a room — sender must
+      // leave first; recipient gets an error toast they can ignore.
+      if (findRoomForUser(user.id)) {
+        send(ws, { type: "error", error: "already_in_match" });
+        return;
+      }
+      if (findRoomForUser(friendId)) {
+        send(ws, { type: "error", error: "friend_in_match" });
+        return;
+      }
+      const reqDiff = DIFFICULTIES.has(msg.difficulty) ? msg.difficulty : "medium";
+      // Recipient row for username in the toast (needed by the room view).
+      const friendRow = db.prepare("SELECT username FROM users WHERE id = ?").get(friendId);
+      if (!friendRow) {
+        send(ws, { type: "error", error: "friend_not_found" });
+        return;
+      }
+      let code;
+      do { code = makeCode(); } while (rooms.has(code));
+      const room = makeRoom({ kind: "private", code, difficulty: reqDiff, hostId: user.id });
+      joinRoom(room, user);
+      send(ws, { type: "room_state", room: publicRoom(room) });
+      // Live notification with the room code embedded — recipient's
+      // bell will render Accept/Dismiss inline buttons.
+      sendToUser(friendId, {
+        type: "notification",
+        notification: {
+          id: `play-invite-${user.id}-${Date.now()}`,
+          type: "play_invite",
+          icon: "🎮",
+          title: `${user.username} invited you to play`,
+          text: `${reqDiff} difficulty · tap Accept to join`,
+          at: Date.now(),
+          actor: { id: user.id, username: user.username },
+          roomCode: code,
+          difficulty: reqDiff,
+          actionType: "join_invite",
+        },
+      });
+      return;
+    }
+
     case "ready": {
       const room = findRoomForUser(user.id);
       if (!room || room.started) return;

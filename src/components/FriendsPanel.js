@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
-import { pushToast, setModal } from "../store/uiSlice";
+import { pushToast, setModal, setView } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
+import { rt } from "../realtime/client";
+import { sfx } from "../utils/sound";
 import Avatar from "./Avatar";
 import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
 
@@ -126,11 +128,75 @@ export default function FriendsPanel({ compact = false }) {
               <span style={{ color: "var(--text-dim)", fontSize: 12 }}>L{f.level} · ⭐ {f.online_rating}</span>
             </div>
             <div className="tw-row" style={{ gap: 4 }}>
+              <PlayInviteButton friend={f} />
               <GiftButton friend={f} />
               <button className="tw-btn ghost sm" title="Remove friend" onClick={() => remove(f.id)}>×</button>
             </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+// Direct invite-to-play. Picks a difficulty inline, then fires the
+// WS `play_invite` which (a) creates a private room with us as host,
+// (b) sends a live notification to the friend with an Accept button.
+// We navigate to the Online view immediately so the lobby/code page
+// shows up — the friend slot is empty until they accept.
+function PlayInviteButton({ friend }) {
+  const dispatch = useDispatch();
+  const [open, setOpen] = React.useState(false);
+  const send = (difficulty) => {
+    sfx.click();
+    try { rt.connect(); } catch (e) {}
+    // Catch server-side rejections (friend already in a match, not
+    // actually friends, etc.) for a few seconds after sending so we
+    // can surface a clear toast instead of silent failure.
+    const off = rt.on((msg) => {
+      if (!msg || msg.type !== "error") return;
+      const err = msg.error;
+      const niceErr =
+        err === "friend_in_match" ? `@${friend.username} is already in a match.` :
+        err === "already_in_match" ? "Leave your current match first." :
+        err === "not_friends" ? `You're not friends with @${friend.username} anymore.` :
+        err === "invalid_friend" ? "Invalid friend." :
+        err === "friend_not_found" ? "Couldn't find that friend." :
+        null;
+      if (niceErr) {
+        dispatch(pushToast({ icon: "⚠️", title: "Couldn't invite", text: niceErr, duration: 4000 }));
+      }
+    });
+    setTimeout(off, 3000);
+    try { rt.send({ type: "play_invite", friendId: friend.id, difficulty }); } catch (e) {}
+    dispatch(pushToast({
+      icon: "🎮",
+      title: `Invite sent to @${friend.username}`,
+      text: friend.online_now ? "They'll see it instantly." : "They'll see it next time they sign in.",
+      duration: 3500,
+    }));
+    dispatch(setView("online"));
+    setOpen(false);
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        className="tw-btn ghost sm"
+        title={`Invite @${friend.username} to play`}
+        onClick={() => setOpen((v) => !v)}
+        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", gap: 4 }}
+      >
+        🎮 Play
+      </button>
+      {open && (
+        <div className="tw-gift-menu" onMouseLeave={() => setOpen(false)}>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>
+            Invite @{friend.username}
+          </div>
+          <button onClick={() => send("easy")}>🟢 Easy</button>
+          <button onClick={() => send("medium")}>🟡 Medium</button>
+          <button onClick={() => send("hard")}>🔴 Hard</button>
+        </div>
       )}
     </div>
   );

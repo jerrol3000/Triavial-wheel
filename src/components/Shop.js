@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
-import { addCoins, refillLives, setPro, fetchStats } from "../store/statsSlice";
+import { refillLives, setPro, fetchStats } from "../store/statsSlice";
 import { pushToast, setModal, setView, setProfileTab } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import {
@@ -284,6 +284,9 @@ function FramePreview({ item }) {
 }
 
 // ─── Currency / Pro pane ─────────────────────────────────────────────────
+// Coin packs ALWAYS route through real payment providers (PayPal /
+// Stripe Checkout) — there is no "click to grant" path. Players see one
+// row per pack with a payment provider button; no charge, no coins.
 function CurrencyPane() {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
@@ -300,26 +303,19 @@ function CurrencyPane() {
     setBusy(true);
     try {
       const { data } = await api.post("/pro/checkout");
-      if (data.url) window.location.href = data.url;
-      else if (data.devGranted) {
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (data.devGranted) {
         dispatch(setPro({ pro: true, pro_until: data.pro_until }));
-        dispatch(pushToast({ icon: "🌟", title: "Pro unlocked (dev grant)", text: "5 minutes." }));
+        dispatch(pushToast({ icon: "🌟", title: "Pro unlocked (dev grant)", text: "Test-only — 5 minutes." }));
       }
     } catch (e) {
-      dispatch(pushToast({ icon: "⚠️", title: "Couldn't start checkout" }));
-    }
-    setBusy(false);
-  };
-
-  const buyCoinPack = async (pack) => {
-    if (!user) { dispatch(setModal("auth")); return; }
-    setBusy(true);
-    try {
-      const { data } = await api.post("/pro/buy-coins", { pack: pack.id });
-      dispatch(addCoins(data.granted));
-      dispatch(pushToast({ icon: "🪙", title: `+${data.granted} coins` }));
-    } catch (e) {
-      dispatch(pushToast({ icon: "⚠️", title: "Purchase failed" }));
+      const err = e?.response?.data?.error;
+      if (err === "payments_not_configured") {
+        dispatch(pushToast({ icon: "⚠️", title: "Pro is unavailable", text: "Admin needs to finish payment setup." }));
+      } else {
+        dispatch(pushToast({ icon: "⚠️", title: "Couldn't start checkout" }));
+      }
     }
     setBusy(false);
   };
@@ -334,11 +330,16 @@ function CurrencyPane() {
     dispatch(pushToast({ icon: "♥", title: "Lives refilled!" }));
   };
 
+  // Coin packs MUST route through real payment providers. Each pack
+  // shows whichever providers are enabled (PayPal, Stripe, or both).
+  // `productId` matches keys in server's payments CATALOG.
   const COIN_PACKS = [
-    { id: "small",  label: "Small bag",   coins: 200,  price: "$0.99" },
-    { id: "medium", label: "Stack",       coins: 600,  price: "$2.99" },
-    { id: "large",  label: "Coin vault",  coins: 1500, price: "$5.99" },
+    { id: "coins_small",  label: "Small bag",   coins: 200,  price: "$0.99" },
+    { id: "coins_medium", label: "Stack",       coins: 600,  price: "$2.99" },
+    { id: "coins_large",  label: "Coin vault",  coins: 1500, price: "$5.99" },
   ];
+
+  const paymentsLive = payCfg && (payCfg.paypal_enabled || payCfg.stripe_enabled);
 
   return (
     <>
@@ -369,22 +370,51 @@ function CurrencyPane() {
       </div>
 
       <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy coins with real money</div>
+        <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700, marginBottom: 4 }}>💳 Buy coins</div>
         <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 10 }}>
-          Use coins to unlock cosmetics, boosts, and power-ups.
+          Coins unlock cosmetics, boosts, and power-ups. Real-money checkout via{" "}
+          {paymentsLive
+            ? [payCfg.paypal_enabled && "PayPal", payCfg.stripe_enabled && "Stripe"].filter(Boolean).join(" or ")
+            : "your configured provider"}.
         </div>
-        {COIN_PACKS.map((p) => (
-          <div key={p.id} className="tw-row" style={{ justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div>
-              <div style={{ fontWeight: 600 }}>{p.label} · +{p.coins.toLocaleString()} 🪙</div>
-              <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{p.price}</div>
+
+        {!user && (
+          <button className="tw-btn block" onClick={() => dispatch(setModal("auth"))}>
+            Sign in to buy
+          </button>
+        )}
+
+        {user && !paymentsLive && (
+          <div className="tw-card" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)" }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Payments not configured yet</div>
+            <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+              The admin needs to add a PayPal or Stripe account in the Admin panel before coin packs can be purchased.
             </div>
-            <button className="tw-btn" onClick={() => buyCoinPack(p)} disabled={busy}>{p.price}</button>
+          </div>
+        )}
+
+        {user && paymentsLive && COIN_PACKS.map((p) => (
+          <div key={p.id} style={{ padding: "12px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{p.label}</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 12 }}>+{p.coins.toLocaleString()} 🪙 · {p.price}</div>
+              </div>
+            </div>
+            <div className="tw-grid-2" style={{ gap: 8 }}>
+              {payCfg.paypal_enabled && (
+                <PayPalButton productId={p.id} clientId={payCfg.paypal_client_id} />
+              )}
+              {payCfg.stripe_enabled && (
+                <StripeCheckoutButton productId={p.id} />
+              )}
+            </div>
           </div>
         ))}
-        {payCfg && (payCfg.paypal_enabled || payCfg.stripe_enabled) && user && (
-          <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-dim)" }}>
-            Real-money payments processed by {[payCfg.paypal_enabled && "PayPal", payCfg.stripe_enabled && "Stripe"].filter(Boolean).join(" / ")}.
+
+        {paymentsLive && (
+          <div style={{ marginTop: 14, fontSize: 11, color: "var(--text-dim)", textAlign: "center" }}>
+            Coins are granted only after the payment provider confirms the charge. No card details touch our servers.
           </div>
         )}
       </div>

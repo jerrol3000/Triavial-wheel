@@ -10,16 +10,31 @@ if (hasStripe) {
   stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 }
 
+// Dev-fallback shortcuts (no-payment grants for Pro and coin packs) are
+// ONLY enabled outside production OR when ALLOW_DEV_GRANTS=1 is set. In
+// production they always 503 and the frontend has to route through the
+// real PayPal / Stripe paths in routes/payments.js.
+const ALLOW_DEV_GRANTS = process.env.NODE_ENV !== "production"
+  || process.env.ALLOW_DEV_GRANTS === "1";
+
 router.get("/status", requireAuth, (req, res) => {
   const row = db.prepare("SELECT pro_until FROM stats WHERE user_id = ?").get(req.user.id);
   const pro = !!(row && row.pro_until && row.pro_until > Date.now());
   res.json({ pro, pro_until: row ? row.pro_until : null });
 });
 
-// POST /api/pro/checkout — returns a Stripe Checkout URL, or a placeholder if Stripe isn't configured.
+// POST /api/pro/checkout — returns a Stripe Checkout URL. In production
+// requires Stripe to be configured; in dev / ALLOW_DEV_GRANTS mode it
+// can short-circuit to a 5-minute grant so the UI can be exercised
+// without billing.
 router.post("/checkout", requireAuth, async (req, res) => {
   if (!hasStripe || !process.env.STRIPE_PRO_PRICE_ID) {
-    // Dev/free fallback: pretend the user upgraded for 5 minutes so the UI can be exercised.
+    if (!ALLOW_DEV_GRANTS) {
+      return res.status(503).json({
+        error: "payments_not_configured",
+        hint: "Admin needs to configure Stripe (STRIPE_SECRET_KEY + STRIPE_PRO_PRICE_ID) before Pro can be purchased.",
+      });
+    }
     const until = Date.now() + 5 * 60 * 1000;
     db.prepare("UPDATE stats SET pro_until = ?, updated_at = ? WHERE user_id = ?").run(until, Date.now(), req.user.id);
     return res.json({ url: null, devGranted: true, pro_until: until });
@@ -74,15 +89,24 @@ async function handleWebhook(req, res) {
   res.json({ received: true });
 }
 
-// POST /api/pro/buy-coins — converts a one-time payment (or dev grant) into coins.
+// POST /api/pro/buy-coins — DEV-ONLY shortcut. In production a coin
+// purchase must go through /api/pay/paypal/* or /api/pay/stripe/* and
+// only complete after the payment provider's webhook / capture confirms
+// money actually moved. This route stays available in dev / under
+// ALLOW_DEV_GRANTS so we can demo the economy without billing.
 router.post("/buy-coins", requireAuth, async (req, res) => {
+  if (!ALLOW_DEV_GRANTS) {
+    return res.status(503).json({
+      error: "payments_required",
+      hint: "Use the PayPal or Stripe button on the coin pack to complete the purchase.",
+    });
+  }
   const { pack } = req.body || {};
   const packs = { small: 200, medium: 600, large: 1500 };
   const amount = packs[pack];
   if (!amount) return res.status(400).json({ error: "unknown pack" });
-  // Dev fallback: grant immediately. In production this would create a Checkout session.
   db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), req.user.id);
-  res.json({ ok: true, granted: amount });
+  res.json({ ok: true, granted: amount, devGranted: true });
 });
 
 router.post("/buy-theme", requireAuth, (req, res) => {

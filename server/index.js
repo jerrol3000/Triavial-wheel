@@ -75,6 +75,23 @@ app.use(rateLimit({
   legacyHeaders: false,
 }));
 
+// Hard guest cap fallback. The client (src/utils/guestLimit.js) blocks
+// unregistered devices at GUEST_HARD_LIMIT rounds via localStorage, but
+// that's bypassable by clearing storage / opening incognito. This
+// per-IP limiter on /api/questions catches that case — an anonymous IP
+// can fetch question batches at a generous-but-finite rate. Auth'd
+// requests skip the limit entirely (they have an account to tie abuse
+// to). Tuned to comfortably fit normal play: ~20 rounds/hr is well
+// above what a real human will hit in a guest session.
+app.use("/api/questions", rateLimit({
+  windowMs: 60 * 60 * 1000,        // 1 hour
+  max: 20,                          // ≈ 20 rounds/hr for guests
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => !!(req.headers && req.headers.authorization),
+  message: { error: "guest_limit", detail: "Create a free account to keep playing." },
+}));
+
 app.get("/api/health", (req, res) => {
   // Cheap healthcheck — no DB hit, no auth. Used by load balancers (Fly).
   res.json({

@@ -9,8 +9,13 @@ import AvatarPicker from "./AvatarPicker";
 export default function AuthModal() {
   const dispatch = useDispatch();
   const { loading, error } = useSelector((s) => s.auth);
+  const modal = useSelector((s) => s.ui.modal);
   const { t, lang, setLang } = useT();
-  const [tab, setTab] = useState("login");
+  // Honor caller-requested initial tab (e.g., guest-limit card asks for
+  // the register tab directly so the path is "Sign up" → fill form).
+  const initialTab = (modal && typeof modal === "object" && modal.data && modal.data.tab) || "login";
+  const reason = modal && typeof modal === "object" && modal.data && modal.data.reason;
+  const [tab, setTab] = useState(initialTab);
   const [emailOrUsername, setEmailOrUsername] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -58,6 +63,20 @@ export default function AuthModal() {
         <p style={{ color: "var(--text-dim)", marginTop: 0 }}>
           Sync stats across devices, climb the leaderboards, and earn rewards.
         </p>
+        {reason === "guest_limit" && (
+          <div style={{
+            margin: "0 0 12px",
+            padding: "10px 12px",
+            background: "rgba(124,58,237,0.14)",
+            border: "1px solid rgba(124,58,237,0.4)",
+            borderRadius: 10,
+            fontSize: 13,
+            color: "var(--text)",
+          }}>
+            🎟️ You've reached the guest round limit. Create a free account to
+            keep playing — it takes 10 seconds.
+          </div>
+        )}
 
         <div className="tw-row" style={{ marginBottom: 14 }}>
           <button

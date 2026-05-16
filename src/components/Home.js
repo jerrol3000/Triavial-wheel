@@ -4,17 +4,16 @@ import Wheel3D from "./Wheel3D";
 import { WHEEL_DATA, CATEGORIES } from "../data/categories";
 import { THEMES } from "../data/themes";
 import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
-import { setView, pushToast } from "../store/uiSlice";
+import { setView, pushToast, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed, consumeFreeSpin } from "../store/statsSlice";
-import { api } from "../api/client";
-import QuestsPanel from "./QuestsPanel";
-import WeeklyQuestsPanel from "./WeeklyQuestsPanel";
+import { markCategoryPlayed } from "../store/statsSlice";
+import QuestsHub from "./QuestsHub";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 import { useT } from "../i18n";
 import { translatedCategories } from "../data/categories";
+import { guestStatus, incrementGuestPlays, GUEST_HARD_LIMIT, GUEST_SOFT_LIMIT } from "../utils/guestLimit";
 
 // The wheel's actual duration is set by `spinDuration` below (a multiplier on
 // react-custom-roulette's internal default). The tick schedule is self-pacing,
@@ -25,7 +24,14 @@ export default function Home() {
   const stats = useSelector((s) => s.stats);
   const daily = useSelector((s) => s.daily);
   const mode = useSelector((s) => s.game.mode);
+  const user = useSelector((s) => s.auth.user);
   const { t } = useT();
+  // Re-render when the local guest-plays counter changes (storage write
+  // happens inside startWithCategory). Cheap state bump; the actual count
+  // is read from localStorage via guestStatus() at render time.
+  const [, setGuestTick] = React.useState(0);
+  const bumpGuest = React.useCallback(() => setGuestTick((n) => n + 1), []);
+  const guest = !user ? guestStatus() : null;
   // Wheel labels translate live with language switches.
   const wheelData = React.useMemo(() => translatedCategories(t), [t]);
 
@@ -66,6 +72,21 @@ export default function Home() {
     } else {
       cat = CATEGORIES.find((c) => c.id === slot.id) || CATEGORIES[0];
     }
+    // Count guest rounds the moment the round actually starts (after the
+    // wheel stops). Soft prompt nags at the threshold, hard wall is
+    // enforced in onSpin before the wheel even spins.
+    if (!user) {
+      const n = incrementGuestPlays();
+      bumpGuest();
+      if (n === GUEST_SOFT_LIMIT) {
+        dispatch(pushToast({
+          icon: "👋",
+          title: "Enjoying it?",
+          text: `Sign up to keep playing past ${GUEST_HARD_LIMIT} rounds — saves your XP, coins & badges.`,
+          duration: 5500,
+        }));
+      }
+    }
     dispatch(markCategoryPlayed(cat.id));
     dispatch(startRound({ categoryId: cat.id, mode, isMystery }));
     dispatch(fetchRoundQuestions({ categoryId: cat.id, mode }));
@@ -74,13 +95,22 @@ export default function Home() {
 
   const onSpin = () => {
     if (spinning) return;
+    // Hard wall for guests at GUEST_HARD_LIMIT rounds. Opens the auth
+    // modal directly so the upgrade path is one click away.
+    if (!user && guestStatus().blocked) {
+      sfx.click();
+      dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }));
+      return;
+    }
     // Pro skips the gate. Everyone else needs at least one spin in the
-    // bank — out of spins routes through the OutOfSpinsCard.
+    // bank — out of spins routes through the OutOfSpinsCard. (The spin
+    // itself is now free; the cost is only paid on a failed round in
+    // Play.js — so a spin only fires if you still have at least one
+    // chance left to spend on a possible loss.)
     if (!stats.pro && (stats.free_spins || 0) <= 0) {
       dispatch(setView("shop"));
       return;
     }
-    useFreeSpinIfPossible();
     setSpinning(true);
     if (wheelRef.current) wheelRef.current.spin();
     try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
@@ -95,24 +125,12 @@ export default function Home() {
     navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 420);
   };
 
-  // Returns true if we consumed a free spin. Dispatches the local
-  // reducer so the counter in the banner updates immediately, then
-  // mirrors to the server. Avoids the previous bug where UI showed the
-  // stale count until the next fetchStats.
-  const useFreeSpinIfPossible = () => {
-    if ((stats.free_spins || 0) <= 0) return false;
-    dispatch(consumeFreeSpin());
-    api.post("/stats/use-free-spin").catch(() => {});
-    return true;
-  };
-
   return (
     <div className="tw-home">
       {/* LEFT — rewards + quests. Hides into the right column on tablet. */}
       <aside className="tw-home-left">
         <EarnMoreStrip />
-        <QuestsPanel />
-        <WeeklyQuestsPanel />
+        <QuestsHub />
       </aside>
 
       {/* CENTER — the focal point: title, mode pills, wheel, SPIN. */}
@@ -153,25 +171,45 @@ export default function Home() {
             />
           </div>
 
-          {/* Single energy resource: SPINS. Pro = unlimited. Below 1 =
-              out-of-spins card with watch-ad / buy paths. Otherwise spin
-              normally — the count is shown in the button label. */}
+          {/* Spin gate. Three states, in priority order:
+                1) Guest hit the round cap → register/login card.
+                2) Out of spins (non-Pro) → buy/ad card.
+                3) Otherwise → SPIN button (free; cost is paid on loss).
+              Pro skips both gates entirely. */}
           {(() => {
+            if (!user && guest && guest.blocked) return <GuestLimitCard />;
             const spins = stats.free_spins || 0;
             if (!stats.pro && spins <= 0) return <OutOfSpinsCard />;
             return (
-              <button
-                className="tw-btn tw-btn-spin block"
-                disabled={spinning}
-                onClick={onSpin}
-                title={spinning ? "Wheel is spinning" : "Spin the wheel to start a round"}
-              >
-                {spinning
-                  ? "Spinning..."
-                  : stats.pro
-                    ? "SPIN"
-                    : `SPIN  ·  🎡 ${spins}`}
-              </button>
+              <>
+                <button
+                  className="tw-btn tw-btn-spin block"
+                  disabled={spinning}
+                  onClick={onSpin}
+                  title={spinning ? "Wheel is spinning" : "Spin is free — you only lose a spin on a failed round"}
+                >
+                  {spinning
+                    ? "Spinning..."
+                    : stats.pro
+                      ? "SPIN"
+                      : `SPIN  ·  🎡 ${spins}`}
+                </button>
+                {!user && guest && guest.nearLimit && (
+                  <div className="tw-guest-nudge" style={{
+                    marginTop: 8, padding: "8px 12px",
+                    background: "rgba(255,180,80,0.12)",
+                    border: "1px solid rgba(255,180,80,0.35)",
+                    borderRadius: 10, fontSize: 12, color: "var(--text-dim)",
+                    textAlign: "center",
+                  }}>
+                    👋 {guest.remaining} round{guest.remaining === 1 ? "" : "s"} left as guest.{" "}
+                    <button className="tw-link"
+                      onClick={() => dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }))}>
+                      Sign up free
+                    </button> to keep playing.
+                  </div>
+                )}
+              </>
             );
           })()}
         </div>
@@ -232,6 +270,36 @@ function EarnMoreStrip() {
             </span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// Hard-wall card shown to guests once they hit GUEST_HARD_LIMIT rounds.
+// The free way forward is registering — we keep the ask simple and
+// front-load the value (XP, badges, leaderboard, cross-device sync).
+function GuestLimitCard() {
+  const dispatch = useDispatch();
+  return (
+    <div className="tw-out-of-spins">
+      <div className="tw-out-of-spins-title">🎟️ Guest limit reached</div>
+      <div className="tw-out-of-spins-sub">
+        Create a free account to keep playing — your XP, coins, streaks
+        and badges save across devices.
+      </div>
+      <div className="tw-out-of-spins-actions">
+        <button
+          className="tw-btn"
+          onClick={() => dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }))}
+          title="Free, takes 10 seconds">
+          ✨ Sign up free
+        </button>
+        <button
+          className="tw-btn ghost"
+          onClick={() => dispatch(setModal({ name: "auth", data: { tab: "login", reason: "guest_limit" } }))}
+          title="Already have an account?">
+          🔑 Log in
+        </button>
       </div>
     </div>
   );

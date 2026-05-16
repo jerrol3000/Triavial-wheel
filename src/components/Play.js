@@ -86,7 +86,15 @@ export default function Play() {
       dispatch(pushToast({ icon: "🆙", title: `Level ${nextLevel}!`, text: `+${reward} 🪙 and a freeze power-up`, duration: 3500 }));
     }
 
-    if (game.correct >= game.questions.length * 0.7) {
+    // Spin cost is now performance-based — players don't pay to play,
+    // they pay when they fail. "Failure" = either knocked out by the
+    // 3-strikes elimination rule, OR ≥4 wrong (out of 10). Anything
+    // better keeps your spin pool intact so good players have effectively
+    // unlimited play. Pro never pays regardless.
+    const QUESTIONS_TOTAL = game.questions.length || 10;
+    const FAILURE_THRESHOLD = Math.max(3, Math.ceil(QUESTIONS_TOTAL * 0.4));
+    const failed = !!game.eliminated_out || game.incorrect >= FAILURE_THRESHOLD;
+    if (game.correct >= QUESTIONS_TOTAL * 0.7) {
       sfx.win();
       haptic.win();
       setShowConfetti(true);
@@ -94,8 +102,8 @@ export default function Play() {
     } else {
       sfx.lose();
       haptic.heavy();
-      if (!stats.pro) dispatch(spendLife());
     }
+    if (failed && !stats.pro) dispatch(spendLife());
 
     if (user) {
       dispatch(submitGame({

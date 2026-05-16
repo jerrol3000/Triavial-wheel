@@ -1,12 +1,16 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { api, setToken } from "../api/client";
 import { load, save, remove } from "../utils/storage";
+import { resetGuestPlays } from "../utils/guestLimit";
 
 export const register = createAsyncThunk("auth/register", async (payload, { rejectWithValue }) => {
   try {
     const { data } = await api.post("/auth/register", payload);
     setToken(data.token);
     save("user", data.user);
+    // The guest round counter is now meaningless — wipe it so the user
+    // never hits the cap again if they ever log out.
+    resetGuestPlays();
     return data.user;
   } catch (e) {
     return rejectWithValue(e?.response?.data?.error || "registration failed");
@@ -18,6 +22,7 @@ export const login = createAsyncThunk("auth/login", async (payload, { rejectWith
     const { data } = await api.post("/auth/login", payload);
     setToken(data.token);
     save("user", data.user);
+    resetGuestPlays();
     return data.user;
   } catch (e) {
     return rejectWithValue(e?.response?.data?.error || "login failed");

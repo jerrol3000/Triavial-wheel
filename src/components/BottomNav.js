@@ -11,8 +11,8 @@ import Avatar from "./Avatar";
 // they pop without any background chrome.
 const ITEMS = [
   { id: "daily",   label: "Daily", icon: "daily" },
-  { id: "shop",    label: "Shop",  icon: "shop", big: true },
-  { id: "online",  label: null,    icon: "vs",   big: true, title: "Play with friends" },
+  { id: "shop",    label: null,    icon: "shop", big: true, title: "Shop" },
+  { id: "online",  label: null,    icon: "vs",   title: "Play with friends" },
   { id: "profile", label: "Me",    icon: "me" },
 ];
 

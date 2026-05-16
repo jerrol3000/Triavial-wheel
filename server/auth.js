@@ -17,11 +17,11 @@ function rotateSession(userId) {
   return sid;
 }
 
-// Token lifetime. 365 days so signed-in players stay signed in across
-// browser restarts and weeks/months of casual play. Single-device
-// enforcement (sid check in verifySession) still kicks them out if they
-// log in elsewhere — but otherwise the session is sticky.
-const TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+// Token lifetime. 30 days hard cap. Active players get a sliding-window
+// refresh (see attachRefresh below) so they effectively stay signed in,
+// but anyone who walks away for 30+ days has to re-authenticate when
+// they come back. Single-device enforcement (sid check) still applies.
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const TOKEN_TTL_SEC = Math.floor(TOKEN_TTL_MS / 1000);
 
 // Mint a JWT carrying the user's current session_id. Caller must have

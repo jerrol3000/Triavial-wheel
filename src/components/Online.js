@@ -403,6 +403,18 @@ function LiveMatch() {
         )}
       </div>
 
+      {/* Session score chip — only shows from round 2 onward when there's
+          actually multi-round context. Compact so it doesn't crowd the
+          scoreboard above the question. */}
+      {room.rounds > 1 && room.sessionScores && (
+        <SessionChip
+          sessionScores={room.sessionScores}
+          mePlayer={meSlot}
+          oppPlayer={opponent}
+          roundNumber={room.rounds}
+        />
+      )}
+
       <div className="tw-card">
         <div className="tw-online-scoreboard">
           <ScoreCard player={meSlot} highlight answered={!!picked} />
@@ -452,6 +464,100 @@ function LiveMatch() {
 
       <ReactionLayer />
       <ChatPanel />
+    </div>
+  );
+}
+
+// Compact chip showing the session running tally above the live
+// scoreboard. Only renders from round 2+ (handled by caller). Format:
+// "Session · You 2-1 · Alice 1-2 · 🔥 2"
+function SessionChip({ sessionScores, mePlayer, oppPlayer, roundNumber }) {
+  if (!sessionScores) return null;
+  const me = mePlayer && sessionScores[mePlayer.id];
+  const opp = oppPlayer && sessionScores[oppPlayer.id];
+  const fmt = (s) => s ? `${s.wins}-${s.losses}${s.ties ? `-${s.ties}T` : ""}` : "0-0";
+  const myStreak = me && me.streak >= 2 ? me.streak : 0;
+  const oppStreak = opp && opp.streak >= 2 ? opp.streak : 0;
+  return (
+    <div className="tw-card" style={{
+      padding: "8px 12px",
+      background: "rgba(124,58,237,0.10)",
+      border: "1px solid rgba(124,58,237,0.30)",
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      fontSize: 13,
+    }}>
+      <span style={{ fontFamily: "Fredoka", fontWeight: 700, color: "var(--text-dim)" }}>
+        Session · Round {roundNumber}
+      </span>
+      <div style={{ flex: 1 }} />
+      <span title="Your wins-losses this session">
+        <strong>You</strong> {fmt(me)}{myStreak ? <span style={{ marginLeft: 4, color: "#f97316" }}>🔥 {myStreak}</span> : null}
+      </span>
+      <span style={{ color: "var(--text-dim)" }}>·</span>
+      <span title="Opponent wins-losses this session">
+        <strong>{(oppPlayer && oppPlayer.username) || "Opp"}</strong> {fmt(opp)}{oppStreak ? <span style={{ marginLeft: 4, color: "#f97316" }}>🔥 {oppStreak}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+// Full session scoreboard for MatchEnd — bigger, more explicit than
+// the inline chip. Shows totals + streaks side by side, and notes the
+// streak event for this round ("🔥 2-win streak!" or "💔 Streak
+// broken at 3"). Stays hidden on round 1 since there's no history yet.
+function SessionScoreboard({ sessionScores, mePlayer, oppPlayer, prevMyStreak, didIWin, roundNumber }) {
+  if (!sessionScores || !mePlayer) return null;
+  const me = sessionScores[mePlayer.id];
+  const opp = oppPlayer && sessionScores[oppPlayer.id];
+  if (!me) return null;
+  const streakNote =
+    didIWin && me.streak >= 2 ? `🔥 ${me.streak}-win streak!`
+    : (!didIWin && prevMyStreak >= 2) ? `💔 Streak broken at ${prevMyStreak}`
+    : null;
+  const cell = (label, s, highlight) => (
+    <div style={{
+      flex: 1,
+      padding: 10,
+      borderRadius: 10,
+      background: highlight ? "rgba(124,58,237,0.18)" : "rgba(255,255,255,0.04)",
+      border: highlight ? "1px solid rgba(124,58,237,0.45)" : "1px solid rgba(255,255,255,0.08)",
+      textAlign: "center",
+    }}>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 20 }}>
+        {s ? `${s.wins}W · ${s.losses}L${s.ties ? ` · ${s.ties}T` : ""}` : "0W · 0L"}
+      </div>
+      {s && s.streak >= 1 && (
+        <div style={{ marginTop: 4, fontSize: 12, color: "#f97316" }}>
+          🔥 Current streak: {s.streak}
+        </div>
+      )}
+      {s && s.bestStreak >= 2 && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+          Best: {s.bestStreak}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div className="tw-card" style={{ marginTop: 14, background: "rgba(0,0,0,0.20)" }}>
+      <div className="tw-row" style={{ marginBottom: 10, gap: 8 }}>
+        <span style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 14 }}>Session standings</span>
+        <span style={{ color: "var(--text-dim)", fontSize: 12 }}>· {roundNumber} round{roundNumber === 1 ? "" : "s"} played</span>
+        <div style={{ flex: 1 }} />
+        {streakNote && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: didIWin ? "#f97316" : "var(--bad)" }}>
+            {streakNote}
+          </span>
+        )}
+      </div>
+      <div className="tw-row" style={{ gap: 10 }}>
+        {cell("You", me, true)}
+        {cell((oppPlayer && oppPlayer.username) || "Opponent", opp, false)}
+      </div>
     </div>
   );
 }
@@ -600,6 +706,14 @@ function MatchEnd() {
   const mine = matchEnd.players.find((p) => p && me && p.id === me.id);
   const opp = matchEnd.players.find((p) => p && (!me || p.id !== me.id));
   const isFriendly = matchEnd.kind === "private" || room?.kind === "private";
+  const sessionScores = matchEnd.sessionScores || room?.sessionScores;
+  const roundNumber = matchEnd.roundNumber || room?.rounds || 1;
+  // Server snapshots the per-player session state BEFORE applying this
+  // match's outcome — use that to compute the streak delta precisely.
+  const prevMyStreak = (matchEnd.prevSessionScores
+    && me
+    && matchEnd.prevSessionScores[me.id]
+    && matchEnd.prevSessionScores[me.id].streak) || 0;
 
   const deadline = room?.continueDeadline || matchEnd.continueDeadline;
   const remaining = deadline ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : null;
@@ -646,6 +760,19 @@ function MatchEnd() {
             <div style={{ fontSize: 28, fontWeight: 700 }}>{opp?.score ?? 0}</div>
           </div>
         </div>
+
+        {/* Session-level scoreboard — running W/L tally across rematches
+            in this room. Hidden on round 1 (no history yet). */}
+        {roundNumber >= 1 && sessionScores && (
+          <SessionScoreboard
+            sessionScores={sessionScores}
+            mePlayer={mine}
+            oppPlayer={opp}
+            prevMyStreak={prevMyStreak}
+            didIWin={!!won}
+            roundNumber={roundNumber}
+          />
+        )}
 
         {/* Continue vote area — only renders while the window is open. */}
         {remaining > 0 && (

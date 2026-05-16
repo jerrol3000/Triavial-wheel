@@ -82,6 +82,7 @@ function publicRoom(room) {
     continueVotes: room.continueVotes,
     pendingDifficulty: room.pendingDifficulty,
     difficultyVotes: room.difficultyVotes,
+    sessionScores: room.sessionScores,
   };
 }
 
@@ -153,6 +154,12 @@ function makeRoom({ kind, code, difficulty = "medium", hostId = null }) {
     rounds: 0,
     pendingDifficulty: null,           // initiator-proposed change between rounds
     difficultyVotes: {},               // userId → bool
+    // Session-level standings across all rematches in this room. Wins
+    // increment the win streak; losses reset it to 0; ties hold it
+    // (neutral, neither extends nor breaks). Lives in the room object
+    // so it dies with the room — switching opponents starts fresh.
+    // Shape: { [userId]: { wins, losses, ties, streak, bestStreak } }
+    sessionScores: {},
   };
   rooms.set(code, room);
   return room;
@@ -291,6 +298,32 @@ function endMatch(room, opts = {}) {
     applyMatchRewards(p1, p2, winner, opts.forfeiterId, room.kind, room.difficulty, room);
   }
 
+  // Update session-level standings: W/L/T tally + per-player current
+  // win streak. A win extends the streak (and bumps bestStreak); a
+  // loss resets it to 0; a tie is neutral (no change). Applied for
+  // every player in the room so a one-sided forfeit still counts
+  // correctly on both sides. We snapshot the PRE-update state so the
+  // client can show "🔥 N-streak!" on extension or "💔 broken at N"
+  // on a reset without having to reverse-engineer from the new state.
+  const prevSessionScores = {};
+  for (const p of [p1, p2]) {
+    if (!p) continue;
+    const prev = room.sessionScores[p.id] || { wins: 0, losses: 0, ties: 0, streak: 0, bestStreak: 0 };
+    prevSessionScores[p.id] = { ...prev };
+    let { wins, losses, ties, streak, bestStreak } = prev;
+    if (!winner) {
+      ties += 1;
+    } else if (winner.id === p.id) {
+      wins += 1;
+      streak += 1;
+      if (streak > bestStreak) bestStreak = streak;
+    } else {
+      losses += 1;
+      streak = 0;
+    }
+    room.sessionScores[p.id] = { wins, losses, ties, streak, bestStreak };
+  }
+
   // Reset continue-vote state for the rematch decision window.
   room.continueVotes = {};
   room.continueDeadline = Date.now() + CONTINUE_VOTE_MS;
@@ -305,6 +338,9 @@ function endMatch(room, opts = {}) {
     difficulty: room.difficulty,
     continueDeadline: room.continueDeadline,
     players: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct } : null),
+    sessionScores: room.sessionScores,
+    prevSessionScores,
+    roundNumber: room.rounds,
   });
 }
 

@@ -9,6 +9,7 @@ import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
+import GuestWelcome from "./GuestWelcome";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 import { useT } from "../i18n";
@@ -133,8 +134,12 @@ export default function Home() {
         <QuestsHub />
       </aside>
 
-      {/* CENTER — the focal point: title, mode pills, wheel, SPIN. */}
+      {/* CENTER — the focal point: title, mode pills, wheel, SPIN.
+          Guests see an interactive welcome carousel above the hero so
+          the registration value-prop is visible on every screen size
+          (the left aside collapses below the wheel on mobile). */}
       <section className="tw-home-center">
+        {!user && <GuestWelcome />}
         <div className="tw-home-hero">
           <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>{t("home.title")}</h1>
           <p style={{ color: "var(--text-dim)", margin: "4px 0 0", textAlign: "center", fontSize: 13 }}>
@@ -308,13 +313,16 @@ function GuestLimitCard() {
 // When the player has used every spin (free_spins + lives both 0 and
 // not Pro) the SPIN button is replaced with this card — three clear
 // paths back into play: watch an ad, hop to the spin packs in the
-// Store, or upgrade to Pro for unlimited.
+// Store, or upgrade to Pro for unlimited. Also shows a live-ticking
+// "next spin in m:ss" so users know when free regen will give them
+// one back without refreshing.
 function OutOfSpinsCard() {
   const dispatch = useDispatch();
   return (
     <div className="tw-out-of-spins">
       <div className="tw-out-of-spins-title">🎡 Out of spins</div>
       <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
+      <NextSpinTicker />
       <div className="tw-out-of-spins-actions">
         {/* Free path is the PRIMARY CTA — no reason to push spending. */}
         <button
@@ -333,6 +341,38 @@ function OutOfSpinsCard() {
       <div className="tw-out-of-spins-pro">
         Or <button className="tw-link" onClick={() => dispatch(setView("shop"))}>upgrade to Pro</button> for unlimited.
       </div>
+    </div>
+  );
+}
+
+// Live-updating "next spin in m:ss" pulled from stats.free_spins_updated_at
+// and the regen interval. Ticks every second via setInterval so the
+// number actually moves without a refresh. Hidden if already at the
+// regen floor or on Pro (no regen needed).
+function NextSpinTicker() {
+  const stats = useSelector((s) => s.stats);
+  // useState bump forces re-render every second so the displayed mm:ss
+  // counts down in real time.
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (stats.pro) return null;
+  if ((stats.free_spins || 0) >= 5) return null;
+  const elapsed = Date.now() - (stats.free_spins_updated_at || Date.now());
+  const period = 30 * 60 * 1000; // SPIN_REGEN_MS — matches statsSlice
+  const left = Math.max(0, period - (elapsed % period));
+  const m = Math.floor(left / 60000);
+  const s = Math.floor((left % 60000) / 1000);
+  return (
+    <div style={{
+      margin: "6px 0 10px",
+      fontSize: 12,
+      color: "var(--text-dim)",
+      textAlign: "center",
+    }}>
+      ⏳ Next free spin in <strong style={{ color: "var(--text)" }}>{m}:{String(s).padStart(2, "0")}</strong>
     </div>
   );
 }

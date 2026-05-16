@@ -2,7 +2,7 @@ import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { setView, toggleSound, setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
-import { LIVES_MAX_EXPORT, LIVES_REGEN_MS_EXPORT } from "../store/statsSlice";
+import { LIVES_MAX_EXPORT } from "../store/statsSlice";
 import { safeNavigate } from "../utils/navigate";
 import { useT } from "../i18n";
 import Icon from "./Icon";
@@ -19,18 +19,6 @@ export default function Banner() {
   const onHomeClick = () => dispatch(safeNavigate("home"));
 
   const { level, xpInLevel, xpForNext, percent } = progressToNext(stats.xp);
-
-  // Mini timer that shows when the next spin regenerates. Hidden when
-  // the player is already above the regen floor (5) or has Pro.
-  const livesNext = () => {
-    const spins = stats.free_spins || 0;
-    if (spins >= LIVES_MAX_EXPORT || stats.pro) return null;
-    const since = Date.now() - (stats.free_spins_updated_at || Date.now());
-    const left = Math.max(0, LIVES_REGEN_MS_EXPORT - (since % LIVES_REGEN_MS_EXPORT));
-    const m = Math.floor(left / 60000);
-    const s = Math.floor((left % 60000) / 1000);
-    return `${m}:${String(s).padStart(2, "0")}`;
-  };
 
   return (
     <header className="tw-banner">
@@ -51,7 +39,6 @@ export default function Banner() {
               style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
           <Icon name="free_spin" size={20} />
           <strong>{stats.pro ? "∞" : (stats.free_spins || 0)}</strong>
-          {livesNext() && <span className="tw-banner-hide-sm" style={{ marginLeft: 4, color: "var(--text-dim)", fontWeight: 400 }}>{livesNext()}</span>}
         </span>
         <span className="tw-pill" title="Coins" style={{ display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
           <Icon name="coins" size={20} /> {stats.coins}

@@ -247,6 +247,13 @@ ensureColumn("stats", "coins_spent_total", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "cosmetics_owned_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "pro_lifetime_months", "INTEGER NOT NULL DEFAULT 0");
 
+// Backfill for cosmetics columns added after the table was first created.
+// CREATE TABLE IF NOT EXISTS is a no-op on schema-changed tables, so the
+// limited-edition windows + bundle pointer need an explicit migration.
+ensureColumn("cosmetics", "available_from", "INTEGER");
+ensureColumn("cosmetics", "available_until", "INTEGER");
+ensureColumn("cosmetics", "bundle_contents", "TEXT");
+
 // 2FA columns on users (admin TOTP).
 ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");

@@ -421,6 +421,28 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty, room) 
 
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
 
+    // Push the match score onto the GLOBAL high-score leaderboard so
+    // online players can compete on the same Home "Top Players" board
+    // as solo players. Skipped for:
+    //  - friendly (private) matches — those aren't ranked
+    //  - micro-matches — same anti-collusion stance as the rewards
+    //    above; a 1- or 2-question forfeit shouldn't seed the
+    //    leaderboard with anomalous scores
+    // The leaderboard table tracks each user's BEST score ever, so an
+    // INSERT-or-update-on-higher keeps low-scoring rounds from
+    // demoting a player.
+    if (!isFriendly && !isMicroMatch && p.score > 0) {
+      try {
+        db.prepare(`
+          INSERT INTO leaderboard (user_id, high_score, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            high_score = MAX(leaderboard.high_score, excluded.high_score),
+            updated_at = excluded.updated_at
+        `).run(p.id, Math.floor(p.score), Date.now());
+      } catch (e) { /* leaderboard push is best-effort */ }
+    }
+
     // Quests: online matches share the SAME metrics as solo for any
     // counter the player legitimately bumped (coins/xp earned today).
     // Without this, "Earn 200 coins from play" is unwinnable for

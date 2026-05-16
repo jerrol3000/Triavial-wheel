@@ -15,6 +15,21 @@ router.use(requireAdmin);
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
+// Bootstrap admins — emails pinned in the ADMIN_EMAILS env var. These
+// accounts are auto-promoted on boot + register, and they cannot be
+// demoted, banned, or deleted by any other admin via the panel. This
+// guarantees the owner can never be locked out by a rogue promotee.
+const BOOTSTRAP_ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+function isBootstrapAdmin(userId) {
+  const row = db.prepare("SELECT email FROM users WHERE id = ?").get(userId);
+  return !!(row && row.email && BOOTSTRAP_ADMIN_EMAILS.has(row.email.toLowerCase()));
+}
+
 // ─── Settings (encrypted PayPal/Stripe creds, editable in admin UI) ─────────
 router.get("/settings", (req, res) => {
   res.json({
@@ -253,13 +268,18 @@ router.put("/users/:id", (req, res) => {
   const u = db.prepare("SELECT id FROM users WHERE id = ?").get(id);
   if (!u) return res.status(404).json({ error: "not found" });
 
+  // Bootstrap admins (emails in ADMIN_EMAILS) cannot be demoted or banned
+  // by anyone — guarantees the owner can't be locked out.
+  const targetIsBootstrap = isBootstrapAdmin(id);
+
   if (typeof is_admin === "boolean") {
-    // Don't allow demoting yourself — admin lockout protection.
     if (id === req.user.id && !is_admin) return res.status(400).json({ error: "cannot demote yourself" });
+    if (targetIsBootstrap && !is_admin) return res.status(403).json({ error: "cannot demote bootstrap admin" });
     db.prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(is_admin ? 1 : 0, id);
   }
   if (typeof banned === "boolean") {
     if (id === req.user.id && banned) return res.status(400).json({ error: "cannot ban yourself" });
+    if (targetIsBootstrap && banned) return res.status(403).json({ error: "cannot ban bootstrap admin" });
     db.prepare("UPDATE users SET banned_at = ? WHERE id = ?").run(banned ? Date.now() : null, id);
   }
   if (typeof grant_pro_days === "number" && grant_pro_days > 0) {
@@ -286,6 +306,7 @@ router.put("/users/:id", (req, res) => {
 router.delete("/users/:id", (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: "cannot delete yourself" });
+  if (isBootstrapAdmin(id)) return res.status(403).json({ error: "cannot delete bootstrap admin" });
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
   audit.logAdmin(req.user.id, "user.delete", String(id));
   res.json({ ok: true });

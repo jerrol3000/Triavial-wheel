@@ -17,10 +17,23 @@ const slice = createSlice({
     setConnected: (s, a) => { s.connected = a.payload; },
     setWaiting: (s, a) => { s.waiting = a.payload; },
     setRoom: (s, a) => {
-      s.room = a.payload;
+      // When the room advances to a new question, drop per-round state.
+      // Without this, the previous round's `reveal` payload sticks
+      // around and disables the new question's answer buttons
+      // (Online.js gates `disabled={!!picked || !!reveal}`), making
+      // the match look frozen after Q1. Compare by question index so
+      // we only reset on actual round transitions, not generic room
+      // updates (chat, ready state, etc.).
+      const next = a.payload;
+      const prevIndex = s.room ? s.room.index : null;
+      s.room = next;
       s.waiting = false;
       s.matchEnd = null;
       s.error = null;
+      if (next && typeof next.index === "number" && next.index !== prevIndex) {
+        s.reveal = null;
+        s.opponentAnswered = false;
+      }
     },
     setError: (s, a) => { s.error = a.payload; },
     setMatchEnd: (s, a) => { s.matchEnd = a.payload; },

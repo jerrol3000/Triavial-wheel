@@ -6,10 +6,13 @@ const { getPerks } = require("../perks");
 
 const router = express.Router();
 
+// Whitelist of fields a client may directly set. Economy stuff (coins,
+// xp, level, powerups_json, themes_json) is intentionally OMITTED —
+// otherwise any authed user can POST { coins: 999999 } and grant
+// themselves infinite currency. Those values are mutated only through
+// /stats/game, /watch-ad-reward, /store/buy, /quests/claim, etc.
 const ALLOWED_FIELDS = new Set([
-  "xp", "level", "coins", "games_played", "correct", "incorrect",
-  "best_streak", "longest_daily_streak", "current_daily_streak",
-  "last_daily_date", "powerups_json", "themes_json", "active_theme",
+  "active_theme",       // pure cosmetic preference, no economic value
 ]);
 
 function loadStats(userId) {
@@ -54,10 +57,18 @@ router.post("/daily-login", requireAuth, (req, res) => {
   if (continued) {
     newStreak = row.login_streak + 1;
   } else if (row && row.last_login_date && row.login_streak > 0) {
-    // Broken streak. Check for streak_saver.
+    // Broken streak. Use the streak_saver_active flag (from the store
+    // boost) FIRST so players can spend coins on protection; otherwise
+    // fall back to the legacy powerup in powerups_json.
     let powerups = {};
     try { powerups = JSON.parse(row.powerups_json || "{}"); } catch (e) {}
-    if ((powerups.streak_saver || 0) > 0) {
+    const flagRow = db.prepare("SELECT streak_saver_active FROM stats WHERE user_id = ?").get(req.user.id);
+    const hasBoostShield = flagRow && flagRow.streak_saver_active;
+    if (hasBoostShield) {
+      streakSaverUsed = true;
+      newStreak = row.login_streak + 1;
+      db.prepare("UPDATE stats SET streak_saver_active = 0 WHERE user_id = ?").run(req.user.id);
+    } else if ((powerups.streak_saver || 0) > 0) {
       powerups.streak_saver -= 1;
       streakSaverUsed = true;
       newStreak = row.login_streak + 1;
@@ -96,6 +107,7 @@ const AD_DAILY_LIMIT = 10;
 router.post("/watch-ad-reward", requireAuth, (req, res) => {
   const reward = String((req.body && req.body.reward) || "free_spin");
   const row = db.prepare("SELECT last_ad_at, ads_today_count, ads_today_date FROM stats WHERE user_id = ?").get(req.user.id);
+  if (!row) return res.status(404).json({ error: "no_stats_row" });
   const now = Date.now();
   if (row.last_ad_at && now - row.last_ad_at < AD_COOLDOWN_MS) {
     return res.status(429).json({ error: "cooldown", wait_seconds: Math.ceil((AD_COOLDOWN_MS - (now - row.last_ad_at)) / 1000) });
@@ -282,7 +294,14 @@ router.get("/my-rank", requireAuth, (req, res) => {
     onlineRank = db.prepare("SELECT COUNT(*) AS n FROM stats WHERE online_rating > ? AND (online_wins + online_losses) > 0").get(myRating.online_rating).n + 1;
     onlineTotal = db.prepare("SELECT COUNT(*) AS n FROM stats WHERE (online_wins + online_losses) > 0").get().n;
   }
-  res.json({ rank, total, high_score: me.high_score, online_rank: onlineRank, online_total: onlineTotal });
+  // Include the user's own level so the pinned "you" row on the live
+  // leaderboard can show the correct value instead of the leader's level.
+  const myLevel = db.prepare("SELECT level FROM stats WHERE user_id = ?").get(req.user.id);
+  res.json({
+    rank, total, high_score: me.high_score,
+    level: myLevel ? myLevel.level : 1,
+    online_rank: onlineRank, online_total: onlineTotal,
+  });
 });
 
 // Recent match history (online matches the user participated in).
@@ -422,7 +441,6 @@ router.post("/game", requireAuth, (req, res) => {
   // Auto-progress today's quests from the game event. Sum metrics get
   // incremented; best_streak uses 'max' so two rounds with a 4-streak
   // and a 6-streak record 6 (not 10) for the day.
-  const ratio = stats.games_played > 0 ? (correct / Math.max(1, correct + incorrect)) : 0;
   const isPerfect = correct >= 10 && incorrect === 0;
   const questEvents = [
     { metric: "rounds_today",         amount: 1 },

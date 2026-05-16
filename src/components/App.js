@@ -58,15 +58,20 @@ export default function App() {
     dispatch(fetchCatalog());
     dispatch(fetchBadges());
     if (getToken()) {
-      dispatch(fetchStats());
       dispatch(fetchMe());
       // Daily login bonus — claim once per UTC day. Backend is idempotent.
+      // The response includes the fresh stats so we only fetchStats once
+      // (used to fire twice and the second could clobber the first).
       api.post("/stats/daily-login").then((r) => {
         if (r.data && !r.data.alreadyClaimed) {
           dispatch(setModal({ name: "dailyBonus", data: r.data }));
         }
         dispatch(fetchStats());
-      }).catch(() => {});
+      }).catch(() => {
+        // Even if daily-login fails (e.g., offline), make sure we still
+        // load stats so the UI isn't blank.
+        dispatch(fetchStats());
+      });
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);
 

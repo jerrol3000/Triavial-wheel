@@ -127,7 +127,7 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
               {user.username}
               <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>
             </span>
-            <span className="tw-livelb-level">L{(myRank.rank && rows[0]?.level) || 1}</span>
+            <span className="tw-livelb-level">L{myRank.level || 1}</span>
             <span className="tw-livelb-score">{(myRank.high_score || 0).toLocaleString()}</span>
           </div>
         </>

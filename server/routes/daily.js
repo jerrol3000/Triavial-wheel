@@ -44,6 +44,7 @@ router.post("/submit", requireAuth, (req, res) => {
 
   // Update daily streak.
   const stats = db.prepare("SELECT current_daily_streak, longest_daily_streak, last_daily_date FROM stats WHERE user_id = ?").get(req.user.id);
+  if (!stats) return res.status(404).json({ error: "no_stats_row" });
   const [y, m, d] = date.split("-").map(Number);
   const yesterday = new Date(Date.UTC(y, m - 1, d));
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);

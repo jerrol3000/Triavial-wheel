@@ -191,7 +191,15 @@ function buyItem(userId, cosmeticId, isPro) {
   });
 
   try { tx(); }
-  catch (e) { return { error: e.message || "buy_failed" }; }
+  catch (e) {
+    // Only user-facing error codes leak through; everything else gets a
+    // generic "buy_failed" + a server log so we can diagnose without
+    // exposing internal table names / SQL errors to the client.
+    const known = new Set(["insufficient_funds", "no_stats"]);
+    if (e && known.has(e.message)) return { error: e.message };
+    console.error("[cosmetics] buy_failed", e);
+    return { error: "buy_failed" };
+  }
   const after = db.prepare(`SELECT coins FROM stats WHERE user_id = ?`).get(userId);
   return { ok: true, item, coins_after: after ? after.coins : 0, granted: grantedItems };
 }

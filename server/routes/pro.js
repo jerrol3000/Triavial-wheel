@@ -10,12 +10,11 @@ if (hasStripe) {
   stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 }
 
-// Dev-fallback shortcuts (no-payment grants for Pro and coin packs) are
-// ONLY enabled outside production OR when ALLOW_DEV_GRANTS=1 is set. In
-// production they always 503 and the frontend has to route through the
-// real PayPal / Stripe paths in routes/payments.js.
-const ALLOW_DEV_GRANTS = process.env.NODE_ENV !== "production"
-  || process.env.ALLOW_DEV_GRANTS === "1";
+// Dev-fallback shortcuts (no-payment grants for Pro and coin packs) must
+// be explicitly opted in. Default is CLOSED: even if NODE_ENV is unset
+// (which can happen if a deploy forgets to set it), free grants stay off.
+// Set ALLOW_DEV_GRANTS=1 explicitly for local dev / test deploys.
+const ALLOW_DEV_GRANTS = process.env.ALLOW_DEV_GRANTS === "1";
 
 router.get("/status", requireAuth, (req, res) => {
   const row = db.prepare("SELECT pro_until FROM stats WHERE user_id = ?").get(req.user.id);

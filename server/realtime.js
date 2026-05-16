@@ -170,18 +170,39 @@ function joinRoom(room, user) {
 }
 
 function startMatch(room) {
+  // Guard against the deferred-start race: a player can disconnect
+  // during the 3s "match found" countdown, or the room can be torn
+  // down by a continue-vote rejection between scheduling and firing.
+  if (!room || !rooms.has(room.code)) return;
   if (room.started) return;
-  if (room.players.filter(Boolean).length < 2) return;
+  if (room.players.filter(Boolean).length < 2) {
+    // Tear the room down cleanly so the remaining player isn't stuck.
+    endRoom(room, "opponent_left_pregame");
+    return;
+  }
+  // Reject if either player's socket is gone — otherwise we burn a
+  // round of questions on a ghost match.
+  const allConnected = room.players.every((p) => {
+    if (!p) return false;
+    const ws = connections.get(p.id);
+    return ws && ws.readyState === 1;
+  });
+  if (!allConnected) {
+    endRoom(room, "opponent_disconnected");
+    return;
+  }
   room.started = true;
   room.finished = false;
   room.startedAt = Date.now();
   room.questions = loadQuestions(QUESTIONS_PER_MATCH, room.players, room.difficulty);
   room.index = 0;
   room.answers = {};
-  // Reset per-player counters so a rematch starts from zero.
+  // Reset per-player + per-round counters so a rematch starts fresh.
   for (const p of room.players) {
     if (p) { p.score = 0; p.correct = 0; }
   }
+  room.continueVotes = {};
+  room.continueDeadline = 0;
   room.rounds += 1;
   advanceQuestion(room, /* first */ true);
 }

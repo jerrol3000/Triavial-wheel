@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { fetchLeaderboard, fetchStats } from "../store/statsSlice";
 import { setModal, setProfileTab } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
-import { ACHIEVEMENTS, ACHIEVEMENT_MAP } from "../data/achievements";
+import { ACHIEVEMENTS } from "../data/achievements";
 import { api } from "../api/client";
 import FriendsPanel from "./FriendsPanel";
 import MatchHistory from "./MatchHistory";

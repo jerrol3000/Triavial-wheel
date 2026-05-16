@@ -134,14 +134,21 @@ router.post("/paypal/capture-order", requireAuth, async (req, res) => {
     const product = CATALOG[productId];
     if (!product) return res.status(400).json({ error: "unknown_product" });
 
-    grantProduct(req.user.id, product);
-    db.prepare(`
-      INSERT INTO pro_events (user_id, stripe_event_id, kind, payload, created_at)
+    // Idempotency: pro_events.stripe_event_id is UNIQUE. If PayPal (or
+    // the client) re-captures the same order, the INSERT is a no-op and
+    // we skip the grant + duplicate event log. Same pattern as the
+    // Stripe webhook handler.
+    const ins = db.prepare(`
+      INSERT OR IGNORE INTO pro_events (user_id, stripe_event_id, kind, payload, created_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(req.user.id, `pp_${orderId}`, `paypal:${product.kind}:${productId}`, JSON.stringify({ amount: product.amount, label: product.label }), Date.now());
-    logEvent("payment", req.user.id, product.amount, { gateway: "paypal", product: productId, order_id: orderId });
 
-    res.json({ ok: true, granted: product.grant });
+    if (ins.changes) {
+      grantProduct(req.user.id, product);
+      logEvent("payment", req.user.id, product.amount, { gateway: "paypal", product: productId, order_id: orderId });
+    }
+
+    res.json({ ok: true, granted: product.grant, duplicate: ins.changes === 0 });
   } catch (e) {
     console.error("[paypal] capture error", e);
     res.status(500).json({ error: "capture_failed" });

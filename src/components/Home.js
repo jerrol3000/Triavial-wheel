@@ -7,7 +7,7 @@ import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
 import { setView, pushToast } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed } from "../store/statsSlice";
+import { markCategoryPlayed, consumeFreeSpin } from "../store/statsSlice";
 import { api } from "../api/client";
 import QuestsPanel from "./QuestsPanel";
 import LiveLeaderboard from "./LiveLeaderboard";
@@ -26,8 +26,21 @@ export default function Home() {
   const [spinning, setSpinning] = React.useState(false);
   const [flash, setFlash] = React.useState(false);
   const wheelRef = useRef(null);
+  // Track the two setTimeouts fired in onWheelStop so we can cancel them
+  // if the component unmounts (navigation away) before they fire. Without
+  // this, the wheel stop will force a view change after the user has
+  // already left the page.
+  const flashTimerRef = useRef(null);
+  const navTimerRef = useRef(null);
 
   useEffect(() => { dispatch(fetchDailyMeta()); }, [dispatch]);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    };
+  }, []);
 
   const theme = THEMES[stats.active_theme] || THEMES.classic;
 
@@ -37,7 +50,11 @@ export default function Home() {
     let isMystery = false;
     if (slot.isMystery) {
       isMystery = true;
-      const pool = CATEGORIES.filter((c) => !c.premium || stats.pro || stats.themes.length > 1);
+      // Premium-only categories are gated by Pro status. Previously
+      // also unlocked when stats.themes.length > 1 — but buying any
+      // theme bumps that, which let non-Pro users bypass the gate. Now
+      // strictly Pro-only.
+      const pool = CATEGORIES.filter((c) => !c.premium || stats.pro);
       cat = pool[Math.floor(Math.random() * pool.length)];
       dispatch(pushToast({ icon: "🎁", title: "MYSTERY!", text: `${cat.option} · 1.5× points`, duration: 2500 }));
     } else {
@@ -67,18 +84,20 @@ export default function Home() {
   const onWheelStop = (winningIdx) => {
     setSpinning(false);
     setFlash(true);
-    setTimeout(() => setFlash(false), 320);
-    setTimeout(() => startWithCategory(winningIdx), 420);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    if (navTimerRef.current) clearTimeout(navTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlash(false), 320);
+    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 420);
   };
 
-  // Returns true if we consumed a free spin (and updated server-side).
+  // Returns true if we consumed a free spin. Dispatches the local
+  // reducer so the counter in the banner updates immediately, then
+  // mirrors to the server. Avoids the previous bug where UI showed the
+  // stale count until the next fetchStats.
   const useFreeSpinIfPossible = () => {
     if ((stats.free_spins || 0) <= 0) return false;
-    // Optimistically tell server. If user is anonymous, server returns 401 but the
-    // local free_spins counter (mirrored in localStorage) will be decremented by
-    // statsSlice's recordGame at end of round anyway, so this is best-effort.
+    dispatch(consumeFreeSpin());
     api.post("/stats/use-free-spin").catch(() => {});
-    // Local fast-path so UI updates immediately.
     return true;
   };
 

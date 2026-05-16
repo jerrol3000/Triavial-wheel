@@ -139,14 +139,17 @@ router.post("/gift", (req, res) => {
   if (!friendship) return res.status(403).json({ error: "not_friends" });
 
   // Cap by today's gifts received by this recipient from this sender.
-  // Tracked via a lightweight events row to avoid a new table.
+  // Recipient encoded into the meta JSON since the events table doesn't
+  // have a dedicated target column.
   const today = todayKey();
   const sentToday = db.prepare(
     `SELECT COALESCE(SUM(json_extract(meta, '$.amount')), 0) AS total
      FROM events
-     WHERE kind = 'friend_gift' AND user_id = ? AND target = ?
-       AND json_extract(meta, '$.date') = ? AND json_extract(meta, '$.gift_kind') = ?`
-  ).get(me, String(recipientId), today, kind).total || 0;
+     WHERE kind = 'friend_gift' AND user_id = ?
+       AND json_extract(meta, '$.to') = ?
+       AND json_extract(meta, '$.date') = ?
+       AND json_extract(meta, '$.gift_kind') = ?`
+  ).get(me, recipientId, today, kind).total || 0;
   if (sentToday + amount > GIFT_DAILY_CAPS[kind]) {
     return res.status(429).json({
       error: "daily_cap",
@@ -170,8 +173,8 @@ router.post("/gift", (req, res) => {
       db.prepare("UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), recipientId);
     }
     db.prepare(
-      `INSERT INTO events (kind, user_id, target, meta, created_at) VALUES (?, ?, ?, ?, ?)`
-    ).run("friend_gift", me, String(recipientId), JSON.stringify({ gift_kind: kind, amount, date: today }), Date.now());
+      `INSERT INTO events (kind, user_id, amount, meta, created_at) VALUES (?, ?, ?, ?, ?)`
+    ).run("friend_gift", me, amount, JSON.stringify({ gift_kind: kind, amount, to: recipientId, date: today }), Date.now());
   });
   try { tx(); }
   catch (e) { return res.status(500).json({ error: "gift_failed" }); }

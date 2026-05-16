@@ -293,12 +293,25 @@ router.put("/users/:id", (req, res) => {
     db.prepare("UPDATE stats SET coins = ?, updated_at = ? WHERE user_id = ?").run(Math.floor(set_coins), Date.now(), id);
   }
   if (reset_stats) {
+    // Full wipe — every counter/derived stat back to defaults, plus the
+    // tables that hang off the user (badges, quests, online ladder).
+    // pro_until is intentionally preserved so admin doesn't accidentally
+    // void a paid subscription by clicking "reset".
     db.prepare(`
-      UPDATE stats SET xp = 0, level = 1, games_played = 0, correct = 0, incorrect = 0,
+      UPDATE stats SET
+        xp = 0, level = 1, games_played = 0, correct = 0, incorrect = 0,
         best_streak = 0, longest_daily_streak = 0, current_daily_streak = 0, last_daily_date = NULL,
-        updated_at = ? WHERE user_id = ?
+        online_wins = 0, online_losses = 0, online_rating = 1000, win_streak = 0,
+        coins_spent_total = 0, cosmetics_owned_count = 0,
+        xp_2x_until = 0, coins_2x_until = 0, streak_saver_active = 0,
+        quests_date = NULL, quests_json = '[]',
+        ads_today_count = 0, ads_today_date = NULL,
+        updated_at = ?
+      WHERE user_id = ?
     `).run(Date.now(), id);
     db.prepare("UPDATE leaderboard SET high_score = 0, updated_at = ? WHERE user_id = ?").run(Date.now(), id);
+    db.prepare("DELETE FROM user_badges WHERE user_id = ?").run(id);
+    db.prepare("DELETE FROM seen_questions WHERE user_id = ?").run(id);
   }
   res.json({ ok: true });
 });

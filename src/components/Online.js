@@ -17,7 +17,10 @@ import { safeNavigate } from "../utils/navigate";
 export default function Online() {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
-  const { connected, waiting, room, matchEnd, error, reveal, opponentAnswered, lastReaction } = useSelector((s) => s.online);
+  // Only fields actually rendered here. `lastReaction` is consumed by
+  // <ReactionLayer/> via its own selector — pulling it here just causes
+  // the whole Online tree to re-render every time a reaction fires.
+  const { connected, waiting, room, matchEnd } = useSelector((s) => s.online);
 
   // Bridge WS events → redux.
   useEffect(() => {
@@ -398,15 +401,10 @@ function LiveMatch() {
         )}
       </div>
 
-      {lastReactionView()}
+      <ReactionLayer />
       <ChatPanel />
     </div>
   );
-}
-
-function lastReactionView() {
-  // Hook into store via React.memo wrapper.
-  return <ReactionLayer />;
 }
 
 function ReactionLayer() {
@@ -625,7 +623,11 @@ function MatchEnd() {
           </div>
         )}
 
-        {remaining === 0 && (
+        {/* Fallback exit row — always rendered when there's NO deadline
+            (e.g., server-side bug, friendly match without continue vote)
+            or when the deadline has elapsed. Guarantees the player can
+            always close the match-end screen. */}
+        {(remaining == null || remaining === 0) && (
           <div className="tw-row" style={{ justifyContent: "center", marginTop: 18 }}>
             <button className="tw-btn ghost" onClick={goHome}>Home</button>
           </div>

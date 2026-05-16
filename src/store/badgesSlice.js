@@ -65,7 +65,6 @@ const slice = createSlice({
         if (e.badge_id === id) return { ...e, equipped_slot: slot };
         return e;
       });
-      const item = s.catalog.find((c) => c.id === id);
       s.equipped = s.earned
         .filter((e) => e.equipped_slot != null)
         .map((e) => {

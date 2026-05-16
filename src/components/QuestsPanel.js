@@ -63,22 +63,37 @@ export default function QuestsPanel() {
       {quests.map((q) => {
         const progress = Math.min(q.target, q.progress || 0);
         const complete = progress >= q.target;
+        // Three distinct visual states: in-progress (gradient bar fills as
+        // you play), ready (bar full, green border, glowing Claim button),
+        // and claimed (bar 100% green, disabled, "Done — back tomorrow"
+        // label so it's obvious you can't double-dip).
         const cls = `tw-quest ${complete ? "complete" : ""} ${q.claimed ? "claimed" : ""}`;
+        const fillPct = q.claimed ? 100 : (progress / q.target) * 100;
         return (
           <div key={q.id} className={cls}>
             <div className="tw-quest-info">
-              <div className="tw-quest-text">{q.text}</div>
+              <div className="tw-quest-text">
+                {q.text}
+                {!q.claimed && (
+                  <span className="tw-quest-counter" title={`${progress} / ${q.target}`}>
+                    {progress}/{q.target}
+                  </span>
+                )}
+              </div>
               <div className="tw-quest-progress" title={`${progress} / ${q.target}`}>
-                <div style={{ width: `${(progress / q.target) * 100}%` }} />
+                <div style={{ width: `${fillPct}%` }} />
               </div>
               <div className="tw-quest-reward">
-                Reward: {[q.reward?.coins ? `${q.reward.coins} 🪙` : null, q.reward?.free_spins ? `${q.reward.free_spins} 🎡` : null].filter(Boolean).join(" + ")}
+                {q.claimed
+                  ? <span className="tw-quest-done">✓ Done — back tomorrow</span>
+                  : <>Reward: {[q.reward?.coins ? `${q.reward.coins} 🪙` : null, q.reward?.free_spins ? `${q.reward.free_spins} 🎡` : null].filter(Boolean).join(" + ")}</>
+                }
               </div>
             </div>
             {complete && !q.claimed && (
-              <button className="tw-btn" onClick={() => claim(q.id)} title="Claim your reward">Claim</button>
+              <button className="tw-btn tw-quest-claim" onClick={() => claim(q.id)} title="Claim your reward">Claim</button>
             )}
-            {q.claimed && <span className="tw-pill" style={{ background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.4)" }}>✓</span>}
+            {q.claimed && <span className="tw-quest-locked" aria-label="Already claimed today">✓</span>}
           </div>
         );
       })}

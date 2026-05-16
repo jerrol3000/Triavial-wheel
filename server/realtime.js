@@ -257,6 +257,14 @@ function applyMatchRewards(p1, p2, winner, forfeiterId) {
     const coinsReward = isWinner ? 50 : (isTie ? 15 : (isForfeiter ? 0 : 5));
     const ratingDelta = isWinner ? 20 : (isTie ? 0 : (isForfeiter ? -30 : -10));
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
+    // Quest progression — every online match counts as 1 play, wins
+    // additionally bump the wins-today metric for the relevant quests.
+    try {
+      const stats = require("./routes/stats");
+      const events = [{ metric: "online_played_today", amount: 1 }];
+      if (isWinner) events.push({ metric: "online_wins_today", amount: 1 });
+      if (stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
+    } catch (e) {}
   }
 }
 

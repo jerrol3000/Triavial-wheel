@@ -132,6 +132,7 @@ router.post("/watch-ad-reward", requireAuth, (req, res) => {
   );
 
   logEvent("ad_watch", req.user.id, null, { reward });
+  progressQuestsFor(req.user.id, [{ metric: "ads_watched_today", amount: 1 }]);
   res.json({ ...grant, ads_today_count: count + 1, daily_limit: AD_DAILY_LIMIT });
 });
 
@@ -143,15 +144,47 @@ router.post("/use-free-spin", requireAuth, (req, res) => {
   res.json({ ok: true, free_spins: row.free_spins - 1 });
 });
 
-// Daily quests — 3 quests generated per UTC date, deterministic per user.
+// Daily quests — 3 quests generated per UTC date, deterministic per user
+// (so refreshes don't shuffle them) but pulled from a wide pool so the
+// same set rarely repeats day-to-day. Server auto-progresses these on
+// the events it already sees (game-end, online-win, ad-watch, etc.) so
+// no client-side instrumentation is required.
 const QUEST_TEMPLATES = [
-  { id: "win_online_1",  text: "Win 1 online match",       target: 1,  metric: "online_wins_today", reward: { coins: 50, free_spins: 1 } },
-  { id: "play_3",        text: "Play 3 rounds",            target: 3,  metric: "rounds_today",      reward: { coins: 30 } },
-  { id: "streak_5",      text: "Hit a 5-correct streak",   target: 5,  metric: "best_streak_today", reward: { coins: 60, free_spins: 1 } },
-  { id: "daily_play",    text: "Play today's Daily Challenge", target: 1, metric: "daily_played_today", reward: { coins: 40, free_spins: 1 } },
-  { id: "correct_15",    text: "Get 15 questions right",   target: 15, metric: "correct_today",     reward: { coins: 70 } },
-  { id: "perfect_round", text: "Get a perfect round",      target: 1,  metric: "perfect_rounds_today", reward: { coins: 100, free_spins: 2 } },
-  { id: "use_powerup",   text: "Use 2 power-ups",          target: 2,  metric: "powerups_used_today", reward: { coins: 25 } },
+  // Volume — easy daily floor
+  { id: "play_3",        text: "Play 3 rounds",                     target: 3,  metric: "rounds_today",         reward: { coins: 30 } },
+  { id: "play_5",        text: "Play 5 rounds",                     target: 5,  metric: "rounds_today",         reward: { coins: 60, free_spins: 1 } },
+  { id: "correct_15",    text: "Get 15 questions right",            target: 15, metric: "correct_today",        reward: { coins: 70 } },
+  { id: "correct_30",    text: "Get 30 questions right",            target: 30, metric: "correct_today",        reward: { coins: 130, free_spins: 1 } },
+  { id: "earn_coins_200",text: "Earn 200 coins from play",          target: 200,metric: "coins_earned_today",   reward: { coins: 50 } },
+  { id: "earn_xp_300",   text: "Earn 300 XP",                       target: 300,metric: "xp_earned_today",      reward: { coins: 60 } },
+
+  // Streak / accuracy — skill plays
+  { id: "streak_5",      text: "Hit a 5-correct streak",            target: 5,  metric: "best_streak_today",    reward: { coins: 60, free_spins: 1 } },
+  { id: "streak_10",     text: "Hit a 10-correct streak",           target: 10, metric: "best_streak_today",    reward: { coins: 120, free_spins: 1 } },
+  { id: "perfect_round", text: "Get a perfect round (10/10)",       target: 1,  metric: "perfect_rounds_today", reward: { coins: 100, free_spins: 2 } },
+  { id: "perfect_round_x2", text: "Get 2 perfect rounds",           target: 2,  metric: "perfect_rounds_today", reward: { coins: 200, free_spins: 2 } },
+
+  // Daily / Online — drives the social + ritual hooks
+  { id: "daily_play",    text: "Play today's Daily Challenge",      target: 1,  metric: "daily_played_today",   reward: { coins: 40, free_spins: 1 } },
+  { id: "win_online_1",  text: "Win 1 online match",                target: 1,  metric: "online_wins_today",    reward: { coins: 50, free_spins: 1 } },
+  { id: "win_online_3",  text: "Win 3 online matches",              target: 3,  metric: "online_wins_today",    reward: { coins: 180, free_spins: 2 } },
+  { id: "play_online",   text: "Play 2 online matches",             target: 2,  metric: "online_played_today",  reward: { coins: 50 } },
+
+  // Power-ups / progression
+  { id: "use_powerup",   text: "Use 2 power-ups",                   target: 2,  metric: "powerups_used_today",  reward: { coins: 25 } },
+  { id: "use_powerup_5", text: "Use 5 power-ups",                   target: 5,  metric: "powerups_used_today",  reward: { coins: 75, free_spins: 1 } },
+  { id: "level_up",      text: "Level up once",                     target: 1,  metric: "level_ups_today",      reward: { coins: 80, free_spins: 1 } },
+
+  // Engagement
+  { id: "watch_ad",      text: "Watch 1 reward ad",                 target: 1,  metric: "ads_watched_today",    reward: { coins: 20 } },
+  { id: "watch_ads_3",   text: "Watch 3 reward ads",                target: 3,  metric: "ads_watched_today",    reward: { coins: 80, free_spins: 1 } },
+  { id: "spin_wheel_3",  text: "Spin the wheel 3 times",            target: 3,  metric: "spins_today",          reward: { coins: 30 } },
+  { id: "spin_wheel_8",  text: "Spin the wheel 8 times",            target: 8,  metric: "spins_today",          reward: { coins: 100, free_spins: 1 } },
+
+  // Spending — gentle nudges to the store
+  { id: "buy_anything",  text: "Buy something from the store",      target: 1,  metric: "purchases_today",      reward: { coins: 50, free_spins: 1 } },
+  { id: "category_2",    text: "Play 2 different categories",       target: 2,  metric: "categories_today",     reward: { coins: 40 } },
+  { id: "category_4",    text: "Play 4 different categories",       target: 4,  metric: "categories_today",     reward: { coins: 110, free_spins: 1 } },
 ];
 
 function ensureQuests(userId) {
@@ -182,21 +215,39 @@ router.get("/quests", requireAuth, (req, res) => {
   res.json({ date: todayKey(), quests });
 });
 
-// Bump quest progress; client calls this after game events (correct, win, daily, etc.)
-router.post("/quests/progress", requireAuth, (req, res) => {
-  const updates = Array.isArray(req.body?.events) ? req.body.events : [];
-  const quests = ensureQuests(req.user.id);
-  for (const ev of updates) {
+// Apply quest progress for a list of events. Used by both the public
+// endpoint AND server-internal flows (game-end, ad-watch, online match,
+// store purchase) so quests advance without any client cooperation.
+// `setMode: 'max'` lets best_streak_today take the larger of two
+// reported values instead of summing — same pattern other one-shot
+// metrics like categories_today could use later.
+function progressQuestsFor(userId, events) {
+  const quests = ensureQuests(userId);
+  let changed = false;
+  for (const ev of events) {
     const metric = String(ev.metric || "");
     const amount = Math.max(0, Math.floor(ev.amount || 0));
     for (const q of quests) {
       if (q.metric === metric && !q.claimed) {
-        q.progress = Math.min(q.target, (q.progress || 0) + amount);
+        const prev = q.progress || 0;
+        const next = ev.setMode === "max"
+          ? Math.min(q.target, Math.max(prev, amount))
+          : Math.min(q.target, prev + amount);
+        if (next !== prev) { q.progress = next; changed = true; }
       }
     }
   }
-  db.prepare("UPDATE stats SET quests_json = ?, updated_at = ? WHERE user_id = ?")
-    .run(JSON.stringify(quests), Date.now(), req.user.id);
+  if (changed) {
+    db.prepare("UPDATE stats SET quests_json = ?, updated_at = ? WHERE user_id = ?")
+      .run(JSON.stringify(quests), Date.now(), userId);
+  }
+  return quests;
+}
+
+// Public endpoint kept for clients that want to push (no harm).
+router.post("/quests/progress", requireAuth, (req, res) => {
+  const updates = Array.isArray(req.body?.events) ? req.body.events : [];
+  const quests = progressQuestsFor(req.user.id, updates);
   res.json({ quests });
 });
 
@@ -368,6 +419,24 @@ router.post("/game", requireAuth, (req, res) => {
     db.prepare("INSERT INTO leaderboard (user_id, high_score, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET high_score = excluded.high_score, updated_at = excluded.updated_at").run(req.user.id, score, now);
   }
 
+  // Auto-progress today's quests from the game event. Sum metrics get
+  // incremented; best_streak uses 'max' so two rounds with a 4-streak
+  // and a 6-streak record 6 (not 10) for the day.
+  const ratio = stats.games_played > 0 ? (correct / Math.max(1, correct + incorrect)) : 0;
+  const isPerfect = correct >= 10 && incorrect === 0;
+  const questEvents = [
+    { metric: "rounds_today",         amount: 1 },
+    { metric: "spins_today",          amount: 1 },
+    { metric: "correct_today",        amount: Math.max(0, correct) },
+    { metric: "best_streak_today",    amount: Math.floor(best_streak_run), setMode: "max" },
+    { metric: "coins_earned_today",   amount: Math.max(0, Math.floor(coins_gained)) },
+    { metric: "xp_earned_today",      amount: Math.max(0, Math.floor(xp_gained)) },
+  ];
+  if (isPerfect) questEvents.push({ metric: "perfect_rounds_today", amount: 1 });
+  if (leveledUp) questEvents.push({ metric: "level_ups_today", amount: 1 });
+  if (category_id) questEvents.push({ metric: "categories_today", amount: 1 });
+  progressQuestsFor(req.user.id, questEvents);
+
   // Award any newly-eligible badges from this game. New ones come back in
   // the response so the client can fire a celebration toast.
   let newBadges = [];
@@ -410,3 +479,4 @@ router.get("/leaderboard", (req, res) => {
 
 module.exports = router;
 module.exports.loadStats = loadStats;
+module.exports.progressQuestsFor = progressQuestsFor;

@@ -53,6 +53,13 @@ router.post("/submit", requireAuth, (req, res) => {
   const newLongest = Math.max(stats.longest_daily_streak, newStreak);
   db.prepare("UPDATE stats SET current_daily_streak = ?, longest_daily_streak = ?, last_daily_date = ?, updated_at = ? WHERE user_id = ?")
     .run(newStreak, newLongest, date, Date.now(), req.user.id);
+
+  // Bump today's "Play Daily Challenge" quest if it's in this user's set.
+  try {
+    const stats = require("./stats");
+    if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "daily_played_today", amount: 1 }]);
+  } catch (e) {}
+
   res.json({ ok: true, streak: newStreak });
 });
 

@@ -60,6 +60,11 @@ router.post("/buy", requireAuth, (req, res) => {
   badges.recordSpend(req.user.id, result.item.price_coins);
   badges.recordOwnership(req.user.id);
   const newBadges = badges.awardEligible(req.user.id);
+  // Quest progression for the "buy something today" goal.
+  try {
+    const stats = require("./stats");
+    if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
+  } catch (e) {}
   res.json({ ...result, new_badges: newBadges });
 });
 

@@ -238,6 +238,12 @@ ensureColumn("users", "totp_backup_codes_json", "TEXT");
 // Profile avatar (data URL or preset id). Capped at ~3MB encoded.
 ensureColumn("users", "avatar", "TEXT");
 
+// Single-device enforcement: every login mints a fresh random session_id
+// and writes it here. JWTs embed it as `sid`; auth middleware rejects any
+// token whose sid doesn't match. Logging in on a new device replaces the
+// session_id and effectively signs out every other device.
+ensureColumn("users", "session_id", "TEXT");
+
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.
 const adminEmails = (process.env.ADMIN_EMAILS || "")
   .split(",")

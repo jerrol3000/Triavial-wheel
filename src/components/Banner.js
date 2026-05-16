@@ -3,9 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { setView, toggleSound, setModal } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { LIVES_MAX_EXPORT, LIVES_REGEN_MS_EXPORT } from "../store/statsSlice";
-import { logout } from "../store/authSlice";
 import { safeNavigate } from "../utils/navigate";
-import Avatar from "./Avatar";
 import Icon from "./Icon";
 
 export default function Banner() {
@@ -68,13 +66,7 @@ export default function Banner() {
             <Icon name="admin" size={20} /> Admin
           </a>
         )}
-        {user ? (
-          <button className="tw-pill" onClick={() => dispatch(logout())} title="Sign out"
-                  style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px 4px 4px" }}>
-            <Avatar value={user.avatar} size={24} />
-            <span>{user.username}</span>
-          </button>
-        ) : (
+        {!user && (
           <button className="tw-pill" onClick={() => dispatch(setModal("auth"))} style={{ cursor: "pointer" }}>
             Sign in
           </button>

@@ -68,13 +68,16 @@ export default function App() {
     // dispatches this event — surface a clear "your session expired" notice
     // and open the auth modal so the user can sign back in. Most common
     // trigger: server was restarted with a new JWT_SECRET.
-    const onExpired = () => {
+    const onExpired = (e) => {
+      const reason = e && e.detail && e.detail.error;
       dispatch(logout());
       dispatch(pushToast({
         icon: "🔒",
-        title: "Session expired",
-        text: "Please sign in again.",
-        duration: 5000,
+        title: reason === "session_superseded" ? "Signed out" : "Session expired",
+        text: reason === "session_superseded"
+          ? "Your account just signed in on another device."
+          : "Please sign in again.",
+        duration: 6000,
       }));
       dispatch(setModal("auth"));
     };

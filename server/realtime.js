@@ -1,5 +1,4 @@
 const { WebSocketServer } = require("ws");
-const jwt = require("jsonwebtoken");
 const db = require("./db");
 const { getRandomQuestions } = require("./questions");
 const {
@@ -7,8 +6,7 @@ const {
 } = require("./moderation");
 const { logEvent } = require("./events");
 const { applySkipPenalty } = require("./perks");
-
-const SECRET = process.env.JWT_SECRET || "dev-only-not-secure";
+const { verifySession } = require("./auth");
 const QUESTIONS_PER_MATCH = 5;
 const QUESTION_TIME_MS = 15 * 1000;
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
@@ -241,8 +239,11 @@ function applyMatchRewards(p1, p2, winner, forfeiterId) {
 }
 
 // ─── Connection handler ────────────────────────────────────────────────────
+// Reuses the HTTP auth's session-aware verify so a stale token from
+// another device gets rejected at WebSocket connect time too.
 function verifyToken(token) {
-  try { return jwt.verify(token, SECRET); } catch (e) { return null; }
+  const result = verifySession(token);
+  return result.error ? null : result.decoded;
 }
 
 function setupConnection(ws, user) {

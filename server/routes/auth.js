@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
-const { sign, requireAuth } = require("../auth");
+const { sign, rotateSession, requireAuth } = require("../auth");
 const { logEvent } = require("../events");
 const totp = require("../totp");
 const cryptoEnv = require("../crypto");
@@ -58,7 +58,8 @@ router.post("/register", (req, res) => {
     db.prepare("INSERT INTO leaderboard (user_id, updated_at) VALUES (?, ?)").run(info.lastInsertRowid, now);
     logEvent("signup", info.lastInsertRowid, null, { country: cc, language: ln });
     const user = { id: info.lastInsertRowid, username, is_admin: !!isAdmin, country: cc, language: ln, avatar: av };
-    res.json({ token: sign(user), user });
+    const sid = rotateSession(info.lastInsertRowid);
+    res.json({ token: sign(user, sid), user });
   } catch (e) {
     if (String(e).includes("UNIQUE")) return res.status(409).json({ error: "email or username already taken" });
     res.status(500).json({ error: "server error" });
@@ -107,7 +108,10 @@ router.post("/login", (req, res) => {
     country: row.country, language: row.language, avatar: row.avatar,
     totp_enabled: !!row.totp_enabled,
   };
-  res.json({ token: sign(user), user });
+  // Rotate session_id on every login so any other device holding an
+  // older token gets signed out on its next request.
+  const sid = rotateSession(row.id);
+  res.json({ token: sign(user, sid), user });
 });
 
 // Throttle visit logging — at most one "visit" event per user per 15 minutes
@@ -164,8 +168,17 @@ router.put("/me", requireAuth, (req, res) => {
   if (!updates.length) return res.json({ ok: true });
   values.push(req.user.id);
   db.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`).run(...values);
+  // Password changes invalidate all sessions — mint a fresh one and
+  // return a new token so the caller stays signed in on this device.
+  let freshToken;
+  if (new_password) {
+    const sid = rotateSession(req.user.id);
+    freshToken = sign({ id: req.user.id, username: req.user.username }, sid);
+  }
   const updated = db.prepare("SELECT id, email, username, is_admin, country, language FROM users WHERE id = ?").get(req.user.id);
-  res.json({ ok: true, user: { ...updated, is_admin: !!updated.is_admin } });
+  const body = { ok: true, user: { ...updated, is_admin: !!updated.is_admin } };
+  if (freshToken) body.token = freshToken;
+  res.json(body);
 });
 
 // ─── 2FA (TOTP) management ───────────────────────────────────────────────

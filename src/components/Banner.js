@@ -6,6 +6,7 @@ import { LIVES_MAX_EXPORT } from "../store/statsSlice";
 import { safeNavigate } from "../utils/navigate";
 import { useT } from "../i18n";
 import Icon from "./Icon";
+import NotificationBell from "./NotificationBell";
 
 export default function Banner() {
   const dispatch = useDispatch();
@@ -53,6 +54,7 @@ export default function Banner() {
         <button className="tw-pill tw-banner-hide-sm" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
           <Icon name="settings" size={20} />
         </button>
+        {user && <NotificationBell />}
         {user && user.is_admin && (
           <a className="tw-pill tw-banner-hide-sm" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
             <Icon name="admin" size={20} /> Admin

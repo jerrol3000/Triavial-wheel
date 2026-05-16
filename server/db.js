@@ -253,6 +253,12 @@ ensureColumn("stats", "coins_spent_total", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "cosmetics_owned_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "pro_lifetime_months", "INTEGER NOT NULL DEFAULT 0");
 
+// Notification read-state. The notifications endpoint derives
+// notifications from existing tables (friendships, events) on demand;
+// this column just records the last time the user opened the bell so
+// we can compute unread counts without a separate notifications table.
+ensureColumn("stats", "notifications_seen_at", "INTEGER NOT NULL DEFAULT 0");
+
 // Backfill for cosmetics columns added after the table was first created.
 // CREATE TABLE IF NOT EXISTS is a no-op on schema-changed tables, so the
 // limited-edition windows + bundle pointer need an explicit migration.

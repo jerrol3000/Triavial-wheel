@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { decode } from "html-entities";
 import { rt } from "../realtime/client";
 import {
   setConnected, setWaiting, setRoom, setError, setMatchEnd,
@@ -438,7 +439,7 @@ function LiveMatch() {
         {room.question && (
           <>
             <div style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: 600, margin: "14px 0" }}>
-              {room.question.question}
+              {decode(String(room.question.question))}
             </div>
             {room.question.answers.map((a) => {
               let cls = "tw-answer";
@@ -449,7 +450,9 @@ function LiveMatch() {
                 cls += " correct";
               }
               return (
-                <button key={a} className={cls} disabled={!!picked || !!reveal} onClick={() => answer(a)}>{a}</button>
+                <button key={a} className={cls} disabled={!!picked || !!reveal} onClick={() => answer(a)}>
+                  {decode(String(a))}
+                </button>
               );
             })}
           </>
@@ -457,7 +460,7 @@ function LiveMatch() {
 
         {reveal && (
           <div style={{ textAlign: "center", color: "var(--text-dim)", marginTop: 10 }}>
-            Answer was <strong style={{ color: "var(--good)" }}>{reveal.correct}</strong>. Next question in a moment…
+            Answer was <strong style={{ color: "var(--good)" }}>{decode(String(reveal.correct))}</strong>. Next question in a moment…
           </div>
         )}
       </div>

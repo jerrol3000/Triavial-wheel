@@ -32,15 +32,15 @@ function hashQ(text, categoryId, difficulty) {
     .digest("hex");
 }
 
+// opentdb returns HTML-encoded strings. The previous hand-rolled
+// replacer covered ~12 common entities and left everything else raw
+// in the DB — players saw "Pok&eacute;mon", "M&ouml;bius", "20&deg;C"
+// in the question text. Use the full html-entities lib so anything
+// numeric (&#x2026;) or named (&times;, &Uuml;, ...) decodes cleanly.
+const { decode: decodeHtmlEntities } = require("html-entities");
 function decodeEntities(s) {
-  // opentdb returns HTML-encoded strings — light decoder for the most common entities.
   if (s == null) return s;
-  return String(s)
-    .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&eacute;/g, "é").replace(/&Eacute;/g, "É")
-    .replace(/&ldquo;/g, "“").replace(/&rdquo;/g, "”")
-    .replace(/&hellip;/g, "…").replace(/&ndash;/g, "–").replace(/&mdash;/g, "—");
+  return decodeHtmlEntities(String(s));
 }
 
 const insertStmt = db.prepare(`

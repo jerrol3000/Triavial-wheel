@@ -50,6 +50,7 @@ const paymentRoutes = require("./routes/payments");
 const friendsRoutes = require("./routes/friends");
 const storeRoutes = require("./routes/store");
 const badgeRoutes = require("./routes/badges");
+const notificationsRoutes = require("./routes/notifications");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
 const { seedCatalog } = require("./cosmetics");
@@ -135,6 +136,7 @@ app.use("/api/pay", paymentRoutes);
 app.use("/api/friends", friendsRoutes);
 app.use("/api/store", storeRoutes);
 app.use("/api/badges", badgeRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

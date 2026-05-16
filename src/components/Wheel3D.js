@@ -1,4 +1,5 @@
 import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
+import { useSelector } from "react-redux";
 import { sfx } from "../utils/sound";
 
 // Wheel-of-Fortune-style canvas wheel.
@@ -297,15 +298,32 @@ const Wheel3D = forwardRef(function Wheel3D(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, theme && theme.wheelColors && theme.wheelColors.join(",")]);
 
+  // The equipped pointer cosmetic's emoji rides on top of the default
+  // wheel pointer. Falls back to nothing (the default flap stays) when
+  // no pointer is equipped or the user isn't signed in.
+  const pointerEmoji = useEquippedPointerEmoji();
+
   return (
     <div className="tw-wheel3d-wrap" style={{ maxWidth: size, margin: "0 auto", position: "relative" }}>
       <div className="tw-wheel3d-tilt">
         <canvas ref={canvasRef} className="tw-wheel3d-canvas" />
       </div>
-      <div ref={pointerRef} className="tw-wheel3d-pointer" aria-hidden="true" />
+      <div ref={pointerRef} className="tw-wheel3d-pointer" aria-hidden="true">
+        {pointerEmoji && pointerEmoji !== "▼" && (
+          <span className="tw-wheel3d-pointer-emoji" aria-hidden="true">{pointerEmoji}</span>
+        )}
+      </div>
     </div>
   );
 });
+
+function useEquippedPointerEmoji() {
+  const equippedId = useSelector((s) => s.cosmetics?.equipped?.pointer);
+  const item = useSelector((s) => equippedId
+    ? s.cosmetics.catalog.find((c) => c.id === equippedId)
+    : null);
+  return item && item.data && item.data.emoji ? item.data.emoji : null;
+}
 
 function shade(hex, amount) {
   const c = hex.replace("#", "");

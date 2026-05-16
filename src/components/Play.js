@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector, useStore } from "react-redux";
-import Confetti from "react-confetti";
+import CelebrationEffect from "./CelebrationEffect";
 import QuestionCard from "./QuestionCard";
 import GameOver from "./GameOver";
 import { resetRound } from "../store/gameSlice";
 import { spendLife, addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement, grantPowerup } from "../store/statsSlice";
+import { awardLocal } from "../store/badgesSlice";
 import { setView, pushToast } from "../store/uiSlice";
 import { safeNavigate } from "../utils/navigate";
 import { sfx } from "../utils/sound";
@@ -103,14 +104,30 @@ export default function Play() {
         xp_gained: xpGained,
         coins_gained: coinsGained,
         best_streak_run: game.bestStreakRun,
-      }));
+      })).then((r) => {
+        // Server tells us which badges were unlocked by this game; mirror
+        // into local state and fire a celebration toast for each one.
+        const data = r && r.payload;
+        const newBadges = (data && data.new_badges) || [];
+        if (newBadges.length) {
+          dispatch(awardLocal(newBadges));
+          for (const b of newBadges) {
+            dispatch(pushToast({
+              icon: b.icon || "🏅",
+              title: `Badge unlocked: ${b.name}`,
+              text: b.description || "Showcase it from your profile.",
+              duration: 6000,
+            }));
+          }
+        }
+      });
     }
   }, [isFinished, dispatch, store]);
 
   if (isFinished) {
     return (
       <>
-        {showConfetti && <Confetti recycle={false} numberOfPieces={250} />}
+        <CelebrationEffect show={showConfetti} />
         <GameOver
           onPlayAgain={() => { dispatch(resetRound()); dispatch(setView("home")); }}
           onHome={() => { dispatch(resetRound()); dispatch(setView("home")); }}

@@ -7,18 +7,40 @@ import { sfx } from "../utils/sound";
 import {
   fetchCatalog, buyCosmetic, equipCosmetic, useBoost, isOwned, selectOwnedQty,
 } from "../store/cosmeticsSlice";
+import { awardLocal } from "../store/badgesSlice";
 import PayPalButton from "./PayPalButton";
 import StripeCheckoutButton from "./StripeCheckoutButton";
 import Icon from "./Icon";
 
 const TAB_DEFS = [
+  { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
+  { id: "bundle",      label: "Bundles",       icon: "🎁", description: "Save by buying multiple items together." },
   { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
-  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Customize the wheel pointer that lands on your category." },
+  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Customize the wheel pointer." },
   { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
   { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
   { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
   { id: "currency",    label: "Coins & Pro",   icon: "🪙", description: "Top up coins with real money or upgrade to Pro." },
 ];
+
+// Deterministic daily rotation — picks 4 items keyed off today's date so
+// every player sees the same featured set today but tomorrow it changes.
+function pickFeatured(catalog) {
+  if (!catalog.length) return [];
+  const day = Math.floor(Date.now() / 86_400_000);
+  const ranked = catalog
+    .filter((c) => c.category !== "boost" && c.category !== "bundle" && c.price_coins > 0 && !c.pro_only)
+    .map((c) => ({ c, score: hash(c.id + ":" + day) }))
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 4)
+    .map((x) => x.c);
+  return ranked;
+}
+function hash(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  return h;
+}
 
 const RARITY_COLORS = {
   common:    { border: "rgba(148,163,184,0.4)", text: "#94a3b8", glow: "rgba(148,163,184,0.15)" },
@@ -33,12 +55,13 @@ export default function Shop() {
   const stats = useSelector((s) => s.stats);
   const catalog = useSelector((s) => s.cosmetics.catalog);
   const loaded = useSelector((s) => s.cosmetics.loaded);
-  const [activeTab, setActiveTab] = useState("frame");
+  const [activeTab, setActiveTab] = useState("featured");
 
   useEffect(() => { dispatch(fetchCatalog()); }, [dispatch]);
 
   const itemsForTab = useMemo(() => {
     if (activeTab === "currency") return null;
+    if (activeTab === "featured") return pickFeatured(catalog);
     return catalog.filter((c) => c.category === activeTab)
       .sort((a, b) => (a.sort_order - b.sort_order) || a.price_coins - b.price_coins);
   }, [catalog, activeTab]);
@@ -121,10 +144,15 @@ function StoreItemCard({ item }) {
     sfx.coin();
     const r = await dispatch(buyCosmetic(item.id));
     if (r.meta.requestStatus === "fulfilled") {
-      // Server returns the authoritative coins balance — sync via fetchStats
-      // so any side-effects (consumable qty, auto-equip) also refresh.
       dispatch(fetchStats());
       dispatch(pushToast({ icon: "✨", title: `Unlocked ${item.name}!`, text: item.consumable ? `Tap to use from your inventory.` : "Now equipped." }));
+      const newBadges = r.payload?.new_badges || [];
+      if (newBadges.length) {
+        dispatch(awardLocal(newBadges));
+        for (const b of newBadges) {
+          dispatch(pushToast({ icon: b.icon || "🏅", title: `Badge unlocked: ${b.name}`, text: b.description || "", duration: 6000 }));
+        }
+      }
     } else {
       dispatch(pushToast({ icon: "⚠️", title: "Purchase failed", text: r.payload?.error || "Try again." }));
     }
@@ -170,7 +198,10 @@ function StoreItemCard({ item }) {
   const canEquipPro = item.pro_only && pro;
 
   return (
-    <div className="tw-store-card" style={{ border: `2px solid ${isEquipped ? "var(--primary-2)" : rar.border}`, boxShadow: isEquipped ? `0 0 24px ${rar.glow}` : `0 0 12px ${rar.glow}` }}>
+    <div className="tw-store-card" style={{ border: `2px solid ${isEquipped ? "var(--primary-2)" : rar.border}`, boxShadow: isEquipped ? `0 0 24px ${rar.glow}` : `0 0 12px ${rar.glow}`, position: "relative" }}>
+      {item.available_until && (
+        <span className="tw-store-limited">⏰ LIMITED</span>
+      )}
       <div className="tw-store-card-icon" style={{ background: rar.glow }}>
         {item.category === "frame" ? <FramePreview item={item} /> : <span>{item.icon || "•"}</span>}
       </div>
@@ -180,6 +211,14 @@ function StoreItemCard({ item }) {
           <span style={{ fontSize: 10, textTransform: "uppercase", color: rar.text, letterSpacing: 0.5 }}>{item.rarity}</span>
         </div>
         <div style={{ fontSize: 12, color: "var(--text-dim)", margin: "4px 0 8px", minHeight: 30 }}>{item.description}</div>
+        {item.category === "bundle" && Array.isArray(item.bundle_contents) && (
+          <div className="tw-store-bundle-list">
+            <strong style={{ fontSize: 11, color: "var(--text-dim)" }}>Includes:</strong>
+            <ul style={{ margin: "4px 0 8px", padding: "0 0 0 14px", fontSize: 11, color: "var(--text-dim)" }}>
+              {item.bundle_contents.map((id) => <li key={id}>{id.replace(/_/g, " ")}</li>)}
+            </ul>
+          </div>
+        )}
         {item.consumable && qty > 0 && (
           <div style={{ fontSize: 11, color: "var(--good)", marginBottom: 6 }}>You own {qty}</div>
         )}

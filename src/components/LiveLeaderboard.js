@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { useT } from "../i18n";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
+import { PlayerFlair } from "./PlayerFlair";
 
 // Polls the global leaderboard every POLL_MS and animates row position
 // changes via CSS transforms. Each row keeps a stable DOM node (keyed by
@@ -102,10 +103,10 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                 <span className="tw-livelb-rank">
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
                 </span>
-                <span className="tw-livelb-name" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="tw-livelb-name" style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                   <Avatar value={r.avatar} size={22} />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {r.username}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <PlayerFlair username={r.username} cosmetics={r.public_cosmetics} badges={r.badges} compact />
                     {mine && <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>}
                   </span>
                 </span>

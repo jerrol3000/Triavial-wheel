@@ -239,6 +239,14 @@ ensureColumn("stats", "xp_2x_until", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "coins_2x_until", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "streak_saver_active", "INTEGER NOT NULL DEFAULT 0");
 
+// Lifetime tracking columns used by the badge award engine. coins_spent_total
+// covers everything (cosmetics, refills, themes), online_games_played and
+// online_wins_total mirror existing online_wins/online_losses but capture
+// total played for "Veteran of 50 online matches" style badges.
+ensureColumn("stats", "coins_spent_total", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "cosmetics_owned_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "pro_lifetime_months", "INTEGER NOT NULL DEFAULT 0");
+
 // 2FA columns on users (admin TOTP).
 ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");
@@ -271,6 +279,11 @@ db.exec(`
 // boot, idempotent by id), `user_cosmetics` is per-user ownership (qty
 // supports consumables like XP boosts), and `user_equipped` is the one-
 // equipped-per-category state (frames, pointers, celebrations, titles).
+// `available_from` / `available_until` make limited-edition drops possible
+// (catalog filter strips items outside their window).
+// `bundle_contents` is a JSON array of cosmetic ids granted when a bundle
+// is purchased (server-side atomic). Bundles use a "bundle" category and
+// have a single price that's deliberately discounted vs the sum-of-parts.
 db.exec(`
   CREATE TABLE IF NOT EXISTS cosmetics (
     id TEXT PRIMARY KEY,
@@ -284,7 +297,10 @@ db.exec(`
     pro_only INTEGER NOT NULL DEFAULT 0,
     consumable INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    available_from INTEGER,
+    available_until INTEGER,
+    bundle_contents TEXT
   );
   CREATE INDEX IF NOT EXISTS idx_cosmetics_category ON cosmetics(category, sort_order);
 
@@ -302,6 +318,35 @@ db.exec(`
     cosmetic_id TEXT,
     PRIMARY KEY (user_id, category)
   );
+`);
+
+// Badges — earned through gameplay, spending, or milestones. Catalog is
+// seeded from data/badges-catalog.json (idempotent). user_badges records
+// when each badge was earned. Players can showcase up to 3 in their
+// "badge case" (the equipped_slot column 1-3 = displayed, null = not).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS badges (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL,
+    tier TEXT NOT NULL DEFAULT 'bronze',
+    icon TEXT,
+    criteria_type TEXT NOT NULL,
+    criteria_value INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_badges_category ON badges(category, sort_order);
+
+  CREATE TABLE IF NOT EXISTS user_badges (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    badge_id TEXT NOT NULL,
+    earned_at INTEGER NOT NULL,
+    equipped_slot INTEGER,
+    PRIMARY KEY (user_id, badge_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_badges_equipped ON user_badges(user_id, equipped_slot);
 `);
 
 // On boot, promote any user whose email is listed in ADMIN_EMAILS env var.

@@ -1,0 +1,41 @@
+[
+  {"id":"milestone_first_game","name":"First Steps","description":"Played your very first round.","category":"milestone","tier":"bronze","icon":"👣","criteria_type":"games_played","criteria_value":1,"sort_order":1},
+  {"id":"milestone_games_10","name":"Getting Started","description":"Played 10 rounds.","category":"milestone","tier":"bronze","icon":"🎯","criteria_type":"games_played","criteria_value":10,"sort_order":10},
+  {"id":"milestone_games_50","name":"Regular","description":"Played 50 rounds.","category":"milestone","tier":"silver","icon":"📅","criteria_type":"games_played","criteria_value":50,"sort_order":20},
+  {"id":"milestone_games_250","name":"Trivia Devotee","description":"Played 250 rounds.","category":"milestone","tier":"gold","icon":"🏅","criteria_type":"games_played","criteria_value":250,"sort_order":30},
+  {"id":"milestone_games_1000","name":"Trivia Veteran","description":"Played 1,000 rounds. Touch grass, then come back.","category":"milestone","tier":"legendary","icon":"🎖️","criteria_type":"games_played","criteria_value":1000,"sort_order":40},
+
+  {"id":"skill_first_correct","name":"First Right Answer","description":"Got your first correct answer.","category":"skill","tier":"bronze","icon":"✅","criteria_type":"correct","criteria_value":1,"sort_order":100},
+  {"id":"skill_correct_100","name":"Smart Cookie","description":"100 correct answers.","category":"skill","tier":"silver","icon":"🧠","criteria_type":"correct","criteria_value":100,"sort_order":110},
+  {"id":"skill_correct_1000","name":"Walking Encyclopedia","description":"1,000 correct answers.","category":"skill","tier":"gold","icon":"📚","criteria_type":"correct","criteria_value":1000,"sort_order":120},
+  {"id":"skill_streak_5","name":"On Fire","description":"5-question correct streak.","category":"skill","tier":"bronze","icon":"🔥","criteria_type":"best_streak","criteria_value":5,"sort_order":130},
+  {"id":"skill_streak_10","name":"Inferno","description":"10-question correct streak.","category":"skill","tier":"silver","icon":"💥","criteria_type":"best_streak","criteria_value":10,"sort_order":140},
+  {"id":"skill_streak_25","name":"Unstoppable","description":"25-question correct streak.","category":"skill","tier":"gold","icon":"⚡","criteria_type":"best_streak","criteria_value":25,"sort_order":150},
+  {"id":"skill_streak_50","name":"Galaxy Brain","description":"50-question correct streak.","category":"skill","tier":"legendary","icon":"🌌","criteria_type":"best_streak","criteria_value":50,"sort_order":160},
+  {"id":"skill_level_5","name":"Apprentice","description":"Reached Level 5.","category":"skill","tier":"bronze","icon":"🌱","criteria_type":"level","criteria_value":5,"sort_order":170},
+  {"id":"skill_level_20","name":"Scholar","description":"Reached Level 20.","category":"skill","tier":"silver","icon":"📖","criteria_type":"level","criteria_value":20,"sort_order":180},
+  {"id":"skill_level_50","name":"Sage","description":"Reached Level 50.","category":"skill","tier":"gold","icon":"🦉","criteria_type":"level","criteria_value":50,"sort_order":190},
+  {"id":"skill_level_100","name":"Grand Master","description":"Reached Level 100.","category":"skill","tier":"legendary","icon":"👑","criteria_type":"level","criteria_value":100,"sort_order":200},
+
+  {"id":"social_online_first","name":"Going Live","description":"Played your first online match.","category":"social","tier":"bronze","icon":"🌐","criteria_type":"online_wins","criteria_value":0,"sort_order":300},
+  {"id":"social_online_10","name":"Competitor","description":"Won 10 online matches.","category":"social","tier":"silver","icon":"🥈","criteria_type":"online_wins","criteria_value":10,"sort_order":310},
+  {"id":"social_online_50","name":"Online Beast","description":"Won 50 online matches.","category":"social","tier":"gold","icon":"🥇","criteria_type":"online_wins","criteria_value":50,"sort_order":320},
+  {"id":"social_online_200","name":"Legendary Rival","description":"Won 200 online matches.","category":"social","tier":"legendary","icon":"🏆","criteria_type":"online_wins","criteria_value":200,"sort_order":330},
+  {"id":"social_win_streak_5","name":"Hot Hand","description":"5 online wins in a row.","category":"social","tier":"silver","icon":"🌟","criteria_type":"win_streak","criteria_value":5,"sort_order":340},
+
+  {"id":"streak_daily_3","name":"3-Day Streak","description":"Played the daily 3 days in a row.","category":"streak","tier":"bronze","icon":"📆","criteria_type":"longest_daily_streak","criteria_value":3,"sort_order":400},
+  {"id":"streak_daily_7","name":"Week Warrior","description":"7-day daily streak.","category":"streak","tier":"silver","icon":"📅","criteria_type":"longest_daily_streak","criteria_value":7,"sort_order":410},
+  {"id":"streak_daily_30","name":"Month-Long Mind","description":"30-day daily streak.","category":"streak","tier":"gold","icon":"🗓️","criteria_type":"longest_daily_streak","criteria_value":30,"sort_order":420},
+  {"id":"streak_daily_100","name":"Centurion","description":"100-day daily streak. Pure ritual.","category":"streak","tier":"legendary","icon":"💯","criteria_type":"longest_daily_streak","criteria_value":100,"sort_order":430},
+
+  {"id":"spending_first_purchase","name":"Window Shopper","description":"Made your first store purchase.","category":"spending","tier":"bronze","icon":"🛍️","criteria_type":"coins_spent_total","criteria_value":1,"sort_order":500},
+  {"id":"spending_1k","name":"Coin Tipper","description":"Spent 1,000 coins.","category":"spending","tier":"bronze","icon":"💰","criteria_type":"coins_spent_total","criteria_value":1000,"sort_order":510},
+  {"id":"spending_10k","name":"Big Spender","description":"Spent 10,000 coins.","category":"spending","tier":"silver","icon":"💸","criteria_type":"coins_spent_total","criteria_value":10000,"sort_order":520},
+  {"id":"spending_50k","name":"Lavish","description":"Spent 50,000 coins.","category":"spending","tier":"gold","icon":"💎","criteria_type":"coins_spent_total","criteria_value":50000,"sort_order":530},
+  {"id":"spending_200k","name":"Whale 🐋","description":"Spent 200,000 coins. Thank you.","category":"spending","tier":"legendary","icon":"🐋","criteria_type":"coins_spent_total","criteria_value":200000,"sort_order":540},
+  {"id":"collector_5","name":"Collector","description":"Owns 5 cosmetics.","category":"spending","tier":"bronze","icon":"🧰","criteria_type":"cosmetics_owned_count","criteria_value":5,"sort_order":550},
+  {"id":"collector_15","name":"Curator","description":"Owns 15 cosmetics.","category":"spending","tier":"silver","icon":"🎨","criteria_type":"cosmetics_owned_count","criteria_value":15,"sort_order":560},
+  {"id":"collector_all","name":"Completionist","description":"Owns 30+ cosmetics. You've seen it all.","category":"spending","tier":"legendary","icon":"🌈","criteria_type":"cosmetics_owned_count","criteria_value":30,"sort_order":570},
+  {"id":"spending_pro_1m","name":"Supporter","description":"Subscribed to Pro for a month.","category":"spending","tier":"silver","icon":"⭐","criteria_type":"pro_lifetime_months","criteria_value":1,"sort_order":580},
+  {"id":"spending_pro_12m","name":"Pro Patron","description":"Subscribed to Pro for a year.","category":"spending","tier":"gold","icon":"🌟","criteria_type":"pro_lifetime_months","criteria_value":12,"sort_order":590}
+]

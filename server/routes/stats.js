@@ -367,7 +367,16 @@ router.post("/game", requireAuth, (req, res) => {
   if (!lbRow || score > lbRow.high_score) {
     db.prepare("INSERT INTO leaderboard (user_id, high_score, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET high_score = excluded.high_score, updated_at = excluded.updated_at").run(req.user.id, score, now);
   }
-  res.json({ ...loadStats(req.user.id), leveled_up: leveledUp });
+
+  // Award any newly-eligible badges from this game. New ones come back in
+  // the response so the client can fire a celebration toast.
+  let newBadges = [];
+  try {
+    const badges = require("../badges");
+    newBadges = badges.awardEligible(req.user.id);
+  } catch (e) {}
+
+  res.json({ ...loadStats(req.user.id), leveled_up: leveledUp, new_badges: newBadges });
 });
 
 router.post("/achievement", requireAuth, (req, res) => {
@@ -381,13 +390,21 @@ router.post("/achievement", requireAuth, (req, res) => {
 
 router.get("/leaderboard", (req, res) => {
   const rows = db.prepare(`
-    SELECT u.username, u.avatar, l.high_score, s.level
+    SELECT u.id AS user_id, u.username, u.avatar, l.high_score, s.level
     FROM leaderboard l
     JOIN users u ON u.id = l.user_id
     JOIN stats s ON s.user_id = l.user_id
     ORDER BY l.high_score DESC
     LIMIT 50
   `).all();
+  // Decorate with the visible cosmetic (frame + title) + showcase badge
+  // so the leaderboard can render each player's flair next to the name.
+  const cosmetics = require("../cosmetics");
+  const badges = require("../badges");
+  for (const r of rows) {
+    r.public_cosmetics = cosmetics.getPublicCosmetics(r.user_id);
+    r.badges = badges.listEquipped(r.user_id);
+  }
   res.json(rows);
 });
 

@@ -2,6 +2,7 @@ const express = require("express");
 const { requireAuth, optionalAuth } = require("../auth");
 const db = require("../db");
 const cosmetics = require("../cosmetics");
+const badges = require("../badges");
 
 const router = express.Router();
 
@@ -52,7 +53,14 @@ router.post("/buy", requireAuth, (req, res) => {
   const isPro = !!(userRow && userRow.pro_until && userRow.pro_until > Date.now());
   const result = cosmetics.buyItem(req.user.id, id, isPro);
   if (result.error) return res.status(400).json(result);
-  res.json(result);
+
+  // Track lifetime spend + ownership count → drives spending/collector
+  // badges. Award any newly-eligible badges and bubble them up so the
+  // client can fire a celebration toast.
+  badges.recordSpend(req.user.id, result.item.price_coins);
+  badges.recordOwnership(req.user.id);
+  const newBadges = badges.awardEligible(req.user.id);
+  res.json({ ...result, new_badges: newBadges });
 });
 
 router.post("/equip", requireAuth, (req, res) => {

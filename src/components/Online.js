@@ -9,6 +9,8 @@ import { setView, setModal, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import ChatPanel from "./ChatPanel";
 import Icon from "./Icon";
+import { PlayerFlair } from "./PlayerFlair";
+import OtherAvatar from "./OtherAvatar";
 import { sfx } from "../utils/sound";
 import { safeNavigate } from "../utils/navigate";
 
@@ -413,8 +415,13 @@ function PlayerSlot({ player, you }) {
   if (!player) return <div className="tw-online-slot empty">Waiting…</div>;
   return (
     <div className="tw-online-slot">
-      <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700 }}>{player.username}{you && " (you)"}</div>
-      {player.ready && <div style={{ fontSize: 11, color: "var(--good)" }}>✓ Ready</div>}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
+        <OtherAvatar value={player.avatar} size={36} cosmetics={player.public_cosmetics} />
+      </div>
+      <div style={{ fontFamily: "Fredoka", fontSize: 15, fontWeight: 700, display: "flex", justifyContent: "center" }}>
+        <PlayerFlair username={`${player.username}${you ? " (you)" : ""}`} cosmetics={player.public_cosmetics} badges={player.badges} compact />
+      </div>
+      {player.ready && <div style={{ fontSize: 11, color: "var(--good)", marginTop: 4 }}>✓ Ready</div>}
     </div>
   );
 }
@@ -423,7 +430,9 @@ function ScoreCard({ player, highlight, answered }) {
   if (!player) return <div className="tw-online-score" />;
   return (
     <div className={`tw-online-score ${highlight ? "you" : ""} ${answered ? "answered" : "pending"}`}>
-      <div className="tw-online-score-name">{player.username}{highlight && " ★"}</div>
+      <div className="tw-online-score-name" style={{ display: "inline-flex", justifyContent: highlight ? "flex-start" : "flex-end", gap: 6, width: "100%" }}>
+        <PlayerFlair username={`${player.username}${highlight ? " ★" : ""}`} cosmetics={player.public_cosmetics} badges={player.badges} compact />
+      </div>
       <div className="tw-online-score-value">{player.score}</div>
       <div className="tw-online-score-sub">{player.correct} right</div>
       <div className={`tw-online-status ${answered ? "in" : "out"}`}>

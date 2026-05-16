@@ -17,13 +17,15 @@ function seedCatalog() {
   catch (e) { console.error("[cosmetics] bad catalog json:", e.message); return 0; }
   if (!Array.isArray(rows)) return 0;
   const upsert = db.prepare(
-    `INSERT INTO cosmetics(id, category, name, description, price_coins, rarity, icon, data, pro_only, consumable, enabled, sort_order)
-     VALUES (@id, @category, @name, @description, @price_coins, @rarity, @icon, @data, @pro_only, @consumable, @enabled, @sort_order)
+    `INSERT INTO cosmetics(id, category, name, description, price_coins, rarity, icon, data, pro_only, consumable, enabled, sort_order, available_from, available_until, bundle_contents)
+     VALUES (@id, @category, @name, @description, @price_coins, @rarity, @icon, @data, @pro_only, @consumable, @enabled, @sort_order, @available_from, @available_until, @bundle_contents)
      ON CONFLICT(id) DO UPDATE SET
        category=excluded.category, name=excluded.name, description=excluded.description,
        price_coins=excluded.price_coins, rarity=excluded.rarity, icon=excluded.icon,
        data=excluded.data, pro_only=excluded.pro_only, consumable=excluded.consumable,
-       enabled=excluded.enabled, sort_order=excluded.sort_order`
+       enabled=excluded.enabled, sort_order=excluded.sort_order,
+       available_from=excluded.available_from, available_until=excluded.available_until,
+       bundle_contents=excluded.bundle_contents`
   );
   const tx = db.transaction((list) => {
     for (const r of list) {
@@ -40,6 +42,9 @@ function seedCatalog() {
         consumable: r.consumable ? 1 : 0,
         enabled: r.enabled === false ? 0 : 1,
         sort_order: r.sort_order | 0,
+        available_from: r.available_from || null,
+        available_until: r.available_until || null,
+        bundle_contents: r.bundle_contents ? JSON.stringify(r.bundle_contents) : null,
       });
     }
   });
@@ -60,13 +65,24 @@ function rowToItem(r) {
     pro_only: !!r.pro_only,
     consumable: !!r.consumable,
     sort_order: r.sort_order,
+    available_from: r.available_from,
+    available_until: r.available_until,
+    bundle_contents: r.bundle_contents ? JSON.parse(r.bundle_contents) : null,
   };
 }
 
 function listCatalog() {
+  const now = Date.now();
+  // Limited-edition items have a [available_from, available_until] window.
+  // Anything outside its window is filtered out of public listings (still
+  // queryable by id for ownership purposes — handled in getItem below).
   const rows = db.prepare(
-    `SELECT * FROM cosmetics WHERE enabled = 1 ORDER BY category, sort_order, name`
-  ).all();
+    `SELECT * FROM cosmetics
+     WHERE enabled = 1
+       AND (available_from IS NULL OR available_from <= ?)
+       AND (available_until IS NULL OR available_until >= ?)
+     ORDER BY category, sort_order, name`
+  ).all(now, now);
   return rows.map(rowToItem);
 }
 
@@ -92,20 +108,23 @@ function getItem(id) {
 }
 
 // Atomic buy: validates funds + pro requirement, deducts coins, grants
-// ownership (+1 qty for consumables, +1 row for equippables). Returns
-// { ok, item, coins_after } or throws on failure.
+// ownership (+1 qty for consumables, +1 row for equippables). For
+// "bundle" items, grants every cosmetic referenced in bundle_contents
+// in addition to the bundle marker itself — all in a single transaction,
+// so a failure on any nested item rolls back the whole purchase.
 function buyItem(userId, cosmeticId, isPro) {
   const item = getItem(cosmeticId);
   if (!item) return { error: "not_found" };
   if (item.pro_only && !isPro) return { error: "pro_only" };
 
-  // Equippable items only need to be purchased once (qty stays 1).
   const already = db.prepare(
     `SELECT qty FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?`
   ).get(userId, cosmeticId);
-  if (already && !item.consumable) return { error: "already_owned" };
+  if (already && !item.consumable && item.category !== "bundle") return { error: "already_owned" };
 
   const cost = item.price_coins;
+  const grantedItems = [];
+
   const tx = db.transaction(() => {
     const userStats = db.prepare(`SELECT coins FROM stats WHERE user_id = ?`).get(userId);
     if (!userStats) throw new Error("no_stats");
@@ -113,35 +132,48 @@ function buyItem(userId, cosmeticId, isPro) {
 
     db.prepare(`UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ?`).run(cost, Date.now(), userId);
 
-    if (already && item.consumable) {
-      db.prepare(`UPDATE user_cosmetics SET qty = qty + 1, purchased_at = ? WHERE user_id = ? AND cosmetic_id = ?`)
-        .run(Date.now(), userId, cosmeticId);
-    } else {
-      db.prepare(`INSERT INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
-        .run(userId, cosmeticId, Date.now());
-    }
-    // Auto-equip the first one in its category for equippable items —
-    // saves the user a tap. Skipped for consumables.
-    if (!item.consumable && EQUIPPABLE.has(item.category)) {
-      const currentlyEquipped = db.prepare(
-        `SELECT cosmetic_id FROM user_equipped WHERE user_id = ? AND category = ?`
-      ).get(userId, item.category);
-      if (!currentlyEquipped || !currentlyEquipped.cosmetic_id) {
-        db.prepare(
-          `INSERT INTO user_equipped(user_id, category, cosmetic_id) VALUES (?, ?, ?)
-           ON CONFLICT(user_id, category) DO UPDATE SET cosmetic_id = excluded.cosmetic_id`
-        ).run(userId, item.category, cosmeticId);
+    const grantOne = (it) => {
+      const existing = db.prepare(`SELECT qty FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?`).get(userId, it.id);
+      if (existing && it.consumable) {
+        db.prepare(`UPDATE user_cosmetics SET qty = qty + 1, purchased_at = ? WHERE user_id = ? AND cosmetic_id = ?`)
+          .run(Date.now(), userId, it.id);
+      } else if (!existing) {
+        db.prepare(`INSERT INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
+          .run(userId, it.id, Date.now());
       }
+      if (!it.consumable && EQUIPPABLE.has(it.category)) {
+        const cur = db.prepare(`SELECT cosmetic_id FROM user_equipped WHERE user_id = ? AND category = ?`).get(userId, it.category);
+        if (!cur || !cur.cosmetic_id) {
+          db.prepare(
+            `INSERT INTO user_equipped(user_id, category, cosmetic_id) VALUES (?, ?, ?)
+             ON CONFLICT(user_id, category) DO UPDATE SET cosmetic_id = excluded.cosmetic_id`
+          ).run(userId, it.category, it.id);
+        }
+      }
+      grantedItems.push(it);
+    };
+
+    if (item.category === "bundle" && Array.isArray(item.bundle_contents)) {
+      // Grant the bundle marker (so we know they own it / can't re-buy)
+      // and then every referenced cosmetic. Skips items they already own.
+      db.prepare(`INSERT OR IGNORE INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
+        .run(userId, item.id, Date.now());
+      for (const childId of item.bundle_contents) {
+        const childItem = getItem(childId);
+        if (!childItem) continue;
+        const childOwned = db.prepare(`SELECT 1 FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?`).get(userId, childId);
+        if (childOwned && !childItem.consumable) continue;
+        grantOne(childItem);
+      }
+    } else {
+      grantOne(item);
     }
   });
 
-  try {
-    tx();
-  } catch (e) {
-    return { error: e.message || "buy_failed" };
-  }
+  try { tx(); }
+  catch (e) { return { error: e.message || "buy_failed" }; }
   const after = db.prepare(`SELECT coins FROM stats WHERE user_id = ?`).get(userId);
-  return { ok: true, item, coins_after: after ? after.coins : 0 };
+  return { ok: true, item, coins_after: after ? after.coins : 0, granted: grantedItems };
 }
 
 // Equip / unequip an owned cosmetic. Free items (price 0) can be equipped
@@ -189,6 +221,25 @@ function consumeBoost(userId, cosmeticId) {
   return { ok: true, item };
 }
 
+// Public projection for other players — the equipped frame + title that
+// SHOULD show next to their username in leaderboards / matches. Returns
+// the full item objects (with their `data` payloads) so renderers don't
+// have to round-trip the catalog. Excludes consumables and category-only
+// fields that don't affect the visible UI.
+function getPublicCosmetics(userId) {
+  const row = db.prepare(
+    `SELECT category, cosmetic_id FROM user_equipped
+     WHERE user_id = ? AND category IN ('frame', 'title')`
+  ).all(userId);
+  const out = {};
+  for (const r of row) {
+    if (!r.cosmetic_id) continue;
+    const item = getItem(r.cosmetic_id);
+    if (item) out[r.category] = item;
+  }
+  return out;
+}
+
 module.exports = {
   EQUIPPABLE,
   seedCatalog,
@@ -200,4 +251,5 @@ module.exports = {
   equipItem,
   unequipCategory,
   consumeBoost,
+  getPublicCosmetics,
 };

@@ -10,6 +10,8 @@ import MatchHistory from "./MatchHistory";
 import CategoryMastery from "./CategoryMastery";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
+import BadgesPanel from "./BadgesPanel";
+import { BadgeCase } from "./PlayerFlair";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -39,6 +41,9 @@ export default function Profile() {
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
           <Avatar value={user?.avatar} size={88} ring me={!!user} />
         </div>
+        {user && <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+          <ProfileBadgeCase />
+        </div>}
         <div style={{ fontSize: 14, color: "var(--text-dim)" }}>{user ? `@${user.username}` : "Guest"}</div>
         <div style={{ fontFamily: "Fredoka", fontSize: 30, fontWeight: 700, margin: "4px 0" }}>
           ⭐ Level {prog.level}
@@ -79,13 +84,15 @@ export default function Profile() {
         )}
       </div>
 
-      <div className="tw-row" style={{ justifyContent: "center" }}>
-        {["stats", "achievements", "leaderboard", "friends", "history"].map((t) => (
+      <div className="tw-row" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+        {["stats", "badges", "achievements", "leaderboard", "friends", "history"].map((t) => (
           <button key={t} className="tw-pill"
                   style={{ cursor: "pointer", background: tab === t ? "rgba(124,58,237,0.4)" : undefined, textTransform: "capitalize" }}
                   onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
+
+      {tab === "badges" && <BadgesPanel />}
 
       {tab === "stats" && (
         <>
@@ -150,4 +157,10 @@ export default function Profile() {
       )}
     </div>
   );
+}
+
+function ProfileBadgeCase() {
+  const equipped = useSelector((s) => s.badges.equipped);
+  if (!equipped || !equipped.length) return null;
+  return <BadgeCase badges={equipped} size="md" />;
 }

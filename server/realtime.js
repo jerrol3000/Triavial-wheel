@@ -42,11 +42,29 @@ function broadcastRoom(room, msg) {
   }
 }
 
+// Resolved at module level — avoids a require() per packet on the hot path.
+const cosmeticsLib = require("./cosmetics");
+const badgesLib = require("./badges");
+
+function publicPlayer(p) {
+  if (!p) return null;
+  return {
+    id: p.id,
+    username: p.username,
+    score: p.score,
+    correct: p.correct,
+    ready: p.ready,
+    avatar: p.avatar,
+    public_cosmetics: cosmeticsLib.getPublicCosmetics(p.id),
+    badges: badgesLib.listEquipped(p.id),
+  };
+}
+
 function publicRoom(room) {
   return {
     code: room.code,
     kind: room.kind,
-    players: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct, ready: p.ready } : null),
+    players: room.players.map(publicPlayer),
     index: room.index,
     total: room.questions.length,
     question: room.index < room.questions.length ? publicQuestion(room.questions[room.index]) : null,
@@ -495,7 +513,7 @@ function attach(httpServer) {
       ws.close();
       return;
     }
-    const row = db.prepare("SELECT id, username, banned_at FROM users WHERE id = ?").get(decoded.id);
+    const row = db.prepare("SELECT id, username, avatar, banned_at FROM users WHERE id = ?").get(decoded.id);
     if (!row || row.banned_at) {
       send(ws, { type: "error", error: "forbidden" });
       ws.close();

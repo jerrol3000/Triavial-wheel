@@ -312,6 +312,12 @@ router.put("/users/:id", (req, res) => {
     db.prepare("UPDATE leaderboard SET high_score = 0, updated_at = ? WHERE user_id = ?").run(Date.now(), id);
     db.prepare("DELETE FROM user_badges WHERE user_id = ?").run(id);
     db.prepare("DELETE FROM seen_questions WHERE user_id = ?").run(id);
+    // Also clear cosmetics ownership + equipped state so the
+    // cosmetics_owned_count we just zeroed stays accurate. Otherwise
+    // the next /store/buy would re-count owned items and silently
+    // re-award collector badges based on stale ownership.
+    db.prepare("DELETE FROM user_cosmetics WHERE user_id = ?").run(id);
+    db.prepare("DELETE FROM user_equipped WHERE user_id = ?").run(id);
   }
   res.json({ ok: true });
 });

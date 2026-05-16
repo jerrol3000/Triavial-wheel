@@ -22,10 +22,13 @@ export default function Online() {
   // the whole Online tree to re-render every time a reaction fires.
   const { connected, waiting, room, matchEnd } = useSelector((s) => s.online);
 
-  // Bridge WS events → redux.
+  // Bridge WS events → redux. Track per-message timers so cleanup on
+  // unmount cancels any pending reaction-clear / etc. that would
+  // otherwise fire into a torn-down store.
   useEffect(() => {
     if (!user) return;
     rt.connect();
+    let reactionTimer = null;
     const off = rt.on((msg) => {
       switch (msg.type) {
         case "open":          dispatch(setConnected(true));  break;
@@ -41,7 +44,15 @@ export default function Online() {
         case "chat_filtered": dispatch(setChatNotice({ kind: "filtered", reason: msg.reason, at: Date.now() })); if (msg.autoMuted) dispatch(setChatNotice({ kind: "auto_muted", at: Date.now() })); break;
         case "chat_rate_limited": dispatch(setChatNotice({ kind: "rate", at: Date.now() })); break;
         case "chat_muted":    dispatch(setChatNotice({ kind: "muted", until: msg.until, at: Date.now() })); break;
-        case "reaction":      dispatch(pushReaction({ ...msg, at: Date.now() })); setTimeout(() => dispatch(pushReaction(null)), 1500); break;
+        case "reaction": {
+          // Whitelist the fields we actually want — don't spread the
+          // whole WS payload into redux. Cancel any in-flight clear so
+          // rapid reactions don't blank each other out prematurely.
+          dispatch(pushReaction({ emoji: msg.emoji, username: msg.username, at: Date.now() }));
+          if (reactionTimer) clearTimeout(reactionTimer);
+          reactionTimer = setTimeout(() => dispatch(pushReaction(null)), 1500);
+          break;
+        }
         case "match_end":     sfx.win(); dispatch(setMatchEnd(msg)); dispatch(fetchStats()); break;
         case "session_ended": {
           // Continue-vote timed out, opponent declined, or room closed.
@@ -72,7 +83,10 @@ export default function Online() {
         case "error":         dispatch(setError(msg.error)); break;
       }
     });
-    return () => { off(); };
+    return () => {
+      off();
+      if (reactionTimer) clearTimeout(reactionTimer);
+    };
   }, [user, dispatch]);
 
   if (!user) {

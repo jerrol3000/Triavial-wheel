@@ -164,20 +164,51 @@ router.post("/gift", (req, res) => {
   if (kind === "coins" && senderStats.coins < amount) return res.status(402).json({ error: "insufficient_coins" });
   if (kind === "free_spins" && senderStats.free_spins < amount) return res.status(402).json({ error: "insufficient_spins" });
 
+  // Verify recipient still has a stats row BEFORE we start the tx —
+  // otherwise the sender would be debited and the recipient's UPDATE
+  // would silently affect 0 rows, vanishing coins.
+  const recipExists = db.prepare("SELECT 1 FROM stats WHERE user_id = ?").get(recipientId);
+  if (!recipExists) return res.status(404).json({ error: "recipient_not_found" });
+
   const tx = db.transaction(() => {
+    // RE-CHECK the daily cap INSIDE the tx by reading sum-of-amounts
+    // from events. Two concurrent gift requests from the same sender
+    // would otherwise both pass the pre-check and double the cap.
+    const inTxSent = db.prepare(
+      `SELECT COALESCE(SUM(json_extract(meta, '$.amount')), 0) AS total
+       FROM events
+       WHERE kind = 'friend_gift' AND user_id = ?
+         AND json_extract(meta, '$.to') = ?
+         AND json_extract(meta, '$.date') = ?
+         AND json_extract(meta, '$.gift_kind') = ?`
+    ).get(me, recipientId, today, kind).total || 0;
+    if (inTxSent + amount > GIFT_DAILY_CAPS[kind]) throw new Error("daily_cap_race");
+
     if (kind === "coins") {
-      db.prepare("UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), me);
-      db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), recipientId);
+      const s = db.prepare("UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ?")
+        .run(amount, Date.now(), me);
+      if (s.changes !== 1) throw new Error("sender_update_failed");
+      const r = db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?")
+        .run(amount, Date.now(), recipientId);
+      if (r.changes !== 1) throw new Error("recipient_update_failed");
     } else {
-      db.prepare("UPDATE stats SET free_spins = free_spins - ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), me);
-      db.prepare("UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?").run(amount, Date.now(), recipientId);
+      const s = db.prepare("UPDATE stats SET free_spins = free_spins - ?, updated_at = ? WHERE user_id = ?")
+        .run(amount, Date.now(), me);
+      if (s.changes !== 1) throw new Error("sender_update_failed");
+      const r = db.prepare("UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?")
+        .run(amount, Date.now(), recipientId);
+      if (r.changes !== 1) throw new Error("recipient_update_failed");
     }
     db.prepare(
       `INSERT INTO events (kind, user_id, amount, meta, created_at) VALUES (?, ?, ?, ?, ?)`
     ).run("friend_gift", me, amount, JSON.stringify({ gift_kind: kind, amount, to: recipientId, date: today }), Date.now());
   });
   try { tx(); }
-  catch (e) { return res.status(500).json({ error: "gift_failed" }); }
+  catch (e) {
+    if (e && e.message === "daily_cap_race") return res.status(429).json({ error: "daily_cap" });
+    console.error("[friends] gift_failed", e);
+    return res.status(500).json({ error: "gift_failed" });
+  }
 
   res.json({ ok: true, kind, amount });
 });

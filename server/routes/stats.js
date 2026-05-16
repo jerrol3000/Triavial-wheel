@@ -15,6 +15,15 @@ const ALLOWED_FIELDS = new Set([
   "active_theme",       // pure cosmetic preference, no economic value
 ]);
 
+// Sanity-clamp client-supplied integer fields. Rejects NaN, negatives,
+// and values above the cap. Used by /stats/game to prevent leaderboard
+// pollution from a tampered or buggy client.
+function clampInt(v, min, max) {
+  const n = Math.floor(Number(v) || 0);
+  if (Number.isNaN(n)) return min;
+  return Math.max(min, Math.min(max, n));
+}
+
 function loadStats(userId) {
   const row = db.prepare("SELECT * FROM stats WHERE user_id = ?").get(userId);
   if (!row) return null;
@@ -388,22 +397,35 @@ router.put("/", requireAuth, (req, res) => {
 });
 
 router.post("/game", requireAuth, (req, res) => {
-  const { score = 0, correct = 0, incorrect = 0, xp_gained = 0, coins_gained = 0, best_streak_run = 0, category_id = null } = req.body || {};
+  const body = req.body || {};
+  // Clamp every numeric input so a malicious client can't write huge
+  // values into the leaderboard. Hard caps cover the largest plausible
+  // single-round outcome (10 questions × hard difficulty × multipliers).
+  const score        = clampInt(body.score,           0, 20000);
+  const correct      = clampInt(body.correct,         0, 50);
+  const incorrect    = clampInt(body.incorrect,       0, 50);
+  const xp_gained    = clampInt(body.xp_gained,       0, 5000);
+  const coins_gained = clampInt(body.coins_gained,    0, 5000);
+  const best_streak_run = clampInt(body.best_streak_run, 0, 50);
+  const category_id  = body.category_id != null ? Number(body.category_id) : null;
   const now = Date.now();
+
   const stats = db.prepare("SELECT * FROM stats WHERE user_id = ?").get(req.user.id);
-  const newXp = stats.xp + Math.max(0, Math.floor(xp_gained));
+  if (!stats) return res.status(404).json({ error: "no_stats_row" });
+  const newXp = stats.xp + xp_gained;
   const newLevel = 1 + Math.floor(Math.sqrt(newXp / 100));
-  const newBest = Math.max(stats.best_streak, Math.floor(best_streak_run));
+  const newBest = Math.max(stats.best_streak, best_streak_run);
   const leveledUp = newLevel > stats.level;
 
-  // Grant a streak_saver power-up on every level-up — small, valuable, retention boost.
+  // Grant a streak_saver power-up on every level-up. Defends against
+  // a NULL/malformed powerups_json (e.g. row inserted before migration)
+  // by treating it as the default object.
   let powerupsUpdate = stats.powerups_json;
   if (leveledUp) {
-    try {
-      const p = JSON.parse(stats.powerups_json);
-      p.streak_saver = (p.streak_saver || 0) + 1;
-      powerupsUpdate = JSON.stringify(p);
-    } catch (e) {}
+    let p = {};
+    try { p = JSON.parse(stats.powerups_json || "{}") || {}; } catch (e) { p = {}; }
+    p.streak_saver = (p.streak_saver || 0) + 1;
+    powerupsUpdate = JSON.stringify(p);
   }
 
   db.prepare(`

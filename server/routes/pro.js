@@ -113,7 +113,11 @@ router.post("/buy-theme", requireAuth, (req, res) => {
   const known = new Set(["classic", "neon", "midnight", "sunset", "forest", "candy"]);
   if (!known.has(theme_id)) return res.status(400).json({ error: "unknown theme" });
   const row = db.prepare("SELECT themes_json, coins FROM stats WHERE user_id = ?").get(req.user.id);
-  const themes = JSON.parse(row.themes_json);
+  if (!row) return res.status(404).json({ error: "no_stats_row" });
+  let themes;
+  try { themes = JSON.parse(row.themes_json || '["classic"]'); }
+  catch (e) { themes = ["classic"]; }
+  if (!Array.isArray(themes)) themes = ["classic"];
   if (themes.includes(theme_id)) return res.json({ ok: true, themes });
   const cost = theme_id === "classic" ? 0 : 200;
   if (row.coins < cost) return res.status(402).json({ error: "not enough coins" });

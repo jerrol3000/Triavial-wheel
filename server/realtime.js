@@ -360,11 +360,25 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty) {
 
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
 
+    // Quests: online matches share the SAME metrics as solo for any
+    // counter the player legitimately bumped (coins/xp earned today).
+    // Without this, "Earn 200 coins from play" is unwinnable for
+    // online-only players.
     try {
       const stats = require("./routes/stats");
       const events = [{ metric: "online_played_today", amount: 1 }];
       if (isWinner && !isFriendly) events.push({ metric: "online_wins_today", amount: 1 });
+      if (coinsReward > 0) events.push({ metric: "coins_earned_today", amount: coinsReward });
       if (stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
+    } catch (e) {}
+
+    // Badges: online wins drive social/win-streak badges; solo
+    // /stats/game was the only awarder until now, so an online-only
+    // player never got their "10 online wins" badge until they
+    // happened to play a solo round.
+    try {
+      const badges = require("./badges");
+      if (badges && badges.awardEligible) badges.awardEligible(p.id);
     } catch (e) {}
   }
 }
@@ -412,12 +426,21 @@ function setupConnection(ws, user) {
     }
     const room = findRoomForUser(user.id);
     if (room && !room.finished) {
-      // If match in progress and the other player is still here, give them the win after a grace period.
+      // Pin to the SPECIFIC room.code we saw at disconnect time. If the
+      // user reconnects within the grace window AND ends up in a new
+      // room (e.g. requeues for quick match), findRoomForUser(user.id)
+      // would otherwise return that new room and corrupt it with the
+      // disconnect-bonus boost from the OLD match.
+      const disconnectRoomCode = room.code;
       setTimeout(() => {
         const stillThere = connections.get(user.id);
         if (stillThere && stillThere.readyState === 1) return; // reconnected in time
-        const room2 = findRoomForUser(user.id);
+        const room2 = rooms.get(disconnectRoomCode);
         if (!room2 || room2.finished) return;
+        // Confirm the player is still in THAT room (might have left to a
+        // different one during the grace).
+        const stillInOriginal = room2.players.some((p) => p && p.id === user.id);
+        if (!stillInOriginal) return;
         const opponent = room2.players.find((p) => p && p.id !== user.id);
         if (opponent) {
           opponent.score += 100; // disconnect bonus

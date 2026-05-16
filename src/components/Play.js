@@ -26,14 +26,15 @@ export default function Play() {
   const handledRef = useRef(false);
 
   // Watchdog: if we land on the Play screen with no questions and nothing in
-  // flight (network blip, fetch failed, HMR), bounce back to the wheel after 4s
-  // rather than stranding the user on "No questions" with no clear escape.
+  // flight (network blip, fetch failed, HMR), bounce back to the wheel after
+  // 12s. Was 4s but slow mobile networks can legitimately take 5-8s for the
+  // initial round fetch — the old timeout yanked the user home mid-load.
   useEffect(() => {
     if (isFinished || isLoading || hasQuestions) return;
     const t = setTimeout(() => {
       dispatch(resetRound());
       dispatch(setView("home"));
-    }, 4000);
+    }, 12000);
     return () => clearTimeout(t);
   }, [isFinished, isLoading, hasQuestions, dispatch]);
 

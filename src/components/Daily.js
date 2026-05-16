@@ -25,7 +25,21 @@ export default function Daily() {
   const startMsRef = useRef(0);
   const handledRef = useRef(false);
 
-  useEffect(() => { dispatch(fetchDailyMeta()); dispatch(fetchDailyLeaderboard()); }, [dispatch]);
+  useEffect(() => {
+    dispatch(fetchDailyMeta());
+    dispatch(fetchDailyLeaderboard());
+    // Refresh meta when the tab is brought back to the foreground. Long
+    // sessions can roll past midnight UTC otherwise — daily.date stays
+    // stale and the user gets yesterday's already-played puzzle.
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        dispatch(fetchDailyMeta());
+        dispatch(fetchDailyLeaderboard());
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [dispatch]);
   useEffect(() => { setPhase(daily.alreadyPlayed ? "result" : "intro"); }, [daily.alreadyPlayed]);
 
   const beginDaily = async () => {

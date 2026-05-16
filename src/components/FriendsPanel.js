@@ -20,7 +20,15 @@ export default function FriendsPanel({ compact = false }) {
     api.get("/friends").then((r) => setFriends(r.data || [])).catch(() => {});
     api.get("/friends/pending").then((r) => setPending(r.data || [])).catch(() => {});
   }, [user]);
-  useEffect(() => { load(); const id = setInterval(load, 20000); return () => clearInterval(id); }, [load]);
+  useEffect(() => {
+    // Don't start polling at all when signed out; otherwise the 20s
+    // tick keeps hitting /friends with no token after logout and gets
+    // a 401 → triggers the auth-expired cascade.
+    if (!user) return;
+    load();
+    const id = setInterval(load, 20000);
+    return () => clearInterval(id);
+  }, [load, user]);
 
   const add = async (e) => {
     e.preventDefault();

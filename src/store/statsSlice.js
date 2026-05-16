@@ -31,6 +31,17 @@ const DEFAULT_STATS = {
   categories_played: [],
   // Cache of leaderboard
   leaderboard: [],
+  // Server-derived fields that drive Badge progress bars. Pre-populate
+  // defaults so BadgesPanel doesn't show NaN / "undefined / 50" before
+  // the first fetchStats lands.
+  win_streak: 0,
+  online_wins: 0,
+  online_losses: 0,
+  online_rating: 1000,
+  free_spins: 0,
+  coins_spent_total: 0,
+  cosmetics_owned_count: 0,
+  pro_lifetime_months: 0,
 };
 
 // Guarantee no arrays/objects are null/undefined. Older saved-state shapes

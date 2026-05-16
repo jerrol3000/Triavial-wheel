@@ -35,12 +35,14 @@ router.post("/submit", requireAuth, (req, res) => {
     return res.status(400).json({ error: "invalid payload" });
   }
   const date = todayKey();
-  const exists = db.prepare("SELECT 1 FROM daily_scores WHERE user_id = ? AND date = ?").get(req.user.id, date);
-  if (exists) return res.status(409).json({ error: "already submitted today" });
 
-  db.prepare(
-    "INSERT INTO daily_scores (user_id, date, score, correct, total, time_ms, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  // Use INSERT OR IGNORE + check changes for race-safe single-submission.
+  // The previous check-then-insert pattern crashed when two requests
+  // arrived in the same tick (PRIMARY KEY violation on the second).
+  const ins = db.prepare(
+    "INSERT OR IGNORE INTO daily_scores (user_id, date, score, correct, total, time_ms, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).run(req.user.id, date, Math.floor(score), Math.floor(correct), Math.floor(total), Math.floor(time_ms), Date.now());
+  if (ins.changes === 0) return res.status(409).json({ error: "already submitted today" });
 
   // Update daily streak.
   const stats = db.prepare("SELECT current_daily_streak, longest_daily_streak, last_daily_date FROM stats WHERE user_id = ?").get(req.user.id);

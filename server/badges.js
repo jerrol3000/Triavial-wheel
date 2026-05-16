@@ -129,10 +129,17 @@ function recordSpend(userId, amount) {
     .run(amount, Date.now(), userId);
 }
 
-// Bump cosmetics_owned_count after the buyer actually owns a new item
-// (NOT consumables — those are tracked by qty in user_cosmetics).
+// Bump cosmetics_owned_count after the buyer actually owns a new item.
+// Excludes consumables (boosts, spin packs) — those are inventory you
+// burn through, not collection items, so they shouldn't count toward
+// the Collector / Completionist badges.
 function recordOwnership(userId) {
-  const n = db.prepare(`SELECT COUNT(DISTINCT cosmetic_id) AS n FROM user_cosmetics WHERE user_id = ?`).get(userId).n;
+  const n = db.prepare(`
+    SELECT COUNT(DISTINCT uc.cosmetic_id) AS n
+    FROM user_cosmetics uc
+    JOIN cosmetics c ON c.id = uc.cosmetic_id
+    WHERE uc.user_id = ? AND c.consumable = 0
+  `).get(userId).n;
   db.prepare(`UPDATE stats SET cosmetics_owned_count = ?, updated_at = ? WHERE user_id = ?`)
     .run(n, Date.now(), userId);
 }

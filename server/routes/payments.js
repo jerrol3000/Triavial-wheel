@@ -220,6 +220,13 @@ router.post("/stripe/verify", requireAuth, async (req, res) => {
 });
 
 function grantProduct(userId, product) {
+  // Make sure the user still has a stats row before we credit — a deleted
+  // account (admin / GDPR delete during checkout) would otherwise silently
+  // accept the payment and grant nothing. Throws so the caller's payment-
+  // capture flow can surface a real error instead of returning 200.
+  const exists = db.prepare("SELECT 1 FROM stats WHERE user_id = ?").get(userId);
+  if (!exists) throw new Error("no_stats_row_for_grant");
+
   const g = product.grant || {};
   if (typeof g.coins === "number") {
     db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?").run(g.coins, Date.now(), userId);
@@ -229,7 +236,11 @@ function grantProduct(userId, product) {
   }
   if (g.powerups && typeof g.powerups === "object") {
     const row = db.prepare("SELECT powerups_json FROM stats WHERE user_id = ?").get(userId);
-    const powerups = row ? JSON.parse(row.powerups_json) : { fifty: 0, skip: 0, freeze: 0, double: 0 };
+    let powerups = { fifty: 0, skip: 0, freeze: 0, double: 0 };
+    if (row && row.powerups_json) {
+      try { const p = JSON.parse(row.powerups_json); if (p && typeof p === "object") powerups = p; }
+      catch (e) { /* malformed json — keep defaults */ }
+    }
     for (const [k, v] of Object.entries(g.powerups)) powerups[k] = (powerups[k] || 0) + v;
     db.prepare("UPDATE stats SET powerups_json = ?, updated_at = ? WHERE user_id = ?").run(JSON.stringify(powerups), Date.now(), userId);
   }

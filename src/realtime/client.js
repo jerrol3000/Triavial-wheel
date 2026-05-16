@@ -83,6 +83,9 @@ class RealtimeClient {
       this.lastError = null;
       this.emit({ type: "open" });
       while (this.queue.length) ws.send(this.queue.shift());
+      // Clear any leftover interval before starting a new one — guards
+      // against double-connect leaks if onopen fires twice.
+      if (this.pingTimer) clearInterval(this.pingTimer);
       this.pingTimer = setInterval(() => this.send({ type: "ping" }), 20 * 1000);
     };
     ws.onmessage = (e) => {
@@ -99,7 +102,12 @@ class RealtimeClient {
         this.reconnectAttempts += 1;
         setTimeout(() => this.connect(), delay);
       } else if (this.reconnectAttempts >= 10) {
+        // Give-up state — stop trying. Emits BOTH an error AND a
+        // synthetic session_ended so any active match-screen tears down
+        // and shows a clear message rather than freezing on stale state.
+        this.shouldReconnect = false;
         this.emit({ type: "error", error: "give_up", detail: this.lastError });
+        this.emit({ type: "session_ended", reason: "connection_lost" });
       }
     };
     ws.onerror = () => {

@@ -143,12 +143,23 @@ function buyItem(userId, cosmeticId, isPro) {
   const cost = item.price_coins;
   const grantedItems = [];
 
+  // IMMEDIATE write-lock so two near-simultaneous /store/buy posts
+  // can't both pass the coin check and double-decrement. Default
+  // better-sqlite3 transactions don't take the write lock until the
+  // first write, leaving a small read-then-decide window.
   const tx = db.transaction(() => {
     const userStats = db.prepare(`SELECT coins FROM stats WHERE user_id = ?`).get(userId);
     if (!userStats) throw new Error("no_stats");
     if (userStats.coins < cost) throw new Error("insufficient_funds");
 
-    db.prepare(`UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ?`).run(cost, Date.now(), userId);
+    // Conditional decrement — refuses to deduct if coins fell below cost
+    // between the SELECT and UPDATE above (shouldn't happen under
+    // IMMEDIATE but defense-in-depth never hurts).
+    const dec = db.prepare(
+      `UPDATE stats SET coins = coins - ?, updated_at = ?
+       WHERE user_id = ? AND coins >= ?`
+    ).run(cost, Date.now(), userId, cost);
+    if (dec.changes !== 1) throw new Error("insufficient_funds");
 
     const grantOne = (it) => {
       const existing = db.prepare(`SELECT qty FROM user_cosmetics WHERE user_id = ? AND cosmetic_id = ?`).get(userId, it.id);
@@ -184,8 +195,11 @@ function buyItem(userId, cosmeticId, isPro) {
         grantOne(childItem);
       }
       // Bundles can also include a bonus pile of free spins as part of
-      // the value pitch — granted in the same transaction.
-      const spinsBonus = item.data && Number(item.data.spins_bonus) | 0;
+      // the value pitch — granted in the same transaction. Wrapped in
+      // (...) | 0 because the bare `|` binds looser than `Number()`
+      // and would coerce undefined → 0 silently — explicit Math.max
+      // also defends against malformed negative seeds.
+      const spinsBonus = Math.max(0, ((item.data && Number(item.data.spins_bonus)) || 0) | 0);
       if (spinsBonus > 0) {
         db.prepare(`UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?`)
           .run(spinsBonus, Date.now(), userId);
@@ -193,7 +207,7 @@ function buyItem(userId, cosmeticId, isPro) {
     } else if (item.category === "spins") {
       // Direct spin packs grant their `data.spins` count immediately —
       // there's nothing to "use later" since spins ARE the consumable.
-      const n = (item.data && Number(item.data.spins)) | 0;
+      const n = Math.max(0, ((item.data && Number(item.data.spins)) || 0) | 0);
       if (n > 0) {
         db.prepare(`UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?`)
           .run(n, Date.now(), userId);
@@ -207,7 +221,10 @@ function buyItem(userId, cosmeticId, isPro) {
     }
   });
 
-  try { tx(); }
+  // .immediate() instructs better-sqlite3 to issue BEGIN IMMEDIATE
+  // so the write lock is taken at transaction START — closes the
+  // "two concurrent buys both pass the coin check" race.
+  try { tx.immediate(); }
   catch (e) {
     // Only user-facing error codes leak through; everything else gets a
     // generic "buy_failed" + a server log so we can diagnose without

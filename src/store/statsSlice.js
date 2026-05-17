@@ -196,6 +196,16 @@ const slice = createSlice({
       s.coins = Math.max(0, s.coins - Math.floor(a.payload || 0));
       persist(s);
     },
+    // Replace coins with an authoritative value from the server.
+    // Used after purchases so the displayed total updates immediately
+    // without waiting on the next /stats poll. Negative payloads
+    // ignored.
+    syncCoins: (s, a) => {
+      const n = Number(a.payload);
+      if (!Number.isFinite(n) || n < 0) return;
+      s.coins = Math.floor(n);
+      persist(s);
+    },
     grantPowerup: (s, a) => {
       const { id, count = 1 } = a.payload;
       s.powerups = { ...s.powerups, [id]: (s.powerups[id] || 0) + count };
@@ -282,7 +292,7 @@ const slice = createSlice({
 });
 
 export const {
-  tickLives, spendLife, refillLives, loseLife, addCoins, spendCoins, consumeFreeSpin, grantFreeSpins,
+  tickLives, spendLife, refillLives, loseLife, addCoins, spendCoins, syncCoins, consumeFreeSpin, grantFreeSpins,
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
   grantTheme, markCategoryPlayed, markAchievement, setPro, resetLocal,
 } = slice.actions;

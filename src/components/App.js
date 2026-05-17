@@ -15,6 +15,7 @@ import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
 import PublicProfile from "./PublicProfile";
 import Toasts from "./Toasts";
+import BadgeUnlock from "./BadgeUnlock";
 import InstallPrompt from "./InstallPrompt";
 import { I18nProvider } from "../i18n";
 import { tickLives, fetchStats } from "../store/statsSlice";
@@ -132,6 +133,11 @@ export default function App() {
         {modal && typeof modal === "object" && modal.name === "publicProfile" && <PublicProfile userId={modal.data?.userId} />}
         <InstallPrompt />
         <Toasts />
+        {/* Full-screen badge unlock celebration. Mounts at app root
+            so it appears regardless of current view. Draws from a
+            Redux queue so multiple simultaneous unlocks play in
+            sequence (~3.8 s each). */}
+        <BadgeUnlock />
       </div>
     </I18nProvider>
   );

@@ -121,29 +121,69 @@ router.post("/use", requireAuth, (req, res) => {
       grantPowerup(req.user.id, t, n);
       applied.reward = { kind: "powerup", type: t, amount: n };
     } else {
-      // Cosmetic pull — pick a random unowned non-Pro frame the user
-      // doesn't already have. Falls back to coins if all are owned.
+      // Cosmetic pull — pick a random unowned non-Pro item the user
+      // doesn't already have. Widened from frame-only to any
+      // equippable category so players who collected every frame
+      // can still pull pointers / celebrations / titles. Falls back
+      // tiered (powerups → coins) so the "loser" reward isn't
+      // always a flat coin pile.
       const ownedIds = new Set(cosmetics.listOwned(req.user.id).map((o) => o.cosmetic_id));
       const candidates = cosmetics.listCatalog().filter(
-        (c) => c.category === "frame" && !c.pro_only && c.price_coins > 0 && !ownedIds.has(c.id)
+        (c) => ["frame", "pointer", "celebration", "title"].includes(c.category)
+            && !c.pro_only && c.price_coins > 0 && !ownedIds.has(c.id)
       );
       if (candidates.length) {
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
         db.prepare(`INSERT INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
           .run(req.user.id, pick.id, Date.now());
+        // Mirror the same auto-equip logic as buyItem so a cosmetic
+        // pull from a Mystery Box equips immediately if the slot is
+        // empty — otherwise the user "won" something they can't see.
+        if (cosmetics.EQUIPPABLE && cosmetics.EQUIPPABLE.has(pick.category)) {
+          const cur = db.prepare(`SELECT cosmetic_id FROM user_equipped WHERE user_id = ? AND category = ?`).get(req.user.id, pick.category);
+          if (!cur || !cur.cosmetic_id) {
+            db.prepare(
+              `INSERT INTO user_equipped(user_id, category, cosmetic_id) VALUES (?, ?, ?)
+               ON CONFLICT(user_id, category) DO UPDATE SET cosmetic_id = excluded.cosmetic_id`
+            ).run(req.user.id, pick.category, pick.id);
+          }
+        }
         applied.reward = { kind: "cosmetic", item: pick };
       } else {
-        addCoins(req.user.id, 1000);
-        applied.reward = { kind: "coins", amount: 1000 };
+        // Tiered fallback — try powerups before defaulting to coins,
+        // so completionist players don't always get the same "won
+        // 1000 coins" reward.
+        if (Math.random() < 0.6) {
+          const types = ["fifty", "skip", "freeze", "double"];
+          const t = types[Math.floor(Math.random() * types.length)];
+          const n = 5 + Math.floor(Math.random() * 6);
+          grantPowerup(req.user.id, t, n);
+          applied.reward = { kind: "powerup", type: t, amount: n };
+        } else {
+          addCoins(req.user.id, 1000);
+          applied.reward = { kind: "coins", amount: 1000 };
+        }
       }
     }
   } else if (effect === "xp_2x" || effect === "coins_2x") {
     // Time-windowed multipliers stored on stats so any payout calc
     // can check them. Stored as expiry timestamps.
+    // EXTEND instead of clobber: stacking the same boost while one's
+    // still active adds the new duration on top of the remaining
+    // time. Without this, buying a second potion mid-run would
+    // SHORTEN your boost from "20 min left" to a fresh 30 min — bad
+    // value either way; this way duplicates feel like more.
     const col = effect === "xp_2x" ? "xp_2x_until" : "coins_2x_until";
-    const until = Date.now() + (item.data.duration_ms || 1800000);
-    db.prepare(`UPDATE stats SET ${col} = ?, updated_at = ? WHERE user_id = ?`).run(until, Date.now(), req.user.id);
+    const now = Date.now();
+    const dur = item.data.duration_ms || 1800000;
+    const cur = db.prepare(`SELECT ${col} AS until FROM stats WHERE user_id = ?`).get(req.user.id);
+    const base = cur && cur.until > now ? cur.until : now;
+    const until = base + dur;
+    db.prepare(`UPDATE stats SET ${col} = ?, updated_at = ? WHERE user_id = ?`).run(until, now, req.user.id);
     applied.active_until = until;
+    // Tell the client how much time is left in ms so they don't
+    // need to trust their local clock (closes the clock-skew bug).
+    applied.remaining_ms = until - now;
   }
 
   // Return the refreshed stats so the client can update its view in one

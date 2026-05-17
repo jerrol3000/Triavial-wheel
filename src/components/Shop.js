@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
-import { refillLives, setPro, fetchStats } from "../store/statsSlice";
+import { refillLives, setPro, fetchStats, syncCoins } from "../store/statsSlice";
 import { pushToast, setModal, setView, setProfileTab } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import {
@@ -136,16 +136,28 @@ export default function Shop() {
   );
 }
 
+// Categories that actually have an `equipped` slot — used to gate
+// the isEquipped check so non-equippable items (boost/bundle/spins)
+// can't accidentally match a future stray entry in equipped state.
+const EQUIPPABLE_CATEGORIES = new Set(["frame", "pointer", "celebration", "title"]);
+
 function StoreItemCard({ item, onNeedCoins }) {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
   const coins = useSelector((s) => s.stats.coins);
   const pro = useSelector((s) => s.stats.pro);
-  const equippedId = useSelector((s) => s.cosmetics.equipped[item.category]);
+  const equippedId = useSelector((s) =>
+    EQUIPPABLE_CATEGORIES.has(item.category) ? s.cosmetics.equipped[item.category] : null
+  );
   const owned = useSelector((s) => isOwned(s, item.id));
   const qty = useSelector((s) => selectOwnedQty(s, item.id));
-  const isEquipped = equippedId === item.id;
+  const isEquipped = EQUIPPABLE_CATEGORIES.has(item.category) && equippedId === item.id;
   const rar = RARITY_COLORS[item.rarity] || RARITY_COLORS.common;
+  // Debounce protects against double-tap on Buy / Equip / Use —
+  // server already idempotent for equip, but two rapid Buy clicks
+  // double-charge under load. Cleared in finally so a slow network
+  // doesn't permanently freeze the card.
+  const [busy, setBusy] = useState(false);
 
   const requireAuth = () => {
     if (!user) { dispatch(setModal("auth")); return false; }
@@ -153,49 +165,93 @@ function StoreItemCard({ item, onNeedCoins }) {
   };
 
   const onBuy = async () => {
+    if (busy) return;
     if (!requireAuth()) return;
     if (item.pro_only && !pro) {
       dispatch(pushToast({ icon: "🌟", title: "Pro members only", text: "Upgrade to Pro to unlock." }));
       return;
     }
     if (coins < item.price_coins) {
-      // Surface a toast AND jump straight to the Coins & Pro tab so the
-      // player has a one-tap path to top up. Beats just blocking them.
+      // Single nudge — toast tells you why, and (after a beat) the
+      // tab jumps so you can act on it without losing context. Was
+      // doing both at the same time which felt jarring.
       dispatch(pushToast({ icon: "🪙", title: "Need more coins", text: `Short by ${(item.price_coins - coins).toLocaleString()}. Grab a pack below.` }));
-      if (onNeedCoins) onNeedCoins();
+      if (onNeedCoins) setTimeout(() => onNeedCoins(), 350);
       return;
     }
-    sfx.coin();
-    const r = await dispatch(buyCosmetic(item.id));
-    if (r.meta.requestStatus === "fulfilled") {
-      dispatch(fetchStats());
-      dispatch(pushToast({ icon: "✨", title: `Unlocked ${item.name}!`, text: item.consumable ? `Tap to use from your inventory.` : "Now equipped." }));
-      const newBadges = r.payload?.new_badges || [];
-      if (newBadges.length) {
-        dispatch(awardLocal(newBadges));
-        for (const b of newBadges) {
-          dispatch(pushToast({ icon: b.icon || "🏅", title: `Badge unlocked: ${b.name}`, text: b.description || "", duration: 6000 }));
-        }
+    setBusy(true);
+    // Click sound matches the cost — coin chime only when coin was
+    // spent; click for the free defaults / promos.
+    if (item.price_coins > 0) sfx.coin(); else sfx.click();
+    try {
+      const r = await dispatch(buyCosmetic(item.id));
+      if (r.meta.requestStatus !== "fulfilled") {
+        const err = r.payload?.error;
+        const text = err === "insufficient_funds" ? "Not enough coins — try again."
+                   : err === "pro_only"           ? "This needs Pro to unlock."
+                   : err === "already_owned"      ? "You already own this."
+                   : (err || "Try again.");
+        dispatch(pushToast({ icon: "⚠️", title: "Purchase failed", text }));
+        return;
       }
-    } else {
-      dispatch(pushToast({ icon: "⚠️", title: "Purchase failed", text: r.payload?.error || "Try again." }));
+      // Server returns the authoritative post-purchase coin balance —
+      // sync it into redux NOW so the displayed total updates
+      // immediately, rather than briefly showing stale coins while
+      // we wait on fetchStats.
+      const coinsAfter = r.payload?.coins_after;
+      if (typeof coinsAfter === "number") dispatch(syncCoins(coinsAfter));
+      // Bundles + spin packs are not "unlocked", they're delivered.
+      // Per-category wording so the toast feels right.
+      const isSpins = item.category === "spins";
+      const isBundle = item.category === "bundle";
+      const title = isSpins ? `+${item.data?.spins || 0} spins`
+                  : isBundle ? `${item.name} unlocked!`
+                  : `Unlocked ${item.name}!`;
+      const text = isSpins ? "Added to your spin bank — happy spinning!"
+                 : item.consumable ? "Tap Use from your inventory."
+                 : isBundle ? "Everything in the pack is yours — check your inventory."
+                 : "Now equipped.";
+      dispatch(pushToast({ icon: "✨", title, text }));
+      // Bundles + spin packs change the broader stats picture (spins
+      // count + multiple new owns) so a fresh /stats pull is worth
+      // the round-trip. Single equippables skip it since we already
+      // applied the local delta.
+      if (isSpins || isBundle) dispatch(fetchStats());
+      const newBadges = r.payload?.new_badges || [];
+      if (newBadges.length) dispatch(awardLocal(newBadges));
+    } finally {
+      setBusy(false);
     }
   };
 
   const onEquip = async () => {
+    if (busy) return;
     if (!requireAuth()) return;
+    setBusy(true);
     sfx.click();
-    const r = await dispatch(equipCosmetic(item.id));
-    if (r.meta.requestStatus === "fulfilled") {
-      dispatch(pushToast({ icon: "✓", title: `Equipped ${item.name}` }));
+    try {
+      const r = await dispatch(equipCosmetic(item.id));
+      if (r.meta.requestStatus === "fulfilled") {
+        dispatch(pushToast({ icon: "✓", title: `Equipped ${item.name}` }));
+      } else {
+        dispatch(pushToast({ icon: "⚠️", title: "Couldn't equip", text: r.payload?.error || "Try again." }));
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
   const onUse = async () => {
+    if (busy) return;
     if (!requireAuth()) return;
-    sfx.coin();
-    const r = await dispatch(useBoost(item.id));
-    if (r.meta.requestStatus === "fulfilled") {
+    setBusy(true);
+    sfx.powerup();
+    try {
+      const r = await dispatch(useBoost(item.id));
+      if (r.meta.requestStatus !== "fulfilled") {
+        dispatch(pushToast({ icon: "⚠️", title: "Couldn't use", text: r.payload?.error || "Try again." }));
+        return;
+      }
       const a = r.payload.applied || {};
       dispatch(fetchStats());
       if (a.reward) {
@@ -208,13 +264,16 @@ function StoreItemCard({ item, onNeedCoins }) {
       } else if (a.lives_refilled) {
         dispatch(pushToast({ icon: "❤️", title: "Lives refilled" }));
       } else if (a.active_until) {
-        const mins = Math.round((a.active_until - Date.now()) / 60000);
+        // Prefer server-supplied remaining_ms over computing from
+        // active_until + local clock — avoids client/server drift.
+        const remMs = typeof a.remaining_ms === "number" ? a.remaining_ms : (a.active_until - Date.now());
+        const mins = Math.max(1, Math.round(remMs / 60000));
         dispatch(pushToast({ icon: "⚡", title: `${item.name} active`, text: `${mins} minutes left.` }));
       } else if (a.streak_shield_active) {
         dispatch(pushToast({ icon: "🛡️", title: "Streak shield armed" }));
       }
-    } else {
-      dispatch(pushToast({ icon: "⚠️", title: "Couldn't use", text: r.payload?.error || "Try again." }));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -276,22 +335,26 @@ function StoreItemCard({ item, onNeedCoins }) {
         <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", gap: 6 }}>
           {item.consumable ? (
             <>
-              <button className="tw-btn ghost" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy} disabled={item.pro_only && !pro}>
-                {item.price_coins === 0 ? "Free" : `${item.price_coins} 🪙`}
+              <button className="tw-btn ghost" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy} disabled={busy || (item.pro_only && !pro)}>
+                {busy ? "…" : item.price_coins === 0 ? "Free" : `${item.price_coins} 🪙`}
               </button>
               {qty > 0 && (
-                <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onUse}>Use</button>
+                <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onUse} disabled={busy}>
+                  {busy ? "…" : "Use"}
+                </button>
               )}
             </>
           ) : isEquipped ? (
             <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} disabled>✓ Equipped</button>
           ) : canEquip || canEquipPro ? (
-            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onEquip}>Equip</button>
+            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onEquip} disabled={busy}>
+              {busy ? "…" : "Equip"}
+            </button>
           ) : item.pro_only && !pro ? (
             <button className="tw-btn ghost" style={{ flex: 1, padding: "6px 10px" }} disabled>🌟 Pro only</button>
           ) : (
-            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy}>
-              {item.price_coins === 0 ? "Get" : `${item.price_coins} 🪙`}
+            <button className="tw-btn" style={{ flex: 1, padding: "6px 10px" }} onClick={onBuy} disabled={busy}>
+              {busy ? "…" : item.price_coins === 0 ? "Get" : `${item.price_coins} 🪙`}
             </button>
           )}
         </div>
@@ -360,6 +423,12 @@ function CurrencyPane() {
       } else if (data.devGranted) {
         dispatch(setPro({ pro: true, pro_until: data.pro_until }));
         dispatch(pushToast({ icon: "🌟", title: "Pro unlocked (dev grant)", text: "Test-only — 5 minutes." }));
+        // Schedule a stats re-fetch when the dev-grant expires so the
+        // UI flips back to non-Pro at the exact moment the server
+        // does. Without this, the user stays in a "ghost Pro" state
+        // until they navigate or fetchStats fires on its own.
+        const inMs = Math.max(1000, (data.pro_until || (Date.now() + 5 * 60_000)) - Date.now());
+        setTimeout(() => dispatch(fetchStats()), inMs + 1500);
       }
     } catch (e) {
       const err = e?.response?.data?.error;
@@ -486,15 +555,29 @@ function BundleContents({ ids, spinsBonus }) {
     <div className="tw-store-bundle-list">
       <strong style={{ fontSize: 11, color: "var(--text-dim)" }}>Includes:</strong>
       <ul style={{ margin: "4px 0 8px", padding: "0 0 0 4px", fontSize: 11, color: "var(--text-dim)", listStyle: "none" }}>
-        {items.map((it) => (
-          <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0" }}>
-            <span style={{ width: 14, display: "inline-flex", justifyContent: "center" }}>{it.icon || "•"}</span>
-            <span>{it.name}</span>
-          </li>
-        ))}
+        {items.map((it) => {
+          // Prefer the PNG thumbnail for visual parity with the rest
+          // of the store — emoji is a fallback when the bundle child
+          // is a category we haven't generated art for yet (pointer,
+          // celebration). Resolver returns null in that case.
+          const childArt = cosmeticIconUrl(it);
+          return (
+            <li key={it.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0" }}>
+              <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {childArt
+                  ? <img src={childArt} alt="" width={18} height={18}
+                         style={{ objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.4))" }}
+                         loading="lazy" draggable={false}
+                         onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                  : <span>{it.icon || "•"}</span>}
+              </span>
+              <span>{it.name}</span>
+            </li>
+          );
+        })}
         {spinsBonus > 0 && (
           <li style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0", color: "var(--warn)", fontWeight: 700 }}>
-            <span style={{ width: 14, display: "inline-flex", justifyContent: "center" }}>🎡</span>
+            <span style={{ width: 18, display: "inline-flex", justifyContent: "center" }}>🎡</span>
             <span>+{spinsBonus} free spins</span>
           </li>
         )}

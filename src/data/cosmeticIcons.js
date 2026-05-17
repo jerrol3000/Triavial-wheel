@@ -18,6 +18,8 @@ const CATEGORY_FOLDER = {
   bundle:      "bundles",
   spins:       "spin_packs",
   title:       "titles",        // decorative emblems shown in the store
+  badge:       "badges",        // achievement badges (not a store category;
+                                // surfaced in profile + the unlock celebration)
   celebration: "celebrations",  // empty until art drops in
   pointer:     "pointers",      // empty until art drops in
 };
@@ -40,8 +42,33 @@ const HAS_ART = new Set([
   // renders the title text chip via CSS unchanged)
   "title_newbie", "title_thinker", "title_genius", "title_master",
   "title_lord", "title_oracle", "title_goat", "title_pro",
+  // badges (35/35 — achievement art surfaced in the unlock
+  // celebration + profile badge case)
+  "milestone_first_game", "milestone_games_10", "milestone_games_50",
+  "milestone_games_250", "milestone_games_1000",
+  "skill_first_correct", "skill_correct_100", "skill_correct_1000",
+  "skill_streak_5", "skill_streak_10", "skill_streak_25", "skill_streak_50",
+  "skill_level_5", "skill_level_20", "skill_level_50", "skill_level_100",
+  "social_online_first", "social_online_10", "social_online_50",
+  "social_online_200", "social_win_streak_5",
+  "streak_daily_3", "streak_daily_7", "streak_daily_30", "streak_daily_100",
+  "spending_first_purchase", "spending_1k", "spending_10k", "spending_50k",
+  "spending_200k", "spending_pro_1m", "spending_pro_12m",
+  "collector_5", "collector_15", "collector_all",
   // pointers, celebrations — TODO when art generates
 ]);
+
+// Badge art lookup — `badge_id` doesn't carry a category in the
+// award payload (badges live in their own table, not user_cosmetics),
+// so we synthesize one. Returns null if the badge has no art yet.
+export function badgePngUrl(badgeId) {
+  if (!badgeId || !HAS_ART.has(badgeId)) return null;
+  return `/icons/cosmetics/badges/${badgeId}.png`;
+}
+
+// Single shared celebration burst overlay (radial rays + sparkles)
+// used behind every badge during the unlock animation.
+export const BADGE_UNLOCK_BURST = "/icons/cosmetics/badges/_unlock_burst.png";
 
 export function cosmeticIconUrl(item) {
   if (!item || !item.id) return null;

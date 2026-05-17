@@ -81,6 +81,23 @@ const slice = createSlice({
         const currentlyEquipped = s.equipped[item.category];
         if (!currentlyEquipped) s.equipped[item.category] = id;
       }
+      // Bundles deliver multiple cosmetics in one buy; the server
+      // returns them in `granted`. Mirror each into owned + auto-
+      // equip the first one per empty category, matching the
+      // server's grantOne path. Without this, an Elite Pack buyer
+      // had to re-fetch /catalog before their new frame appeared
+      // in inventory.
+      const granted = a.payload.granted || [];
+      for (const g of granted) {
+        if (g.id === id) continue; // already handled above
+        const has = s.owned.find((o) => o.cosmetic_id === g.id);
+        if (has && g.consumable) has.qty += 1;
+        else if (!has) s.owned.push({ cosmetic_id: g.id, qty: 1, purchased_at: Date.now() });
+        if (!g.consumable && g.category) {
+          const cur = s.equipped[g.category];
+          if (!cur) s.equipped[g.category] = g.id;
+        }
+      }
     });
 
     b.addCase(equipCosmetic.fulfilled, (s, a) => {

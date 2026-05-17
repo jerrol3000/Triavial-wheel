@@ -6,6 +6,10 @@ const initialState = {
   earned: [],    // [{ badge_id, earned_at, equipped_slot }]
   equipped: [],  // [{ badge_id, name, icon, tier, category, equipped_slot }]
   loaded: false,
+  // FIFO queue of newly-awarded badges still pending celebration.
+  // BadgeUnlock drains the head, plays the per-tier animation +
+  // sound, then dispatches dequeueBadgeUnlock to pop it off.
+  unlockQueue: [],
 };
 
 export const fetchBadges = createAsyncThunk("badges/fetch", async () => {
@@ -37,15 +41,33 @@ const slice = createSlice({
   reducers: {
     // Called by the post-game / post-purchase flows when the server
     // returns new_badges. Adds them to earned so they show as unlocked
-    // without an extra round-trip.
+    // without an extra round-trip, AND pushes them onto the unlock
+    // queue so BadgeUnlock can play the celebration. Dedupes by id
+    // against both earned and the queue itself so a re-fetch of the
+    // catalog (which also surfaces new badges) doesn't replay an
+    // animation the player already saw.
     awardLocal(state, action) {
       const newBadges = action.payload || [];
       const now = Date.now();
       for (const b of newBadges) {
-        if (!state.earned.find((e) => e.badge_id === b.id)) {
+        const alreadyEarned = state.earned.find((e) => e.badge_id === b.id);
+        if (!alreadyEarned) {
           state.earned.push({ badge_id: b.id, earned_at: now, equipped_slot: null });
         }
+        const alreadyQueued = state.unlockQueue.find((q) => q.badge_id === b.id);
+        if (!alreadyEarned && !alreadyQueued) {
+          state.unlockQueue.push({
+            badge_id: b.id,
+            name: b.name || b.id,
+            description: b.description || "",
+            icon: b.icon || "🏅",
+            tier: b.tier || "bronze",
+          });
+        }
       }
+    },
+    dequeueBadgeUnlock(state) {
+      state.unlockQueue.shift();
     },
     resetBadges: () => initialState,
   },
@@ -80,5 +102,5 @@ const slice = createSlice({
   },
 });
 
-export const { awardLocal, resetBadges } = slice.actions;
+export const { awardLocal, dequeueBadgeUnlock, resetBadges } = slice.actions;
 export default slice.reducer;

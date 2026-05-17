@@ -50,3 +50,22 @@ export function cosmeticIconUrl(item) {
 export function hasCosmeticArt(item) {
   return !!cosmeticIconUrl(item);
 }
+
+// Specifically resolves a frame item's PNG so the Avatar / OtherAvatar
+// renderers can wrap the avatar inside the ring image instead of
+// faking the ring with box-shadow. Accepts either a full catalog item
+// or just a cosmetic id string. Returns null for the "default / none"
+// frame so unframed avatars stay bare.
+export function framePngUrl(itemOrId) {
+  if (!itemOrId) return null;
+  const id = typeof itemOrId === "string" ? itemOrId : itemOrId.id;
+  if (!id || id === "frame_default") return null;
+  if (!HAS_ART.has(id)) return null;
+  return `/icons/cosmetics/frames/${id}.png`;
+}
+
+// How much of the PNG frame's diameter is the transparent center hole
+// where the avatar sits. ~72% matches the rings the AI prompts
+// generated (thick rim, generous inner). Per-frame override could go
+// in the catalog `data.hole_ratio` if any specific frame needs it.
+export const FRAME_HOLE_RATIO = 0.72;

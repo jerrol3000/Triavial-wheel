@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { getPresetById } from "../data/icons";
+import { framePngUrl, FRAME_HOLE_RATIO } from "../data/cosmeticIcons";
 
 // Renders a user's avatar. `value` can be:
 //   - null / undefined / "" → generic person silhouette
@@ -13,7 +14,8 @@ export default function Avatar({ value, size = 32, ring = false, className = "",
   const [failed, setFailed] = useState(false);
   const equippedFrameId = useSelector((s) => me ? s.cosmetics.equipped.frame : null);
   const frameItem = useSelector((s) => equippedFrameId ? s.cosmetics.catalog.find((c) => c.id === equippedFrameId) : null);
-  const frameStyle = frameItem ? frameStyleFor(frameItem.data, size) : null;
+  const framePng = framePngUrl(frameItem);
+  const frameStyle = (!framePng && frameItem) ? frameStyleFor(frameItem.data, size) : null;
 
   const sz = { width: size, height: size };
   const cls = `tw-avatar ${ring ? "ring" : ""} ${className}`;
@@ -64,6 +66,28 @@ export default function Avatar({ value, size = 32, ring = false, className = "",
     );
   };
 
+  // PNG frame wraps the avatar: the wrapper is sized so the PNG's
+  // transparent center hole lines up with the avatar diameter, and
+  // the avatar centers itself inside via flexbox. Matches OtherAvatar
+  // exactly so own + other rendering are pixel-identical.
+  if (framePng) {
+    const frameSize = Math.round(size / FRAME_HOLE_RATIO);
+    return (
+      <span style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: frameSize,
+        height: frameSize,
+        backgroundImage: `url("${framePng}")`,
+        backgroundSize: "contain",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "center",
+      }}>
+        {renderInner()}
+      </span>
+    );
+  }
   if (!frameStyle) return renderInner();
   return (
     <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", ...wrapStyle }}>

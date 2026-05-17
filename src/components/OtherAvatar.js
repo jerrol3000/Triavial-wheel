@@ -1,14 +1,17 @@
 import React, { useState } from "react";
 import { getPresetById } from "../data/icons";
+import { framePngUrl, FRAME_HOLE_RATIO } from "../data/cosmeticIcons";
 
 // Avatar for SOMEONE ELSE — uses server-supplied cosmetics payload
 // (the public_cosmetics object on leaderboard rows / online players).
-// Mirrors Avatar's frame rendering logic but doesn't read redux (since
-// the frame data isn't in this user's catalog).
+// Frames render as PNG art wrapping the avatar (the avatar sits inside
+// the frame's transparent center hole), with a CSS-shadow fallback
+// for any frame whose PNG hasn't been generated yet.
 export default function OtherAvatar({ value, size = 32, cosmetics, className = "", title }) {
   const [failed, setFailed] = useState(false);
-  const frameData = cosmetics?.frame?.data;
-  const frameStyle = frameStyleFor(frameData, size);
+  const frame = cosmetics && cosmetics.frame;
+  const framePng = framePngUrl(frame);
+  const frameStyle = !framePng ? frameStyleFor(frame && frame.data, size) : null;
 
   const sz = { width: size, height: size };
   const cls = `tw-avatar ${className}`;
@@ -37,10 +40,39 @@ export default function OtherAvatar({ value, size = 32, cosmetics, className = "
     return <img className={cls} style={sz} src={value} alt="" title={title} onError={() => setFailed(true)} draggable={false} />;
   };
 
+  // PNG frame: render the frame image as a background on a wrapper
+  // sized so the inner transparent hole matches the avatar diameter.
+  // The avatar centers itself naturally via flexbox. pointer-events
+  // on the frame would be irrelevant since it's a background, not a
+  // child element.
+  if (framePng) {
+    const frameSize = Math.round(size / FRAME_HOLE_RATIO);
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: frameSize,
+          height: frameSize,
+          backgroundImage: `url("${framePng}")`,
+          backgroundSize: "contain",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "center",
+        }}
+        title={title}
+      >
+        {renderInner()}
+      </span>
+    );
+  }
   if (!frameStyle) return renderInner();
   return <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", ...frameStyle }}>{renderInner()}</span>;
 }
 
+// CSS fallback for frames that don't have PNG art yet — same shape
+// the prior version rendered, kept so a future frame with no PNG
+// (e.g. user-designed) still has SOMETHING to show.
 function frameStyleFor(d, size) {
   if (!d || d.style === "none") return null;
   const pad = (d.width || 3) + 2;

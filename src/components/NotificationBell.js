@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { setView, setProfileTab, pushToast } from "../store/uiSlice";
 import { rt } from "../realtime/client";
 import { sfx } from "../utils/sound";
+import Icon from "./Icon";
 
 // Polls /api/notifications every POLL_MS as a backstop, but live
 // pushes come over the WebSocket (`notification` event) so the bell
@@ -183,10 +184,12 @@ export default function NotificationBell() {
         style={{ cursor: "pointer", padding: "4px 10px", position: "relative", fontSize: 16 }}
       >
         <span style={{
-          display: "inline-block",
+          display: "inline-flex",
           transformOrigin: "50% 10%",
           animation: shaking ? "tw-bell-shake 0.9s ease" : "none",
-        }}>🔔</span>
+        }}>
+          <Icon name="notification" size={22} />
+        </span>
         {unread > 0 && (
           <span
             aria-hidden="true"

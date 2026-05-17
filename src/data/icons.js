@@ -4,26 +4,45 @@
 //
 // File names below match the actual assets in public/icons/. Filenames are
 // case-sensitive on Linux/Netlify — leave them exactly as committed.
+//
+// Refreshed asset set: 2.5D illustrated icons generated from the master
+// prompt in AI_ASSET_PROMPTS.md. Old filenames (Shop.png, coin.png,
+// leader_board.png, etc.) were renamed to match the new naming
+// convention. New entries (notification, gift, wheel, gem, quest,
+// daily_challenge) bring previously emoji-only spots up to par.
 export const ICONS = {
   // UI / navigation — real illustrated icons (transparent PNGs).
-  vs:            { emoji: "🆚", file: "VS.png",           label: "VS / Online" },
-  stats:         { emoji: "📊", file: "My_stats.png",     label: "My Stats" },
-  shop:          { emoji: "🛒", file: "Shop.png",         label: "Shop" },
-  daily_bonus:   { emoji: "🎁", file: "daily_prize.PNG",  label: "Daily Login Prize" },
-  free_spin:     { emoji: "🎡", file: "free_spin.PNG",    label: "Free Spin" },
-  coins:         { emoji: "🪙", file: "coin.png",         label: "Gold Coins" },
-  sound:         { emoji: "🔊", file: "sound.png",        label: "Sound" },
-  admin:         { emoji: "🛠️", file: "admin_panel.png",  label: "Admin Panel" },
-  daily_quest:   { emoji: "📋", file: "daily_quest.png",  label: "Daily Quest" },
-  leaderboard:   { emoji: "🌍", file: "leader_board.png", label: "World Leaderboard" },
+  vs:             { emoji: "🆚", file: "VS.png",              label: "VS / Online" },
+  shop:           { emoji: "🛒", file: "shopping_bag.png",    label: "Shop" },
+  coins:          { emoji: "🪙", file: "coins.png",           label: "Gold Coins" },
+  sound:          { emoji: "🔊", file: "sound.png",           label: "Sound" },
+  admin:          { emoji: "🛠️", file: "admin.png",           label: "Admin Panel" },
+  leaderboard:    { emoji: "🌍", file: "leaderboard.png",     label: "World Leaderboard" },
+  settings:       { emoji: "⚙️", file: "settings.png",        label: "Settings" },
 
-  // Nav / utility — fall back to emoji until you drop in custom files.
-  // Drop e.g. public/icons/play.png and set `file` here to enable it.
-  play:          { emoji: "🎡", file: null, label: "Play" },
-  daily:         { emoji: "📅", file: null, label: "Daily Challenge" },
-  settings:      { emoji: "⚙️", file: null, label: "Settings" },
-  me:            { emoji: "👤", file: null, label: "Me" },
-  back:          { emoji: "←",  file: null, label: "Back" },
+  // Rewards / power-up surfaces.
+  daily_bonus:    { emoji: "🎁", file: "gift.png",            label: "Daily Login Prize" },
+  gift:           { emoji: "🎁", file: "gift.png",            label: "Gift" },
+  free_spin:      { emoji: "🎡", file: "wheel.png",           label: "Free Spin" },
+  wheel:          { emoji: "🎡", file: "wheel.png",           label: "Wheel" },
+  gem:            { emoji: "💎", file: "diamond_gem.png",     label: "Gem / Premium" },
+  pro:            { emoji: "💎", file: "diamond_gem.png",     label: "Pro / Premium" },
+
+  // Quests + daily challenges — both have their own art now.
+  daily_quest:    { emoji: "📋", file: "quest.png",           label: "Daily Quest" },
+  quest:          { emoji: "📋", file: "quest.png",           label: "Quest" },
+  daily:          { emoji: "📅", file: "daily_challenge.png", label: "Daily Challenge" },
+  daily_challenge:{ emoji: "📅", file: "daily_challenge.png", label: "Daily Challenge" },
+
+  // Notification bell — new asset that's used by the banner bell.
+  notification:   { emoji: "🔔", file: "notification.png",    label: "Notifications" },
+  bell:           { emoji: "🔔", file: "notification.png",    label: "Notifications" },
+
+  // Still emoji-only — drop a matching PNG into public/icons/ and set
+  // `file` here to upgrade.
+  play:           { emoji: "🎡", file: null, label: "Play" },
+  me:             { emoji: "👤", file: null, label: "Me" },
+  back:           { emoji: "←",  file: null, label: "Back" },
 };
 
 // Preset profile-picture avatars. Each renders as an emoji; replace with

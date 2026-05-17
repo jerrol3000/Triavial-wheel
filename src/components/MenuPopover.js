@@ -29,6 +29,12 @@ export default function MenuPopover({ trigger, children, label, align = "right" 
     && window.matchMedia
     && window.matchMedia(`(max-width: ${MOBILE_BREAK}px)`).matches
   );
+  // Desktop popover flip direction. After the panel mounts we measure
+  // the trigger's position; if there isn't enough room below to fit
+  // the menu, render above the trigger instead. Without this, the
+  // gift / play menu on the friends panel could vanish below the
+  // viewport when the friend row was near the bottom of the card.
+  const [flipUp, setFlipUp] = useState(false);
   const anchorRef = useRef(null);
   const panelRef = useRef(null);
 
@@ -45,6 +51,31 @@ export default function MenuPopover({ trigger, children, label, align = "right" 
       else mql.removeListener(onChange);
     };
   }, []);
+
+  // After the desktop popover renders, measure its actual size + the
+  // trigger's viewport position. If the menu would extend past the
+  // bottom of the viewport, flip it above the trigger. Runs once per
+  // open so closing + reopening at a different scroll position will
+  // re-evaluate the direction.
+  useEffect(() => {
+    if (!open || isMobile) { setFlipUp(false); return; }
+    // Defer one frame so the panel has been laid out and we can read
+    // its actual height (it's display:flex with content).
+    const id = requestAnimationFrame(() => {
+      if (!anchorRef.current || !panelRef.current) return;
+      const anchorRect = anchorRef.current.getBoundingClientRect();
+      const panelHeight = panelRef.current.offsetHeight;
+      const spaceBelow = window.innerHeight - anchorRect.bottom;
+      const spaceAbove = anchorRect.top;
+      // Flip up only when there's clearly not enough room below AND
+      // there's more room above. Avoids unnecessary flips when the
+      // menu fits below.
+      if (spaceBelow < panelHeight + 12 && spaceAbove > spaceBelow) {
+        setFlipUp(true);
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open, isMobile]);
 
   // Dismiss on outside click / Escape / scroll-away. Mobile sheet
   // also intercepts backdrop taps (rendered below).
@@ -113,17 +144,27 @@ export default function MenuPopover({ trigger, children, label, align = "right" 
           aria-label={label}
           style={{
             position: "absolute",
-            top: "calc(100% + 4px)",
+            // flipUp anchors the panel ABOVE the trigger using bottom;
+            // default anchors BELOW with top. Visibility:hidden during
+            // the first frame avoids a flicker as we measure and
+            // potentially flip.
+            ...(flipUp
+              ? { bottom: "calc(100% + 4px)" }
+              : { top: "calc(100% + 4px)" }),
             [align]: 0,
-            // Cap to viewport so it never goes off-screen horizontally
-            // even on narrow desktop windows.
+            // Cap to viewport on BOTH axes so the menu never extends
+            // off the visible area.
             maxWidth: "calc(100vw - 24px)",
+            maxHeight: "calc(100vh - 24px)",
+            overflowY: "auto",
             minWidth: 180,
             background: PANEL_BG,
             border: `1px solid ${PANEL_BORDER}`,
             borderRadius: 10,
             padding: 8,
-            boxShadow: "0 12px 28px rgba(0,0,0,0.5)",
+            boxShadow: flipUp
+              ? "0 -12px 28px rgba(0,0,0,0.5)"
+              : "0 12px 28px rgba(0,0,0,0.5)",
             zIndex: 50,
           }}
         >

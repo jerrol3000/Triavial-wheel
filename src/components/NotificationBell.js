@@ -247,6 +247,30 @@ export default function NotificationBell() {
               {wsLive ? "LIVE" : "OFFLINE"}
             </span>
             <div style={{ flex: 1 }} />
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  // Optimistic local clear so the empty state shows
+                  // immediately. Server-side cleared_at also moves so
+                  // these items don't reappear on the next poll.
+                  setItems([]);
+                  setUnread(0);
+                  try { await api.post("/notifications/clear"); } catch (e) {}
+                }}
+                title="Clear all notifications"
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  color: "var(--text-dim)",
+                  cursor: "pointer",
+                  fontSize: 11,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontFamily: "inherit",
+                }}
+              >Clear all</button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(false)}

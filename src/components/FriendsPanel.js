@@ -7,6 +7,7 @@ import { rt } from "../realtime/client";
 import { sfx } from "../utils/sound";
 import Avatar from "./Avatar";
 import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
+import MenuPopover from "./MenuPopover";
 
 // Friends list + add-by-username + pending requests. Rendered on Profile and
 // inside the Online lobby.
@@ -146,7 +147,6 @@ export default function FriendsPanel({ compact = false }) {
 // shows up — the friend slot is empty until they accept.
 function PlayInviteButton({ friend }) {
   const dispatch = useDispatch();
-  const [open, setOpen] = React.useState(false);
   const send = (difficulty) => {
     sfx.click();
     try { rt.connect(); } catch (e) {}
@@ -176,29 +176,27 @@ function PlayInviteButton({ friend }) {
       duration: 3500,
     }));
     dispatch(setView("online"));
-    setOpen(false);
   };
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        className="tw-btn ghost sm"
-        title={`Invite @${friend.username} to play`}
-        onClick={() => setOpen((v) => !v)}
-        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", gap: 4 }}
-      >
-        🎮 Play
-      </button>
-      {open && (
-        <div className="tw-gift-menu" onMouseLeave={() => setOpen(false)}>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>
-            Invite @{friend.username}
-          </div>
-          <button onClick={() => send("easy")}>🟢 Easy</button>
-          <button onClick={() => send("medium")}>🟡 Medium</button>
-          <button onClick={() => send("hard")}>🔴 Hard</button>
-        </div>
-      )}
-    </div>
+    <MenuPopover
+      label={`Invite @${friend.username}`}
+      trigger={
+        <button
+          className="tw-btn ghost sm"
+          title={`Invite @${friend.username} to play`}
+          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", gap: 4 }}
+        >🎮 Play</button>
+      }
+    >
+      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8, fontWeight: 600 }}>
+        Invite @{friend.username}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <button className="tw-btn block" onClick={() => send("easy")} style={{ justifyContent: "flex-start" }}>🟢 Easy</button>
+        <button className="tw-btn block" onClick={() => send("medium")} style={{ justifyContent: "flex-start" }}>🟡 Medium</button>
+        <button className="tw-btn block" onClick={() => send("hard")} style={{ justifyContent: "flex-start" }}>🔴 Hard</button>
+      </div>
+    </MenuPopover>
   );
 }
 
@@ -207,7 +205,6 @@ function PlayInviteButton({ friend }) {
 // friend per UTC day. Each click prompts for the kind + amount inline.
 function GiftButton({ friend }) {
   const dispatch = useDispatch();
-  const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
 
   const send = async (kind, amount) => {
@@ -216,7 +213,6 @@ function GiftButton({ friend }) {
       await api.post("/friends/gift", { to: friend.id, kind, amount });
       dispatch(pushToast({ icon: "🎁", title: `Sent ${amount} ${kind === "free_spins" ? "spins" : "coins"} to @${friend.username}` }));
       dispatch(fetchStats());
-      setOpen(false);
     } catch (e) {
       const err = e?.response?.data;
       if (err?.error === "daily_cap") {
@@ -231,23 +227,29 @@ function GiftButton({ friend }) {
   };
 
   return (
-    <div style={{ position: "relative" }}>
-      <button className="tw-btn ghost sm" title="Send a gift" onClick={() => setOpen((v) => !v)} disabled={busy}
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px" }}>
-        <GiftIcon size={18} />
-      </button>
-      {open && (
-        <div className="tw-gift-menu">
-          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>Gift to @{friend.username}</div>
-          <button onClick={() => send("coins", 50)}>🪙 50 coins</button>
-          <button onClick={() => send("coins", 100)}>🪙 100 coins</button>
-          <button onClick={() => send("coins", 200)}>🪙 200 coins (cap)</button>
-          <div style={{ height: 4 }} />
-          <button onClick={() => send("free_spins", 1)}>🎡 1 spin</button>
-          <button onClick={() => send("free_spins", 3)}>🎡 3 spins</button>
-          <button onClick={() => send("free_spins", 5)}>🎡 5 spins (cap)</button>
-        </div>
-      )}
-    </div>
+    <MenuPopover
+      label={`Gift to @${friend.username}`}
+      trigger={
+        <button
+          className="tw-btn ghost sm"
+          title="Send a gift"
+          disabled={busy}
+          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "4px 8px" }}
+        ><GiftIcon size={18} /></button>
+      }
+    >
+      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 8, fontWeight: 600 }}>
+        Gift to @{friend.username}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <button className="tw-btn block" onClick={() => send("coins", 50)} style={{ justifyContent: "flex-start" }}>🪙 50 coins</button>
+        <button className="tw-btn block" onClick={() => send("coins", 100)} style={{ justifyContent: "flex-start" }}>🪙 100 coins</button>
+        <button className="tw-btn block" onClick={() => send("coins", 200)} style={{ justifyContent: "flex-start" }}>🪙 200 coins (cap)</button>
+        <div style={{ height: 6, borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+        <button className="tw-btn block" onClick={() => send("free_spins", 1)} style={{ justifyContent: "flex-start" }}>🎡 1 spin</button>
+        <button className="tw-btn block" onClick={() => send("free_spins", 3)} style={{ justifyContent: "flex-start" }}>🎡 3 spins</button>
+        <button className="tw-btn block" onClick={() => send("free_spins", 5)} style={{ justifyContent: "flex-start" }}>🎡 5 spins (cap)</button>
+      </div>
+    </MenuPopover>
   );
 }

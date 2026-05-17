@@ -16,7 +16,13 @@ router.use(requireAuth);
 const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000; // ignore items older than 7 days
 
 function buildNotifications(userId) {
-  const since = Date.now() - LOOKBACK_MS;
+  // Notifications older than the user's last "Clear all" press are
+  // hidden entirely (cleared_at is per-user). Fall back to the 7-day
+  // lookback if they've never cleared, so the list isn't infinitely
+  // backfilled either.
+  const clearedAt = (db.prepare("SELECT notifications_cleared_at FROM stats WHERE user_id = ?").get(userId) || {}).notifications_cleared_at || 0;
+  const lookbackCutoff = Date.now() - LOOKBACK_MS;
+  const since = Math.max(clearedAt, lookbackCutoff);
   const items = [];
 
   // Pending friend requests where someone ELSE asked us.
@@ -129,6 +135,19 @@ router.post("/read", (req, res) => {
   const now = Date.now();
   db.prepare("UPDATE stats SET notifications_seen_at = ?, updated_at = ? WHERE user_id = ?").run(now, now, userId);
   res.json({ ok: true, seen_at: now });
+});
+
+// Clear all current notifications from the user's bell. Bumps both
+// cleared_at (so the items vanish from /notifications GET) AND
+// seen_at (so the unread badge resets). Future notifications (those
+// with at > cleared_at) will still appear.
+router.post("/clear", (req, res) => {
+  const userId = req.user.id;
+  const now = Date.now();
+  db.prepare(
+    "UPDATE stats SET notifications_cleared_at = ?, notifications_seen_at = ?, updated_at = ? WHERE user_id = ?"
+  ).run(now, now, now, userId);
+  res.json({ ok: true, cleared_at: now });
 });
 
 module.exports = router;

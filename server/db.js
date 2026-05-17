@@ -257,7 +257,12 @@ ensureColumn("stats", "pro_lifetime_months", "INTEGER NOT NULL DEFAULT 0");
 // notifications from existing tables (friendships, events) on demand;
 // this column just records the last time the user opened the bell so
 // we can compute unread counts without a separate notifications table.
+// `notifications_cleared_at` is separate from seen_at — opening the
+// panel sets seen_at (clears the unread badge); the Clear All button
+// sets cleared_at (hides ALL items at or before that time from the
+// returned list entirely).
 ensureColumn("stats", "notifications_seen_at", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("stats", "notifications_cleared_at", "INTEGER NOT NULL DEFAULT 0");
 
 // Backfill for cosmetics columns added after the table was first created.
 // CREATE TABLE IF NOT EXISTS is a no-op on schema-changed tables, so the

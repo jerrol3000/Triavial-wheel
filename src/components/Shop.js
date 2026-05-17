@@ -312,15 +312,19 @@ function StoreItemCard({ item, onNeedCoins }) {
 function FramePreview({ item }) {
   const userAvatar = useSelector((s) => s.auth.user && s.auth.user.avatar);
   const previewAvatar = userAvatar || "dicebear:adventurer:storefront";
-  // Cosmetic shape OtherAvatar expects: { frame: { data: {...} } }.
-  // For style:none we pass undefined so the wrapper ring isn't added.
+  // Cosmetic shape OtherAvatar expects: { frame: { id, data, ... } }.
+  // Crucially the `id` field is required — that's what framePngUrl()
+  // uses to find the PNG. Without it the renderer was falling
+  // through to the CSS shadow fallback and the store kept showing
+  // the old box-shadow ring instead of the new PNG art.
   const cosmetics = item.data && item.data.style !== "none"
-    ? { frame: { data: item.data } }
+    ? { frame: { id: item.id, data: item.data } }
     : undefined;
-  // Sized so avatar + ring (~10 px on top of size) fit both the
-  // desktop 110 px icon plate AND the mobile 90 px plate with
-  // breathing room around the ring's glow.
-  const SIZE = 68;
+  // Avatar inner size. The PNG frame wraps it at size / HOLE_RATIO
+  // (= size / 0.55 ≈ size × 1.82). So a 52 px avatar paints inside
+  // a 95 px PNG frame — fits the 110 px desktop icon plate with
+  // ~7 px breathing room and the 100 px mobile plate cleanly.
+  const SIZE = 52;
   return (
     <div
       className="tw-store-frame-preview"

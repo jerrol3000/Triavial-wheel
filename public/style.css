@@ -1365,7 +1365,9 @@ img.tw-avatar { background: none; }
 @media (max-width: 640px) {
   .tw-store-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
   .tw-store-card { padding: 10px; border-radius: 14px; }
-  .tw-store-card-icon { height: 90px; font-size: 36px; }
+  /* Bumped from 90 → 100 px so the larger frame-preview PNG (avatar
+     wrapped in ring at size/0.55) fits without clipping on phones. */
+  .tw-store-card-icon { height: 100px; font-size: 36px; }
 }
 
 /* ─── VS match: live answer-status banner + per-player status pip ─── */

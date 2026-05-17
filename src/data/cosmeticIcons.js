@@ -65,7 +65,10 @@ export function framePngUrl(itemOrId) {
 }
 
 // How much of the PNG frame's diameter is the transparent center hole
-// where the avatar sits. ~72% matches the rings the AI prompts
-// generated (thick rim, generous inner). Per-frame override could go
-// in the catalog `data.hole_ratio` if any specific frame needs it.
-export const FRAME_HOLE_RATIO = 0.72;
+// where the avatar sits. The AI-generated frames have THICK rims
+// (~22% of radius each side), leaving a center hole that's roughly
+// 55% of the total PNG width. Wrapper renders at size / HOLE_RATIO
+// so the avatar fits cleanly inside the hole with the ring visible
+// around it. Per-frame override hook in `data.hole_ratio` if any
+// specific frame needs adjustment.
+export const FRAME_HOLE_RATIO = 0.55;

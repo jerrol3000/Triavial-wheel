@@ -45,26 +45,36 @@ export const ICONS = {
   back:           { emoji: "←",  file: null, label: "Back" },
 };
 
-// Preset profile-picture avatars. Each renders as an emoji; replace with
-// custom PNGs by saving files to public/icons/avatars/<key>.png — same
-// fallback semantics as ICONS.
+// Preset profile-picture avatars. Each renders the image from `file`
+// (relative to /icons/) if present; otherwise falls back to the emoji.
+//
+// The first row below points at the new illustrated PNG set in
+// /icons/cosmetics/avatars/ and shows real custom art. Remaining
+// entries stay as emoji-only fallbacks so the picker grid stays full
+// — drop a matching PNG into /icons/cosmetics/avatars/<id>.png and
+// update the file path to upgrade any one of them.
 export const AVATAR_PRESETS = [
-  { id: "cool",      emoji: "😎", file: "avatars/cool.png" },
-  { id: "girl",      emoji: "👩", file: "avatars/girl.png" },
-  { id: "joy",       emoji: "😂", file: "avatars/joy.png" },
-  { id: "smug",      emoji: "🕶️", file: "avatars/smug.png" },
-  { id: "love",      emoji: "😍", file: "avatars/love.png" },
-  { id: "tongue",    emoji: "😋", file: "avatars/tongue.png" },
-  { id: "angry",     emoji: "😡", file: "avatars/angry.png" },
-  { id: "unicorn",   emoji: "🦄", file: "avatars/unicorn.png" },
-  { id: "wink",      emoji: "😉", file: "avatars/wink.png" },
-  { id: "grin",      emoji: "😄", file: "avatars/grin.png" },
-  { id: "alien",     emoji: "👽", file: "avatars/alien.png" },
-  { id: "panda",     emoji: "🐼", file: "avatars/panda.png" },
-  { id: "sob",       emoji: "😭", file: "avatars/sob.png" },
-  { id: "plead",     emoji: "🥺", file: "avatars/plead.png" },
-  { id: "robot",     emoji: "🤖", file: "avatars/robot.png" },
-  { id: "ghost",     emoji: "👻", file: "avatars/ghost.png" },
+  // Custom illustrated set (priority — appears first in the grid).
+  { id: "owl",       emoji: "🦉", file: "cosmetics/avatars/owl.png" },
+  { id: "dragon",    emoji: "🐉", file: "cosmetics/avatars/dragon.png" },
+  { id: "robot",     emoji: "🤖", file: "cosmetics/avatars/robot.png" },
+  { id: "panda",     emoji: "🐼", file: "cosmetics/avatars/panda.png" },
+  { id: "space_boy", emoji: "👨‍🚀", file: "cosmetics/avatars/space_boy.png" },
+  { id: "smart_pup", emoji: "🐶", file: "cosmetics/avatars/smart_pup.png" },
+
+  // Emoji-only fallbacks — picker still renders these, just as the
+  // emoji glyph until you drop in a PNG with the matching id.
+  { id: "cool",      emoji: "😎", file: null },
+  { id: "girl",      emoji: "👩", file: null },
+  { id: "joy",       emoji: "😂", file: null },
+  { id: "smug",      emoji: "🕶️", file: null },
+  { id: "love",      emoji: "😍", file: null },
+  { id: "tongue",    emoji: "😋", file: null },
+  { id: "unicorn",   emoji: "🦄", file: null },
+  { id: "wink",      emoji: "😉", file: null },
+  { id: "grin",      emoji: "😄", file: null },
+  { id: "alien",     emoji: "👽", file: null },
+  { id: "ghost",     emoji: "👻", file: null },
 ];
 
 export function getPresetById(id) {

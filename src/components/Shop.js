@@ -12,6 +12,7 @@ import PayPalButton from "./PayPalButton";
 import StripeCheckoutButton from "./StripeCheckoutButton";
 import Icon from "./Icon";
 import { SpinnerIcon, EmptyStoreIcon, EmptyState } from "./SvgIcons";
+import { cosmeticIconUrl } from "../data/cosmeticIcons";
 
 const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
@@ -219,19 +220,42 @@ function StoreItemCard({ item, onNeedCoins }) {
   const canEquip = (item.price_coins === 0 || owned) && !item.consumable && !item.pro_only;
   const canEquipPro = item.pro_only && pro;
 
+  const artUrl = cosmeticIconUrl(item);
+  const isLegendary = item.rarity === "legendary";
   return (
-    <div className="tw-store-card" style={{ border: `2px solid ${isEquipped ? "var(--primary-2)" : rar.border}`, boxShadow: isEquipped ? `0 0 24px ${rar.glow}` : `0 0 12px ${rar.glow}`, position: "relative" }}>
-      {item.available_until && (
-        <span className="tw-store-limited">⏰ LIMITED</span>
-      )}
-      <div className="tw-store-card-icon" style={{
-        // Subtle constant bg + rarity tinted ring around the icon —
-        // common items used to look empty when the rarity glow was
-        // near-transparent. Now every card has visible framing.
-        background: "rgba(255,255,255,0.06)",
-        boxShadow: `inset 0 0 0 1px ${rar.border}, 0 0 18px ${rar.glow}`,
-      }}>
-        {item.category === "frame" ? <FramePreview item={item} /> : <span>{item.icon || "•"}</span>}
+    <div
+      className={`tw-store-card rarity-${item.rarity || "common"} ${isEquipped ? "equipped" : ""} ${isLegendary ? "legendary-shine" : ""}`}
+      style={{ borderColor: isEquipped ? "var(--primary-2)" : rar.border }}
+    >
+      {/* Corner ribbons — only the most relevant single status shows.
+          Priority: LIMITED > EQUIPPED > OWNED. Keeps the corner from
+          getting crowded. */}
+      {item.available_until ? (
+        <span className="tw-store-ribbon limited">⏰ LIMITED</span>
+      ) : isEquipped ? (
+        <span className="tw-store-ribbon equipped">✓ EQUIPPED</span>
+      ) : owned && !item.consumable ? (
+        <span className="tw-store-ribbon owned">OWNED</span>
+      ) : null}
+
+      <div className="tw-store-card-icon">
+        {artUrl ? (
+          // Generated PNG art — primary path for items that have a
+          // ready thumbnail. <img> over background-image so we get
+          // native alt-text + a real 404 fallback to the CSS preview.
+          <img
+            src={artUrl}
+            alt={item.name}
+            loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+            draggable={false}
+            className="tw-store-card-art"
+          />
+        ) : item.category === "frame" ? (
+          <FramePreview item={item} />
+        ) : (
+          <span style={{ fontSize: 44 }}>{item.icon || "•"}</span>
+        )}
       </div>
       <div className="tw-store-card-body">
         <div className="tw-row" style={{ gap: 6 }}>

@@ -35,13 +35,16 @@ export default function BottomNav() {
             className={active ? "active" : ""}
             onClick={() => { sfx.click(); dispatch(safeNavigate(it.id)); }}
             title={label}
+            aria-label={label}
           >
+            {/* Labels removed — icons are big and self-explanatory.
+                title + aria-label keep the text accessible to hover
+                tooltips + screen readers. */}
             <span className="tw-nav-icon">
               {showAvatar
-                ? <Avatar value={user.avatar} size={32} ring={active} me />
-                : <Icon name={it.icon} size={32} />}
+                ? <Avatar value={user.avatar} size={44} ring={active} me />
+                : <Icon name={it.icon} size={44} />}
             </span>
-            <span>{label}</span>
           </button>
         );
       })}

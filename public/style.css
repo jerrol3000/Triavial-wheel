@@ -253,14 +253,15 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-nav button {
   flex: 1; max-width: 110px;
   appearance: none; border: none; background: none;
-  color: var(--text-dim); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 6px 4px;
+  color: var(--text-dim); font-family: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* Labels gone — give the icon room to breathe vertically. */
+  padding: 8px 4px;
   cursor: pointer;
   transition: color 160ms ease;
 }
 .tw-nav button.active { color: var(--primary-2); }
-.tw-nav button svg { width: 24px; height: 24px; }
+.tw-nav button svg { width: 28px; height: 28px; }
 
 .tw-stat {
   background: var(--card);
@@ -860,17 +861,19 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-pill .tw-icon { vertical-align: text-bottom; }
 
 /* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
-   Active state lifts the icon ~8% and brightens the label. */
+   Labels were dropped (icons are self-explanatory at this size), so
+   we let the icon take the full button height. Active state lifts
+   the icon ~8% for tactile feedback. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   transition: transform 160ms ease;
 }
 .tw-nav button.active .tw-nav-icon {
-  transform: scale(1.08);
+  transform: scale(1.10);
 }
 
 /* ─── Avatars + AvatarPicker ─────────────────────────────────────────────── */

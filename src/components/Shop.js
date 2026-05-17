@@ -13,6 +13,7 @@ import StripeCheckoutButton from "./StripeCheckoutButton";
 import Icon from "./Icon";
 import { SpinnerIcon, EmptyStoreIcon, EmptyState } from "./SvgIcons";
 import { cosmeticIconUrl } from "../data/cosmeticIcons";
+import OtherAvatar from "./OtherAvatar";
 
 const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
@@ -220,7 +221,10 @@ function StoreItemCard({ item, onNeedCoins }) {
   const canEquip = (item.price_coins === 0 || owned) && !item.consumable && !item.pro_only;
   const canEquipPro = item.pro_only && pro;
 
-  const artUrl = cosmeticIconUrl(item);
+  // Frames are CSS-driven effects, not static art — always use the
+  // live preview so what you see in the store is exactly the ring
+  // you'll wear. PNG thumbnails of frames are decorative only.
+  const artUrl = item.category === "frame" ? null : cosmeticIconUrl(item);
   const isLegendary = item.rarity === "legendary";
   return (
     <div
@@ -296,22 +300,35 @@ function StoreItemCard({ item, onNeedCoins }) {
   );
 }
 
-// Inline frame preview so the user can see what they're buying. Uses
-// the same style data as the actual Avatar component renders.
+// Live frame preview — renders the user's OWN avatar wrapped in the
+// frame they're previewing, using the exact same OtherAvatar +
+// frameStyleFor logic that paints the ring in-game. What you see in
+// the store is precisely what you'll wear. Falls back to a friendly
+// DiceBear avatar for signed-out browsers so the preview still looks
+// like a real avatar (instead of a generic 👤 silhouette).
+//
+// "default" frame (style:none) renders the avatar bare so the player
+// knows what unframed looks like vs. the ring options.
 function FramePreview({ item }) {
-  const d = item.data || {};
-  const size = 56;
-  let style = { width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(236,72,153,0.3))", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#fff" };
-  if (d.style === "solid") {
-    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px ${d.color}, 0 0 12px ${d.glow || d.color}` };
-  } else if (d.style === "gradient") {
-    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px transparent, 0 0 14px ${d.glow}`, backgroundImage: `linear-gradient(rgba(15,12,41,1), rgba(15,12,41,1)), linear-gradient(135deg, ${(d.colors || ["#fff"]).join(",")})`, backgroundOrigin: "border-box", backgroundClip: "content-box, border-box", border: `${d.width || 3}px solid transparent` };
-  } else if (d.style === "pulse") {
-    style = { ...style, boxShadow: `0 0 0 ${d.width || 3}px ${d.color}, 0 0 18px ${d.glow}`, animation: "tw-frame-pulse 1.6s ease-in-out infinite" };
-  } else if (d.style === "shimmer") {
-    style = { ...style, boxShadow: `0 0 18px ${d.glow}`, backgroundImage: `linear-gradient(rgba(15,12,41,1), rgba(15,12,41,1)), linear-gradient(135deg, ${(d.colors || ["#fff"]).join(",")})`, backgroundOrigin: "border-box", backgroundClip: "content-box, border-box", border: `${d.width || 4}px solid transparent`, animation: "tw-frame-shimmer 3s linear infinite" };
-  }
-  return <div style={style}>👤</div>;
+  const userAvatar = useSelector((s) => s.auth.user && s.auth.user.avatar);
+  const previewAvatar = userAvatar || "dicebear:adventurer:storefront";
+  // Cosmetic shape OtherAvatar expects: { frame: { data: {...} } }.
+  // For style:none we pass undefined so the wrapper ring isn't added.
+  const cosmetics = item.data && item.data.style !== "none"
+    ? { frame: { data: item.data } }
+    : undefined;
+  // Sized so avatar + ring (~10 px on top of size) fit both the
+  // desktop 110 px icon plate AND the mobile 90 px plate with
+  // breathing room around the ring's glow.
+  const SIZE = 68;
+  return (
+    <div
+      className="tw-store-frame-preview"
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+    >
+      <OtherAvatar value={previewAvatar} cosmetics={cosmetics} size={SIZE} />
+    </div>
+  );
 }
 
 // ─── Currency / Pro pane ─────────────────────────────────────────────────

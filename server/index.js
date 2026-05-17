@@ -65,9 +65,12 @@ app.use(cors({ origin: origins.length === 1 && origins[0] === "*" ? true : origi
 // Stripe webhook needs the raw body — mount it BEFORE the JSON parser.
 app.post("/api/pro/webhook", express.raw({ type: "application/json" }), handleWebhook);
 
-// 4MB cap so avatar uploads (up to 3MB encoded data URLs) succeed. Larger
-// requests are rejected. Every other endpoint uses tiny payloads.
-app.use(express.json({ limit: "4mb" }));
+// 6MB cap so avatar uploads (up to ~4.5MB encoded data URLs ≈ 3.4MB
+// raw) succeed with headroom. Avatar validation in routes/auth.js
+// enforces the actual per-field limit; this cap is the outer envelope
+// so the body parser doesn't bounce the request before it reaches us.
+// Every other endpoint uses tiny payloads.
+app.use(express.json({ limit: "6mb" }));
 
 app.use(rateLimit({
   windowMs: 60 * 1000,

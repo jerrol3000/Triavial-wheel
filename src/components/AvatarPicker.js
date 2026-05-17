@@ -5,7 +5,11 @@ import { api } from "../api/client";
 import { fetchMe } from "../store/authSlice";
 import { pushToast } from "../store/uiSlice";
 
-const MAX_UPLOAD_BYTES = 3 * 1024 * 1024; // 3MB encoded — matches server limit
+// Server caps the BASE64-ENCODED data URL at 4.5MB. Base64 expansion is
+// roughly 4/3, so 3.3MB raw → ~4.4MB encoded fits inside. Set the raw
+// file cap slightly under that so a borderline image doesn't pass the
+// client check and then fail server-side.
+const MAX_UPLOAD_BYTES = 3.3 * 1024 * 1024;
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 // DiceBear options — each style produces an infinitely variable set of
@@ -65,7 +69,7 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
         dispatch(pushToast({
           icon: "⚠️",
           title: "Couldn't save avatar",
-          text: err === "too_large" ? "Picture is too large (max 3 MB)."
+          text: err === "too_large" || err === "avatar_too_large" ? "Picture is too large — try a smaller one."
             : err === "avatar_invalid_format" ? "Unsupported image format."
             : err === "network" ? "Server unreachable — is the backend running?"
             : err,

@@ -22,15 +22,27 @@ const ADMIN_EMAILS = new Set(
 
 // Avatar payload validator. Accepts:
 //   - A short preset id like "preset:cool" / "preset:unicorn"   (≤ 32 chars)
-//   - A data URL for image/{png,jpeg,gif,webp}                  (≤ 3MB encoded)
-// Anything else is rejected. Returns null if valid, an error key otherwise.
+//   - A preset id ("preset:cool")
+//   - A DiceBear style+seed ("dicebear:adventurer:cosmo") — these
+//     render client-side as URLs against the DiceBear CDN; storing
+//     just the style+seed pair keeps the row tiny and lets us swap
+//     the rendering API later without a data migration
+//   - A data URL for image/{png,jpeg,gif,webp} (≤ ~3.5MB raw,
+//     i.e. ~4.5MB base64-encoded)
+// Anything else is rejected. Returns null if valid, an error key
+// otherwise.
 const DATA_URI_RE = /^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
 const PRESET_RE = /^preset:[a-z0-9_-]{1,24}$/;
-const AVATAR_MAX = 3 * 1024 * 1024; // 3MB encoded
+const DICEBEAR_RE = /^dicebear:[a-z-]{1,32}:[A-Za-z0-9_.-]{1,64}$/;
+// 4.5MB base64 ≈ 3.4MB raw — covers typical phone-camera uploads.
+// Express body-parser cap (server/index.js) is 6MB JSON so this stays
+// well inside it.
+const AVATAR_MAX = 4_500_000;
 function validateAvatar(avatar) {
   if (avatar == null || avatar === "") return null; // clearing is OK
   const s = String(avatar);
   if (PRESET_RE.test(s)) return null;
+  if (DICEBEAR_RE.test(s)) return null;
   if (s.length > AVATAR_MAX) return "too_large";
   if (!DATA_URI_RE.test(s)) return "invalid_format";
   return null;

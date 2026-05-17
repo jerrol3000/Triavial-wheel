@@ -13,6 +13,7 @@ import Settings from "./Settings";
 import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
+import PublicProfile from "./PublicProfile";
 import Toasts from "./Toasts";
 import InstallPrompt from "./InstallPrompt";
 import { I18nProvider } from "../i18n";
@@ -128,6 +129,7 @@ export default function App() {
         {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
         {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
         {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
+        {modal && typeof modal === "object" && modal.name === "publicProfile" && <PublicProfile userId={modal.data?.userId} />}
         <InstallPrompt />
         <Toasts />
       </div>

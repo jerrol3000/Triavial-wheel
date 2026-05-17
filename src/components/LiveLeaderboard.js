@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
+import { setModal } from "../store/uiSlice";
 import { useT } from "../i18n";
 import Avatar from "./Avatar";
 import Icon from "./Icon";
 import { PlayerFlair } from "./PlayerFlair";
+import { ProBadge } from "./PublicProfile";
 
 // Polls the global leaderboard every POLL_MS and animates row position
 // changes via CSS transforms. Each row keeps a stable DOM node (keyed by
@@ -15,8 +17,13 @@ const POLL_MS = 7000;
 const ROW_H = 40;
 
 export default function LiveLeaderboard({ limit = 8, compact = false }) {
+  const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
   const { t } = useT();
+  const openProfile = (uid) => {
+    if (!uid) return;
+    dispatch(setModal({ name: "publicProfile", data: { userId: uid } }));
+  };
   const [rows, setRows] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [tick, setTick] = useState(0);
@@ -94,19 +101,38 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
           {rows.map((r, i) => {
             const mine = user && r.username === user.username;
             const flash = flashing.get(r.username);
+            const clickable = !!r.user_id;
             return (
               <div
                 key={r.username}
+                role={clickable ? "button" : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                onClick={clickable ? () => openProfile(r.user_id) : undefined}
+                onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProfile(r.user_id); } } : undefined}
                 className={`tw-livelb-row ${mine ? "mine" : ""} ${flash === "up" ? "flash-up" : ""} ${flash === "down" ? "flash-down" : ""} ${flash === "new" ? "flash-new" : ""}`}
-                style={{ transform: `translateY(${i * ROW_H}px)` }}
+                style={{ transform: `translateY(${i * ROW_H}px)`, cursor: clickable ? "pointer" : "default" }}
+                title={clickable ? `View ${r.username}'s profile` : undefined}
               >
                 <span className="tw-livelb-rank">
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
                 </span>
                 <span className="tw-livelb-name" style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                  <Avatar value={r.avatar} size={22} />
+                  {/* Gold padding ring on PRO subscribers — visible over the
+                      existing frame so even a regular frame gets the
+                      PRO halo. Without a frame, this becomes the frame. */}
+                  <span style={{
+                    display: "inline-flex",
+                    padding: r.pro ? 2 : 0,
+                    borderRadius: "50%",
+                    background: r.pro ? "linear-gradient(135deg, #fbbf24, #f59e0b)" : "transparent",
+                    boxShadow: r.pro ? "0 0 6px rgba(245,158,11,0.6)" : "none",
+                    flexShrink: 0,
+                  }}>
+                    <Avatar value={r.avatar} size={22} />
+                  </span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <PlayerFlair username={r.username} cosmetics={r.public_cosmetics} badges={r.badges} compact />
+                    {r.pro && <ProBadge small />}
                     {mine && <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>}
                   </span>
                 </span>

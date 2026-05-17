@@ -121,6 +121,7 @@ export default function Profile() {
             <div className="tw-stat"><div className="tw-stat-value">{stats.xp}</div><div className="tw-stat-label">Total XP</div></div>
           </div>
           <CategoryMastery />
+          <ShowcasePrivacyCard />
         </>
       )}
       {tab === "friends" && <FriendsPanel />}
@@ -179,4 +180,60 @@ function ProfileBadgeCase() {
   const equipped = useSelector((s) => s.badges.equipped);
   if (!equipped || !equipped.length) return null;
   return <BadgeCase badges={equipped} size="md" />;
+}
+
+// Privacy control for the public-profile showcase. When toggled off,
+// other players tapping this user's row in the leaderboard / VS see
+// only their name, level, and PRO badge — all cosmetics, equipped
+// badges, and lifetime stats are hidden. The bling itself doesn't
+// disappear from THIS user's own views; it just stops being exposed
+// to others via /api/stats/profile/:id.
+function ShowcasePrivacyCard() {
+  const dispatch = useDispatch();
+  const stats = useSelector((s) => s.stats);
+  // showcase_public defaults to 1 on the server — treat undefined as on
+  // so an old client that hasn't refetched stats still shows the right
+  // value at first render.
+  const on = stats.showcase_public !== 0;
+  const [busy, setBusy] = useState(false);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      await api.put("/stats", { showcase_public: on ? 0 : 1 });
+      dispatch(fetchStats());
+    } catch (e) {}
+    setBusy(false);
+  };
+  return (
+    <div className="tw-card" style={{ marginTop: 12 }}>
+      <div className="tw-row" style={{ marginBottom: 6, gap: 8 }}>
+        <span style={{ fontSize: 20 }}>{on ? "🌟" : "🔒"}</span>
+        <strong style={{ fontFamily: "Fredoka", fontSize: 15 }}>
+          Public showcase
+        </strong>
+        <div style={{ flex: 1 }} />
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          className="tw-pill"
+          style={{
+            cursor: "pointer",
+            background: on
+              ? "linear-gradient(135deg, var(--primary, #7c3aed), var(--primary-2, #ec4899))"
+              : "rgba(255,255,255,0.06)",
+            border: on ? "none" : "1px solid rgba(255,255,255,0.18)",
+            color: "#fff",
+            fontWeight: 700,
+            minWidth: 56,
+          }}
+        >{on ? "ON" : "OFF"}</button>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+        {on
+          ? "Other players who tap your name see your frame, title, badges, achievements count, and lifetime stats. Your email and settings stay private."
+          : "Other players who tap your name only see your username, level, and PRO badge. Your cosmetics, badges, and stats are hidden."}
+      </div>
+    </div>
+  );
 }

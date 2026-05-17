@@ -705,9 +705,22 @@ function ConnectionStatus() {
 }
 
 function PlayerSlot({ player, you }) {
+  const dispatch = useDispatch();
   if (!player) return <div className="tw-online-slot empty">Waiting…</div>;
+  const openProfile = () => {
+    if (you || !player.id) return;
+    dispatch(setModal({ name: "publicProfile", data: { userId: player.id } }));
+  };
   return (
-    <div className="tw-online-slot">
+    <div
+      className="tw-online-slot"
+      role={you ? undefined : "button"}
+      tabIndex={you ? undefined : 0}
+      onClick={openProfile}
+      onKeyDown={you ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProfile(); } }}
+      style={{ cursor: you ? "default" : "pointer" }}
+      title={you ? undefined : `View ${player.username}'s profile`}
+    >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
         <OtherAvatar value={player.avatar} size={36} cosmetics={player.public_cosmetics} />
       </div>
@@ -720,9 +733,22 @@ function PlayerSlot({ player, you }) {
 }
 
 function ScoreCard({ player, highlight, answered }) {
+  const dispatch = useDispatch();
   if (!player) return <div className="tw-online-score" />;
+  const openProfile = () => {
+    if (highlight || !player.id) return;
+    dispatch(setModal({ name: "publicProfile", data: { userId: player.id } }));
+  };
   return (
-    <div className={`tw-online-score ${highlight ? "you" : ""} ${answered ? "answered" : "pending"}`}>
+    <div
+      className={`tw-online-score ${highlight ? "you" : ""} ${answered ? "answered" : "pending"}`}
+      role={highlight ? undefined : "button"}
+      tabIndex={highlight ? undefined : 0}
+      onClick={openProfile}
+      onKeyDown={highlight ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProfile(); } }}
+      style={{ cursor: highlight ? "default" : "pointer" }}
+      title={highlight ? undefined : `View ${player.username}'s profile`}
+    >
       <div className="tw-online-score-name" style={{ display: "inline-flex", justifyContent: highlight ? "flex-start" : "flex-end", gap: 6, width: "100%" }}>
         <PlayerFlair username={`${player.username}${highlight ? " ★" : ""}`} cosmetics={player.public_cosmetics} badges={player.badges} compact />
       </div>

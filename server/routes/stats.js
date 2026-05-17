@@ -13,6 +13,7 @@ const router = express.Router();
 // /stats/game, /watch-ad-reward, /store/buy, /quests/claim, etc.
 const ALLOWED_FIELDS = new Set([
   "active_theme",       // pure cosmetic preference, no economic value
+  "showcase_public",    // 0/1 — hide or show public profile bling
 ]);
 
 // Sanity-clamp client-supplied integer fields. Rejects NaN, negatives,
@@ -719,9 +720,68 @@ router.post("/achievement", requireAuth, (req, res) => {
   res.json(loadStats(req.user.id));
 });
 
+// Public-profile preview. Returns ONLY the "bling" surface:
+//   - username, level, avatar, equipped frame/title, equipped showcase
+//     badges, achievements unlocked count, lifetime totals, online
+//     rating, PRO flag
+// NEVER returns: email, country, language, friends list, settings,
+//   notifications, payment status, raw timestamps. The privacy
+//   contract is "show what they earned/bought, not who they are."
+// Honors the user's own showcase_public toggle — when off, returns a
+// stripped {username, level, pro, showcase_hidden:true}.
+router.get("/profile/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "invalid_id" });
+  const row = db.prepare(`
+    SELECT u.id, u.username, u.avatar,
+           s.level, s.xp, s.games_played, s.correct, s.incorrect,
+           s.best_streak, s.online_wins, s.online_losses, s.online_rating,
+           s.pro_until, s.showcase_public
+    FROM users u JOIN stats s ON s.user_id = u.id
+    WHERE u.id = ? AND u.banned_at IS NULL
+  `).get(id);
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const isPro = !!(row.pro_until && row.pro_until > Date.now());
+  if (row.showcase_public === 0) {
+    return res.json({
+      id: row.id,
+      username: row.username,
+      level: row.level,
+      pro: isPro,
+      showcase_hidden: true,
+    });
+  }
+  const cosmetics = require("../cosmetics");
+  const badges = require("../badges");
+  const achievementsRow = db.prepare(
+    "SELECT COUNT(*) AS n FROM achievements WHERE user_id = ?"
+  ).get(id);
+  res.json({
+    id: row.id,
+    username: row.username,
+    avatar: row.avatar,
+    level: row.level,
+    xp: row.xp,
+    pro: isPro,
+    public_cosmetics: cosmetics.getPublicCosmetics(id),
+    badges: badges.listEquipped(id),
+    achievements_count: achievementsRow ? achievementsRow.n : 0,
+    stats: {
+      games_played: row.games_played,
+      correct: row.correct,
+      incorrect: row.incorrect,
+      best_streak: row.best_streak,
+      online_wins: row.online_wins,
+      online_losses: row.online_losses,
+      online_rating: row.online_rating,
+    },
+  });
+});
+
 router.get("/leaderboard", (req, res) => {
   const rows = db.prepare(`
-    SELECT u.id AS user_id, u.username, u.avatar, l.high_score, s.level
+    SELECT u.id AS user_id, u.username, u.avatar, l.high_score, s.level,
+           s.pro_until, s.showcase_public
     FROM leaderboard l
     JOIN users u ON u.id = l.user_id
     JOIN stats s ON s.user_id = l.user_id
@@ -730,11 +790,27 @@ router.get("/leaderboard", (req, res) => {
   `).all();
   // Decorate with the visible cosmetic (frame + title) + showcase badge
   // so the leaderboard can render each player's flair next to the name.
+  // PRO is computed from pro_until so the gold ring renders on
+  // every active subscriber without an extra round-trip.
   const cosmetics = require("../cosmetics");
   const badges = require("../badges");
+  const now = Date.now();
   for (const r of rows) {
-    r.public_cosmetics = cosmetics.getPublicCosmetics(r.user_id);
-    r.badges = badges.listEquipped(r.user_id);
+    const isPro = !!(r.pro_until && r.pro_until > now);
+    // Privacy: hide bling for users who opted out — but keep PRO + level
+    // visible since those are baseline competitive context. Strip
+    // pro_until from the response either way (raw timestamp isn't useful
+    // to the client).
+    if (r.showcase_public !== 0) {
+      r.public_cosmetics = cosmetics.getPublicCosmetics(r.user_id);
+      r.badges = badges.listEquipped(r.user_id);
+    } else {
+      r.public_cosmetics = {};
+      r.badges = [];
+    }
+    r.pro = isPro;
+    delete r.pro_until;
+    delete r.showcase_public;
   }
   res.json(rows);
 });

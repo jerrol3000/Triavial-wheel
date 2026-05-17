@@ -264,6 +264,12 @@ ensureColumn("stats", "pro_lifetime_months", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "notifications_seen_at", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "notifications_cleared_at", "INTEGER NOT NULL DEFAULT 0");
 
+// Per-user privacy toggle for the public-profile showcase. When 0,
+// /api/players/:id returns the minimal {username, level, pro} only —
+// no cosmetics, no badges, no stats. Defaults to 1 (show everything)
+// since the whole purpose of buying cosmetics is to flaunt them.
+ensureColumn("stats", "showcase_public", "INTEGER NOT NULL DEFAULT 1");
+
 // Backfill for cosmetics columns added after the table was first created.
 // CREATE TABLE IF NOT EXISTS is a no-op on schema-changed tables, so the
 // limited-edition windows + bundle pointer need an explicit migration.

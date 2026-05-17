@@ -21,7 +21,10 @@ function pushNotification(userId, payload) {
 }
 
 // List of accepted friends. Returns id, username, level, last_seen, online_now
-// (online_now is set from the realtime in-memory presence map).
+// (online_now is set from the realtime in-memory presence map). Now also
+// returns public_cosmetics + pro flag so friend rows can render the
+// equipped frame around their avatar — same visual treatment as the
+// leaderboard and public profile.
 router.get("/", (req, res) => {
   const me = req.user.id;
   const rows = db.prepare(`
@@ -37,22 +40,37 @@ router.get("/", (req, res) => {
   const ids = rows.map((r) => r.friend_id);
   const placeholders = ids.map(() => "?").join(",");
   const users = db.prepare(`
-    SELECT u.id, u.username, u.avatar, s.level, s.online_rating
+    SELECT u.id, u.username, u.avatar, s.level, s.online_rating,
+           s.pro_until, s.showcase_public
     FROM users u LEFT JOIN stats s ON s.user_id = u.id
     WHERE u.id IN (${placeholders})
   `).all(...ids);
   const byId = Object.fromEntries(users.map((u) => [u.id, u]));
   const realtime = require("../realtime");
+  const cosmetics = require("../cosmetics");
   const onlineSet = realtime.getOnlineUserIds ? realtime.getOnlineUserIds() : new Set();
-  res.json(rows.map((r) => ({
-    id: r.friend_id,
-    username: byId[r.friend_id]?.username || "unknown",
-    avatar: byId[r.friend_id]?.avatar || null,
-    level: byId[r.friend_id]?.level || 1,
-    online_rating: byId[r.friend_id]?.online_rating || 1000,
-    online_now: onlineSet.has(r.friend_id),
-    accepted_at: r.accepted_at,
-  })));
+  // Batched lookup — same pattern as the leaderboard. Friends with
+  // showcase_public=0 don't get cosmetics emitted.
+  const publicIds = ids.filter((id) => byId[id] && byId[id].showcase_public !== 0);
+  const cosmeticsByUser = cosmetics.getPublicCosmeticsForUsers
+    ? cosmetics.getPublicCosmeticsForUsers(publicIds)
+    : {};
+  const now = Date.now();
+  res.json(rows.map((r) => {
+    const u = byId[r.friend_id] || {};
+    const isPro = !!(u.pro_until && u.pro_until > now);
+    return {
+      id: r.friend_id,
+      username: u.username || "unknown",
+      avatar: u.avatar || null,
+      level: u.level || 1,
+      online_rating: u.online_rating || 1000,
+      online_now: onlineSet.has(r.friend_id),
+      accepted_at: r.accepted_at,
+      public_cosmetics: cosmeticsByUser[r.friend_id] || {},
+      pro: isPro,
+    };
+  }));
 });
 
 // Incoming pending requests (the user is the recipient).

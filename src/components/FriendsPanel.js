@@ -5,7 +5,7 @@ import { pushToast, setModal, setView } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { rt } from "../realtime/client";
 import { sfx } from "../utils/sound";
-import Avatar from "./Avatar";
+import OtherAvatar from "./OtherAvatar";
 import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
 import MenuPopover from "./MenuPopover";
 
@@ -123,7 +123,7 @@ export default function FriendsPanel({ compact = false }) {
         friends.slice(0, compact ? 5 : 50).map((f) => (
           <div key={f.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap", gap: 6 }}>
             <div className="tw-row" style={{ gap: 8, minWidth: 0 }}>
-              <Avatar value={f.avatar} size={28} ring={f.online_now} />
+              <OtherAvatar value={f.avatar} cosmetics={f.public_cosmetics} size={28} />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{f.username}</span>
               <span className={`tw-online-dot ${f.online_now ? "on" : ""}`} title={f.online_now ? "Online now" : "Offline"} />
               <span style={{ color: "var(--text-dim)", fontSize: 12 }}>L{f.level} · ⭐ {f.online_rating}</span>

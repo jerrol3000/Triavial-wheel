@@ -39,10 +39,13 @@ export default function BottomNav() {
           >
             {/* Labels removed — icons are big and self-explanatory.
                 title + aria-label keep the text accessible to hover
-                tooltips + screen readers. */}
-            <span className="tw-nav-icon">
+                tooltips + screen readers. Avatar on the profile button
+                uses a slightly smaller size so the wearer's PNG frame
+                ring (extends to ~size/0.55) still fits visually
+                without overflowing the bottom of the nav bar. */}
+            <span className={`tw-nav-icon ${showAvatar ? "with-frame" : ""}`}>
               {showAvatar
-                ? <Avatar value={user.avatar} size={44} ring={active} me />
+                ? <Avatar value={user.avatar} size={28} ring={active} me />
                 : <Icon name={it.icon} size={44} />}
             </span>
           </button>

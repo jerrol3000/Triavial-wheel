@@ -66,10 +66,10 @@ export default function Avatar({ value, size = 32, ring = false, className = "",
     );
   };
 
-  // PNG frame wraps the avatar: the wrapper is sized so the PNG's
-  // transparent center hole lines up with the avatar diameter, and
-  // the avatar centers itself inside via flexbox. Matches OtherAvatar
-  // exactly so own + other rendering are pixel-identical.
+  // PNG frame wraps the avatar: wrapper renders at size / HOLE_RATIO
+  // so the PNG's transparent center exactly matches the avatar
+  // diameter. Identical to OtherAvatar — own + other rendering are
+  // pixel-identical.
   if (framePng) {
     const frameSize = Math.round(size / FRAME_HOLE_RATIO);
     return (

@@ -42,9 +42,10 @@ export default function OtherAvatar({ value, size = 32, cosmetics, className = "
 
   // PNG frame: render the frame image as a background on a wrapper
   // sized so the inner transparent hole matches the avatar diameter.
-  // The avatar centers itself naturally via flexbox. pointer-events
-  // on the frame would be irrelevant since it's a background, not a
-  // child element.
+  // size = avatar inner; the frame extends OUTSIDE size by
+  // (size / HOLE_RATIO - size) total. Call sites that need a fixed
+  // outer slot should size their container accordingly (see
+  // BottomNav for the canonical pattern).
   if (framePng) {
     const frameSize = Math.round(size / FRAME_HOLE_RATIO);
     return (

@@ -320,10 +320,10 @@ function FramePreview({ item }) {
   const cosmetics = item.data && item.data.style !== "none"
     ? { frame: { id: item.id, data: item.data } }
     : undefined;
-  // Avatar inner size. The PNG frame wraps it at size / HOLE_RATIO
-  // (= size / 0.55 ≈ size × 1.82). So a 52 px avatar paints inside
-  // a 95 px PNG frame — fits the 110 px desktop icon plate with
-  // ~7 px breathing room and the 100 px mobile plate cleanly.
+  // Avatar inner size. PNG frame wraps it at size / HOLE_RATIO
+  // (≈ size × 1.82). So a 52 px avatar paints inside a ~95 px PNG
+  // frame — fits the 110 px desktop icon plate with breathing room
+  // and the 100 px mobile plate cleanly.
   const SIZE = 52;
   return (
     <div

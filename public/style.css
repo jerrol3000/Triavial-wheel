@@ -863,7 +863,12 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 /* Nav icons live inside .tw-nav-icon span — keep them centered + uniform.
    Labels were dropped (icons are self-explanatory at this size), so
    we let the icon take the full button height. Active state lifts
-   the icon ~8% for tactile feedback. */
+   the icon ~8% for tactile feedback.
+   When the slot holds an Avatar (with-frame), the slot widens to
+   accommodate the equipped frame ring (~size/0.55 = 28/0.55 ≈ 51 px)
+   so users with cosmetics can show them off in the nav. Slot also
+   gets a bit of overflow:visible margin so the glow halo on legendary
+   frames isn't clipped. */
 .tw-nav-icon {
   display: inline-flex;
   align-items: center;
@@ -871,6 +876,11 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   width: 44px;
   height: 44px;
   transition: transform 160ms ease;
+}
+.tw-nav-icon.with-frame {
+  width: 52px;
+  height: 52px;
+  overflow: visible;
 }
 .tw-nav button.active .tw-nav-icon {
   transform: scale(1.10);

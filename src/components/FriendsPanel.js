@@ -6,6 +6,7 @@ import { fetchStats } from "../store/statsSlice";
 import { rt } from "../realtime/client";
 import { sfx } from "../utils/sound";
 import OtherAvatar from "./OtherAvatar";
+import Icon from "./Icon";
 import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
 import MenuPopover from "./MenuPopover";
 
@@ -246,9 +247,15 @@ function GiftButton({ friend }) {
         <button className="tw-btn block" onClick={() => send("coins", 100)} style={{ justifyContent: "flex-start" }}>🪙 100 coins</button>
         <button className="tw-btn block" onClick={() => send("coins", 200)} style={{ justifyContent: "flex-start" }}>🪙 200 coins (cap)</button>
         <div style={{ height: 6, borderTop: "1px solid rgba(255,255,255,0.08)" }} />
-        <button className="tw-btn block" onClick={() => send("free_spins", 1)} style={{ justifyContent: "flex-start" }}>🎡 1 spin</button>
-        <button className="tw-btn block" onClick={() => send("free_spins", 3)} style={{ justifyContent: "flex-start" }}>🎡 3 spins</button>
-        <button className="tw-btn block" onClick={() => send("free_spins", 5)} style={{ justifyContent: "flex-start" }}>🎡 5 spins (cap)</button>
+        <button className="tw-btn block" onClick={() => send("free_spins", 1)} style={{ justifyContent: "flex-start", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon name="free_spin" size={18} /> 1 spin
+        </button>
+        <button className="tw-btn block" onClick={() => send("free_spins", 3)} style={{ justifyContent: "flex-start", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon name="free_spin" size={18} /> 3 spins
+        </button>
+        <button className="tw-btn block" onClick={() => send("free_spins", 5)} style={{ justifyContent: "flex-start", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Icon name="free_spin" size={18} /> 5 spins (cap)
+        </button>
       </div>
     </MenuPopover>
   );

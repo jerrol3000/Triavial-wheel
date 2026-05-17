@@ -160,7 +160,26 @@ export default function QuestsHub() {
               <div className="tw-quest-reward">
                 {q.claimed
                   ? <span className="tw-quest-done">✓ Done — back {isWeekly ? "next week" : "tomorrow"}</span>
-                  : <>Reward: {[q.reward?.coins ? `${q.reward.coins} 🪙` : null, q.reward?.free_spins ? `${q.reward.free_spins} 🎡` : null].filter(Boolean).join(" + ")}</>
+                  : (
+                    // Build the reward inline so we can render the
+                    // actual coin + wheel icons instead of plain
+                    // emoji glyphs. Joined with a centered "+" only
+                    // when both kinds are present.
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>Reward:</span>
+                      {q.reward?.coins ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          {q.reward.coins} <Icon name="coins" size={14} />
+                        </span>
+                      ) : null}
+                      {q.reward?.coins && q.reward?.free_spins ? <span>+</span> : null}
+                      {q.reward?.free_spins ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          {q.reward.free_spins} <Icon name="free_spin" size={14} />
+                        </span>
+                      ) : null}
+                    </span>
+                  )
                 }
               </div>
             </div>

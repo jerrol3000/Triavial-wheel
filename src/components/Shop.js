@@ -15,15 +15,18 @@ import { SpinnerIcon, EmptyStoreIcon, EmptyState } from "./SvgIcons";
 import { cosmeticIconUrl } from "../data/cosmeticIcons";
 import OtherAvatar from "./OtherAvatar";
 
+// Tab icons. Strings render as emoji; objects with `iconName` render
+// through <Icon name=...> so the same wheel.png art used everywhere
+// else also appears in the Spins tab pill (and coins in Currency).
 const TAB_DEFS = [
   { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
-  { id: "spins",       label: "Spins",         icon: "🎡", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
-  { id: "bundle",      label: "Bundles",       icon: "🎁", description: "Save by buying multiple items together. Most include bonus spins." },
+  { id: "spins",       label: "Spins",         iconName: "free_spin", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
+  { id: "bundle",      label: "Bundles",       iconName: "gift", description: "Save by buying multiple items together. Most include bonus spins." },
   { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
   { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
   { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
   { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
-  { id: "currency",    label: "Coins & Pro",   icon: "🪙", description: "Top up coins with real money or upgrade to Pro." },
+  { id: "currency",    label: "Coins & Pro",   iconName: "coins", description: "Top up coins with real money or upgrade to Pro." },
 ];
 
 // Categories hidden from the store tabs but still present in the catalog
@@ -103,7 +106,9 @@ export default function Shop() {
             onClick={() => { sfx.click(); setActiveTab(t.id); }}
             title={t.description}
           >
-            <span style={{ fontSize: 18 }}>{t.icon}</span>
+            <span style={{ fontSize: 18, display: "inline-flex", alignItems: "center" }}>
+              {t.iconName ? <Icon name={t.iconName} size={20} /> : t.icon}
+            </span>
             <span>{t.label}</span>
           </button>
         ))}
@@ -577,7 +582,9 @@ function BundleContents({ ids, spinsBonus }) {
         })}
         {spinsBonus > 0 && (
           <li style={{ display: "flex", alignItems: "center", gap: 6, padding: "1px 0", color: "var(--warn)", fontWeight: 700 }}>
-            <span style={{ width: 18, display: "inline-flex", justifyContent: "center" }}>🎡</span>
+            <span style={{ width: 18, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon name="free_spin" size={16} />
+            </span>
             <span>+{spinsBonus} free spins</span>
           </li>
         )}

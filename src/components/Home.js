@@ -216,11 +216,15 @@ export default function Home() {
                   onClick={onSpin}
                   title={spinning ? "Wheel is spinning" : "Spin is free — you only lose a spin on a failed round"}
                 >
+                  {/* Wheel icon removed — the button IS the spin
+                      action, so the wheel image was redundant. Just
+                      shows SPIN with the remaining count for non-Pro
+                      players. */}
                   {spinning
                     ? "Spinning..."
                     : stats.pro
                       ? "SPIN"
-                      : `SPIN  ·  🎡 ${spins}`}
+                      : `SPIN · ${spins}`}
                 </button>
                 {!user && guest && guest.nearLimit && (
                   <div className="tw-guest-nudge" style={{
@@ -343,7 +347,9 @@ function OutOfSpinsCard() {
   const dispatch = useDispatch();
   return (
     <div className="tw-out-of-spins">
-      <div className="tw-out-of-spins-title">🎡 Out of spins</div>
+      <div className="tw-out-of-spins-title" style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+        <Icon name="free_spin" size={22} /> Out of spins
+      </div>
       <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
       <NextSpinTicker />
       <div className="tw-out-of-spins-actions">

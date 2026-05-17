@@ -673,16 +673,109 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   align-items: center;
 }
 
-/* Hero SPIN button — bigger, bolder, demands attention. */
+/* Hero SPIN button — 2.5D treatment so it feels like a chunky
+   physical button you can press. Stacked elements:
+   - Two-stop gradient with a lighter top + darker bottom (the
+     "lit from above" cue that makes flat shapes read as 3D)
+   - inset highlight line at the top simulating a polished bevel
+   - inset dark line at the bottom for the underside shadow
+   - Strong colored glow underneath like the button is hovering
+   - Layered drop shadow + small offset for that "raised" feel
+   - Press state collapses the offset + dims the glow so the
+     button visibly "depresses" into the page
+   Honors prefers-reduced-motion: transform-less press, just a
+   shadow change. */
 .tw-btn-spin {
+  position: relative;
   max-width: 320px;
   width: 100%;
-  font-size: 18px;
-  font-weight: 700;
-  padding: 16px 24px;
-  letter-spacing: 0.5px;
-  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.55), 0 2px 6px rgba(0,0,0,0.2);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  padding: 18px 28px;
   margin-top: 4px;
+  border-radius: 999px;
+  /* The gradient stack: bright top → primary middle → dark bottom
+     gives the "lit from above" depth cue. */
+  background:
+    linear-gradient(180deg,
+      rgba(255,255,255,0.20) 0%,
+      rgba(255,255,255,0) 38%,
+      rgba(0,0,0,0.18) 100%),
+    linear-gradient(135deg, var(--primary), var(--primary-2));
+  /* Inset highlight (top) + inset shadow (bottom) carve a bevel.
+     Outer drop shadow + colored glow give it lift. */
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.45),
+    inset 0 -3px 0 rgba(0,0,0,0.28),
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    0 6px 0 rgba(76, 29, 149, 0.55),
+    0 12px 24px rgba(124, 58, 237, 0.55),
+    0 0 32px rgba(236, 72, 153, 0.30);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.30), 0 0 12px rgba(255,255,255,0.25);
+  transition:
+    transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.12s ease;
+  /* Subtle idle pulse — the colored glow breathes so the button
+     reads as "live / interactive" even at rest. Light enough not
+     to annoy at peripheral vision. */
+  animation: tw-spin-pulse 2.4s ease-in-out infinite;
+}
+.tw-btn-spin:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.5),
+    inset 0 -3px 0 rgba(0,0,0,0.28),
+    inset 0 0 0 1px rgba(255,255,255,0.12),
+    0 8px 0 rgba(76, 29, 149, 0.55),
+    0 16px 30px rgba(124, 58, 237, 0.65),
+    0 0 42px rgba(236, 72, 153, 0.40);
+}
+.tw-btn-spin:active {
+  /* Press animation: button drops into the page, "thunk" bottom
+     shadow collapses from 6→1 px, glow dims briefly. Reads as a
+     real button being pushed in. */
+  transform: translateY(4px) scale(0.98);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.30),
+    inset 0 -1px 0 rgba(0,0,0,0.30),
+    inset 0 0 0 1px rgba(255,255,255,0.08),
+    0 1px 0 rgba(76, 29, 149, 0.55),
+    0 4px 12px rgba(124, 58, 237, 0.45),
+    0 0 14px rgba(236, 72, 153, 0.20);
+}
+.tw-btn-spin:disabled {
+  animation: none;
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: saturate(0.6);
+  transform: none;
+}
+@keyframes tw-spin-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -3px 0 rgba(0,0,0,0.28),
+      inset 0 0 0 1px rgba(255,255,255,0.10),
+      0 6px 0 rgba(76, 29, 149, 0.55),
+      0 12px 24px rgba(124, 58, 237, 0.55),
+      0 0 32px rgba(236, 72, 153, 0.30);
+  }
+  50% {
+    box-shadow:
+      inset 0 2px 0 rgba(255,255,255,0.45),
+      inset 0 -3px 0 rgba(0,0,0,0.28),
+      inset 0 0 0 1px rgba(255,255,255,0.10),
+      0 6px 0 rgba(76, 29, 149, 0.55),
+      0 14px 30px rgba(124, 58, 237, 0.70),
+      0 0 48px rgba(236, 72, 153, 0.50);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tw-btn-spin { animation: none; transition: box-shadow 0.12s ease; }
+  .tw-btn-spin:hover { transform: none; }
+  .tw-btn-spin:active { transform: none; }
 }
 
 /* Live animated leaderboard. Rows are absolutely positioned via translateY;

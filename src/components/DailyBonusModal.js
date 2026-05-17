@@ -44,7 +44,9 @@ export default function DailyBonusModal({ data }) {
             return (
               <div key={d} className={`tw-streak-day ${d <= streak ? "claimed" : ""} ${d === streak ? "current" : ""}`}>
                 <span style={{ fontSize: 13, fontWeight: 700 }}>Day {d}</span>
-                <span style={{ fontSize: 11, color: "var(--text-dim)", fontFeatureSettings: '"tnum"' }}>🎡 ×{spins}</span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)", fontFeatureSettings: '"tnum"', display: "inline-flex", alignItems: "center", gap: 3 }}>
+                  <Icon name="free_spin" size={12} /> ×{spins}
+                </span>
               </div>
             );
           })}

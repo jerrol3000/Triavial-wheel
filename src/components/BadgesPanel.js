@@ -2,6 +2,29 @@ import React, { useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { equipBadge, unequipBadge } from "../store/badgesSlice";
 import { pushToast } from "../store/uiSlice";
+import { badgePngUrl } from "../data/cosmeticIcons";
+
+// Tiny renderer that shows the badge PNG when one's been generated,
+// falling back to the emoji icon for badges whose art hasn't shipped
+// yet. Used in both the showcase slots and the full grid below.
+function BadgeArt({ badge, size = 28 }) {
+  const png = badgePngUrl(badge.id);
+  if (png) {
+    return (
+      <img
+        src={png}
+        alt={badge.name || ""}
+        width={size}
+        height={size}
+        style={{ objectFit: "contain", filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.35))" }}
+        loading="lazy"
+        draggable={false}
+        onError={(e) => { e.currentTarget.style.display = "none"; }}
+      />
+    );
+  }
+  return <span style={{ fontSize: Math.round(size * 0.95) }}>{badge.icon || "🏅"}</span>;
+}
 
 const CATEGORY_ORDER = ["milestone", "skill", "social", "streak", "spending"];
 const CATEGORY_LABEL = {
@@ -53,7 +76,7 @@ export default function BadgesPanel() {
               <div key={slot} className={`tw-badge-slot ${item ? "filled" : "empty"}`}>
                 {item ? (
                   <>
-                    <span style={{ fontSize: 28 }}>{item.icon || "🏅"}</span>
+                    <BadgeArt badge={item} size={36} />
                     <button className="tw-badge-slot-remove" title="Remove from showcase"
                             onClick={() => dispatch(unequipBadge(item.id))}>×</button>
                   </>
@@ -77,7 +100,7 @@ export default function BadgesPanel() {
               const pct = b.criteria_value ? Math.min(100, Math.round((progress / b.criteria_value) * 100)) : 0;
               return (
                 <div key={b.id} className={`tw-badge-card tier-${b.tier} ${isEarned ? "earned" : "locked"}`}>
-                  <div className="tw-badge-icon">{b.icon || "🏅"}</div>
+                  <div className="tw-badge-icon"><BadgeArt badge={b} size={48} /></div>
                   <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.15 }}>{b.name}</div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", margin: "3px 0 6px", minHeight: 26 }}>{b.description}</div>
                   {!isEarned && (

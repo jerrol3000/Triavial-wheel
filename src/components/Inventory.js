@@ -5,6 +5,46 @@ import { fetchStats } from "../store/statsSlice";
 import { pushToast, setView } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { EmptyInventoryIcon, EmptyState, SpinnerIcon } from "./SvgIcons";
+import { cosmeticIconUrl } from "../data/cosmeticIcons";
+import OtherAvatar from "./OtherAvatar";
+
+// Renders the actual product art for a cosmetic catalog item.
+//   - Frames use OtherAvatar wrapped in the PNG ring around the
+//     player's own avatar (matches the in-game appearance pixel-for-
+//     pixel, same as the store preview).
+//   - Other categories (boost, title, celebration, pointer, spins,
+//     bundle) render the resolved PNG with an emoji fallback.
+function CosmeticArt({ item, size = 56 }) {
+  const userAvatar = useSelector((s) => s.auth.user && s.auth.user.avatar);
+  if (item.category === "frame") {
+    const cosmetics = item.data && item.data.style !== "none"
+      ? { frame: { id: item.id, data: item.data } }
+      : undefined;
+    return (
+      <OtherAvatar
+        value={userAvatar || "dicebear:adventurer:storefront"}
+        cosmetics={cosmetics}
+        size={Math.round(size * 0.6)}
+      />
+    );
+  }
+  const png = cosmeticIconUrl(item);
+  if (png) {
+    return (
+      <img
+        src={png}
+        alt={item.name || ""}
+        width={size}
+        height={size}
+        style={{ objectFit: "contain", filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.35))" }}
+        loading="lazy"
+        draggable={false}
+        onError={(e) => { e.currentTarget.style.display = "none"; }}
+      />
+    );
+  }
+  return <span style={{ fontSize: Math.round(size * 0.7) }}>{item.icon || "•"}</span>;
+}
 
 // Player inventory — one place to see every owned cosmetic + every
 // consumable in stock, equip / unequip equippables, and burn boosts
@@ -145,7 +185,7 @@ function InventoryCard({ item, equipped, onEquip }) {
       title={item.description}
     >
       {equipped && <span className="tw-inv-card-check" aria-hidden="true">✓</span>}
-      <div className="tw-inv-card-icon">{item.icon || "•"}</div>
+      <div className="tw-inv-card-icon"><CosmeticArt item={item} size={56} /></div>
       <div className="tw-inv-card-name">{item.name}</div>
       <div className={`tw-inv-card-status ${equipped ? "equipped" : ""}`}>
         {equipped ? "Equipped" : "Tap to equip"}
@@ -184,7 +224,7 @@ function BoostCard({ item, qty }) {
   };
   return (
     <div className="tw-inv-card boost">
-      <div className="tw-inv-card-icon">{item.icon || "•"}</div>
+      <div className="tw-inv-card-icon"><CosmeticArt item={item} size={56} /></div>
       <div className="tw-inv-card-name">{item.name}</div>
       <div className="tw-inv-card-qty">×{qty}</div>
       <button className="tw-btn" style={{ padding: "6px 14px", fontSize: 13, marginTop: 6 }} onClick={onUse}>Use</button>

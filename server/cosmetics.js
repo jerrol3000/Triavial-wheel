@@ -290,14 +290,19 @@ function getPublicCosmetics(userId) {
 // per-user round-trip that getPublicCosmetics(userId) does in a loop.
 // Returns { [userId]: { frame, title } }. Used by the leaderboard
 // endpoint to drop a 50-row request from 100+ SELECTs to 1.
+// Selects every cosmetics column so rowToItem doesn't get NULL
+// readbacks for fields like rarity / pro_only / sort_order.
 function getPublicCosmeticsForUsers(userIds) {
   const ids = (userIds || []).filter((n) => Number.isInteger(n));
   if (!ids.length) return {};
   const placeholders = ids.map(() => "?").join(",");
   const now = Date.now();
   const rows = db.prepare(`
-    SELECT ue.user_id, ue.category, c.id, c.category AS cat, c.name, c.description,
-           c.data, c.price_coins, c.price_usd_cents, c.icon
+    SELECT ue.user_id, ue.category AS slot,
+           c.id, c.category, c.name, c.description, c.price_coins,
+           c.rarity, c.icon, c.data, c.pro_only, c.consumable,
+           c.sort_order, c.available_from, c.available_until,
+           c.bundle_contents
     FROM user_equipped ue
     JOIN cosmetics c ON c.id = ue.cosmetic_id
     WHERE ue.user_id IN (${placeholders})
@@ -309,7 +314,10 @@ function getPublicCosmeticsForUsers(userIds) {
   const out = {};
   for (const r of rows) {
     if (!out[r.user_id]) out[r.user_id] = {};
-    out[r.user_id][r.category] = rowToItem(r);
+    // Key by the user_equipped slot name (which matches c.category
+    // for frame/title — explicit alias just to be defensive against
+    // any future divergence).
+    out[r.user_id][r.slot] = rowToItem(r);
   }
   return out;
 }

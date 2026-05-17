@@ -285,6 +285,35 @@ function getPublicCosmetics(userId) {
   return out;
 }
 
+// Batched version of getPublicCosmetics — one JOIN to pull frame +
+// title cosmetic rows for ALL requested users at once, instead of the
+// per-user round-trip that getPublicCosmetics(userId) does in a loop.
+// Returns { [userId]: { frame, title } }. Used by the leaderboard
+// endpoint to drop a 50-row request from 100+ SELECTs to 1.
+function getPublicCosmeticsForUsers(userIds) {
+  const ids = (userIds || []).filter((n) => Number.isInteger(n));
+  if (!ids.length) return {};
+  const placeholders = ids.map(() => "?").join(",");
+  const now = Date.now();
+  const rows = db.prepare(`
+    SELECT ue.user_id, ue.category, c.id, c.category AS cat, c.name, c.description,
+           c.data, c.price_coins, c.price_usd_cents, c.icon
+    FROM user_equipped ue
+    JOIN cosmetics c ON c.id = ue.cosmetic_id
+    WHERE ue.user_id IN (${placeholders})
+      AND ue.category IN ('frame', 'title')
+      AND c.enabled = 1
+      AND (c.available_from IS NULL OR c.available_from <= ?)
+      AND (c.available_until IS NULL OR c.available_until >= ?)
+  `).all(...ids, now, now);
+  const out = {};
+  for (const r of rows) {
+    if (!out[r.user_id]) out[r.user_id] = {};
+    out[r.user_id][r.category] = rowToItem(r);
+  }
+  return out;
+}
+
 module.exports = {
   EQUIPPABLE,
   seedCatalog,
@@ -297,4 +326,5 @@ module.exports = {
   unequipCategory,
   consumeBoost,
   getPublicCosmetics,
+  getPublicCosmeticsForUsers,
 };

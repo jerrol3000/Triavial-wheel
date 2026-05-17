@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchLeaderboard, fetchStats } from "../store/statsSlice";
-import { setModal, setProfileTab } from "../store/uiSlice";
+import { setModal, setProfileTab, setView } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { api } from "../api/client";

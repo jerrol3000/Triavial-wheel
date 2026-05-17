@@ -51,7 +51,10 @@ export default function Banner() {
         <button className="tw-pill tw-banner-hide-sm" onClick={() => dispatch(toggleSound())} title="Sound on/off" style={{ cursor: "pointer", padding: "4px 8px" }}>
           {soundOn ? <Icon name="sound" size={20} /> : <span style={{ fontSize: 18 }}>🔇</span>}
         </button>
-        <button className="tw-pill tw-banner-hide-sm" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
+        {/* Settings stays visible on mobile — was hidden via tw-banner-
+            hide-sm and there's no Settings tab in the BottomNav, so phone
+            users had NO way to reach the settings page. */}
+        <button className="tw-pill" onClick={() => dispatch(setView("settings"))} title="Settings" style={{ cursor: "pointer", padding: "4px 8px" }}>
           <Icon name="settings" size={20} />
         </button>
         {user && <NotificationBell />}

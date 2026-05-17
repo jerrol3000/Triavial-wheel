@@ -788,22 +788,26 @@ router.get("/leaderboard", (req, res) => {
     ORDER BY l.high_score DESC
     LIMIT 50
   `).all();
-  // Decorate with the visible cosmetic (frame + title) + showcase badge
-  // so the leaderboard can render each player's flair next to the name.
-  // PRO is computed from pro_until so the gold ring renders on
-  // every active subscriber without an extra round-trip.
+  // Decorate with the visible cosmetic (frame + title) + showcase
+  // badge so the leaderboard can render each player's flair next to
+  // their name. Batched query — previously this was a per-row
+  // round-trip that ran 100+ SELECTs for a 50-row leaderboard every
+  // 7 s per active client, eating both server CPU and roundtrip
+  // latency on the client side. Now: one batched SELECT for the
+  // cosmetics across all rows, one for the badges.
   const cosmetics = require("../cosmetics");
   const badges = require("../badges");
   const now = Date.now();
+  const publicUserIds = rows
+    .filter((r) => r.showcase_public !== 0)
+    .map((r) => r.user_id);
+  const cosmeticsByUser = cosmetics.getPublicCosmeticsForUsers(publicUserIds);
+  const badgesByUser = badges.listEquippedForUsers(publicUserIds);
   for (const r of rows) {
     const isPro = !!(r.pro_until && r.pro_until > now);
-    // Privacy: hide bling for users who opted out — but keep PRO + level
-    // visible since those are baseline competitive context. Strip
-    // pro_until from the response either way (raw timestamp isn't useful
-    // to the client).
     if (r.showcase_public !== 0) {
-      r.public_cosmetics = cosmetics.getPublicCosmetics(r.user_id);
-      r.badges = badges.listEquipped(r.user_id);
+      r.public_cosmetics = cosmeticsByUser[r.user_id] || {};
+      r.badges = badgesByUser[r.user_id] || [];
     } else {
       r.public_cosmetics = {};
       r.badges = [];

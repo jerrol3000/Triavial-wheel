@@ -18,15 +18,33 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
-// Auto-logout on 401 ("missing token" or "invalid token"). Avoids the
-// confusing state where the UI shows the user as signed in but every
-// authed request silently fails. Common trigger: server restarted with
-// a new JWT_SECRET, invalidating tokens minted by the old process.
+// Auto-logout on 401 — but ONLY for unambiguous "your token is bad"
+// errors. The previous version booted on ANY 401, which caused spurious
+// logouts whenever:
+//   - Fly cold-started after scale-to-zero (first request dropped the
+//     Authorization header through the proxy → server replied "missing
+//     token" → client logged you out though the token was perfectly fine)
+//   - A server deploy briefly returned 401 during rollover
+//   - A transient proxy hiccup returned 401 with no error body
+//
+// New policy: only logout when the server explicitly told us why and the
+// reason is "you can't recover from this" (invalid/expired/banned/superseded).
+// Anything else — empty body, "missing token", unknown error — we keep
+// the token and let the caller retry. The user retries the action and
+// they're still signed in.
 //
 // On 2xx responses, if the server sent X-Refresh-Token (sliding-window
 // renewal — fires when the current token is past half its lifetime),
 // transparently swap in the fresh one so the player effectively never
 // gets logged out while they're active.
+const FATAL_AUTH_ERRORS = new Set([
+  "invalid",
+  "invalid_token",
+  "expired",
+  "session_superseded",
+  "banned",
+]);
+
 api.interceptors.response.use(
   (res) => {
     try {
@@ -38,16 +56,18 @@ api.interceptors.response.use(
   (err) => {
     if (err && err.response && err.response.status === 401 && token) {
       const url = err.config && err.config.url ? String(err.config.url) : "";
-      // Don't auto-logout on /login itself — that 401 is just "wrong password".
-      if (!url.includes("/auth/login")) {
+      const reason = err.response.data && err.response.data.error;
+      // Skip /login (401 there just means wrong password).
+      if (!url.includes("/auth/login") && FATAL_AUTH_ERRORS.has(reason)) {
         setToken(null);
         remove("user");
         try {
           window.dispatchEvent(new CustomEvent("trivia_auth_expired", {
-            detail: { url, error: err.response.data && err.response.data.error },
+            detail: { url, error: reason },
           }));
         } catch (e) {}
       }
+      // Else: keep the token, let the caller see the 401 and retry.
     }
     return Promise.reject(err);
   }

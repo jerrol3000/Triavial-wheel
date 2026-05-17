@@ -55,6 +55,39 @@ function listEquipped(userId) {
   ).all(userId);
 }
 
+// Batched version of listEquipped — pulls equipped badges for many
+// users in one query. Returns { [userId]: [...badges] }. Used by the
+// leaderboard to flatten 50 per-user round-trips into one.
+function listEquippedForUsers(userIds) {
+  const ids = (userIds || []).filter((n) => Number.isInteger(n));
+  if (!ids.length) return {};
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT ub.user_id, ub.badge_id, ub.equipped_slot,
+           b.name, b.icon, b.tier, b.category
+    FROM user_badges ub JOIN badges b ON b.id = ub.badge_id
+    WHERE ub.user_id IN (${placeholders})
+      AND ub.equipped_slot IS NOT NULL
+    ORDER BY ub.user_id, ub.equipped_slot ASC
+  `).all(...ids);
+  const out = {};
+  for (const r of rows) {
+    if (!out[r.user_id]) out[r.user_id] = [];
+    // Cap at 3 per user to match the single-user version.
+    if (out[r.user_id].length < 3) {
+      out[r.user_id].push({
+        badge_id: r.badge_id,
+        equipped_slot: r.equipped_slot,
+        name: r.name,
+        icon: r.icon,
+        tier: r.tier,
+        category: r.category,
+      });
+    }
+  }
+  return out;
+}
+
 function equipBadge(userId, badgeId, slot) {
   if (![1, 2, 3].includes(slot)) return { error: "invalid_slot" };
   const owned = db.prepare(`SELECT 1 FROM user_badges WHERE user_id = ? AND badge_id = ?`).get(userId, badgeId);
@@ -149,6 +182,7 @@ module.exports = {
   listCatalog,
   listEarned,
   listEquipped,
+  listEquippedForUsers,
   equipBadge,
   unequipBadge,
   awardEligible,

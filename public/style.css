@@ -721,7 +721,10 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-livelb-row {
   position: absolute;
   left: 0; right: 0;
-  height: 36px;
+  /* Height matches LiveLeaderboard.js ROW_H. The previous 36 vs 40
+     mismatch left a 4px dead zone between rows that swallowed mobile
+     taps. */
+  height: 40px;
   display: grid;
   grid-template-columns: 32px 1fr auto auto;
   align-items: center;
@@ -729,11 +732,24 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   padding: 0 8px;
   border-radius: 8px;
   font-size: 13px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* iOS Safari was eating taps that landed mid-transition. Telling
+     the browser this is a tap-friendly element bypasses the
+     300 ms click delay and lets touch-start register as tap-up. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(124,58,237,0.25);
   transition:
     transform 0.7s cubic-bezier(0.34, 1.2, 0.64, 1),
     background-color 0.5s ease;
   will-change: transform;
 }
+.tw-livelb-row:focus-visible { outline: 2px solid var(--primary, #7c3aed); outline-offset: 2px; }
+.tw-livelb-row:active { background-color: rgba(124,58,237,0.18); }
 .tw-livelb-row.mine {
   background: linear-gradient(90deg, rgba(124,58,237,0.22), rgba(236,72,153,0.22));
   font-weight: 700;

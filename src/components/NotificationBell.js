@@ -68,11 +68,13 @@ export default function NotificationBell() {
   // once. Also tracks open/close events so the panel can show a
   // "live"/"offline" indicator — a stale socket is the most common
   // reason notifications "don't arrive."
+  //
+  // Key on `!!user` (presence, not identity) so a stats-poll refresh
+  // that mints a new user object reference doesn't tear down + re-
+  // arm the listener and lose any in-flight pushes during the gap.
+  const authed = !!user;
   useEffect(() => {
-    if (!user) return;
-    // Defensive connect — App.js opens the socket on login but this
-    // handles edge cases (NotificationBell mounts before App effect
-    // fires, page restored from bfcache, etc.).
+    if (!authed) return;
     try { rt.connect(); } catch (e) {}
     const off = rt.on((msg) => {
       if (!msg) return;
@@ -87,8 +89,6 @@ export default function NotificationBell() {
       });
       if (!openRef.current) setUnread((u) => u + 1);
       try { sfx.coin(); } catch (e) {}
-      // Trigger bell shake animation. Cancel any in-flight shake so
-      // back-to-back arrivals don't blend into a long jitter.
       if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
       setShaking(true);
       shakeTimerRef.current = setTimeout(() => setShaking(false), 900);
@@ -103,7 +103,7 @@ export default function NotificationBell() {
       off();
       if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
     };
-  }, [user, dispatch]);
+  }, [authed, dispatch]);
 
   // Close the panel when clicking outside it (excluding the bell itself).
   useEffect(() => {

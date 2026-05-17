@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { setModal } from "../store/uiSlice";
 import { useT } from "../i18n";
 import Avatar from "./Avatar";
+import OtherAvatar from "./OtherAvatar";
 import Icon from "./Icon";
 import { PlayerFlair } from "./PlayerFlair";
 import { ProBadge } from "./PublicProfile";
@@ -30,6 +31,13 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
   const [flashing, setFlashing] = useState(new Map()); // username → "up"|"new"
   const prevScores = useRef(new Map());
   const prevRanks = useRef(new Map());
+
+  // Stash the auth flag in a ref so the fetcher's deps don't change
+  // on stats refreshes — the interval would otherwise tear down + re-
+  // arm every time `user` mutated, double-firing requests during the
+  // overlap window.
+  const userRef = useRef(!!user);
+  userRef.current = !!user;
 
   const fetchData = useCallback(async () => {
     try {
@@ -62,7 +70,7 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
     } catch (e) {
       // silent — leaderboard is best-effort
     }
-    if (user) {
+    if (userRef.current) {
       try {
         const r = await api.get("/stats/my-rank");
         setMyRank(r.data);
@@ -70,7 +78,7 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
     } else {
       setMyRank(null);
     }
-  }, [limit, user]);
+  }, [limit]);
 
   useEffect(() => {
     fetchData();
@@ -102,15 +110,18 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
             const mine = user && r.username === user.username;
             const flash = flashing.get(r.username);
             const clickable = !!r.user_id;
+            // Render as a real <button> on clickable rows so iOS/Android
+            // treat it as a tap target without the 300ms click delay.
+            // Non-clickable rows (no user_id, e.g., legacy data) stay as
+            // div so tap-through is impossible.
+            const Tag = clickable ? "button" : "div";
             return (
-              <div
+              <Tag
                 key={r.username}
-                role={clickable ? "button" : undefined}
-                tabIndex={clickable ? 0 : undefined}
+                type={clickable ? "button" : undefined}
                 onClick={clickable ? () => openProfile(r.user_id) : undefined}
-                onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openProfile(r.user_id); } } : undefined}
                 className={`tw-livelb-row ${mine ? "mine" : ""} ${flash === "up" ? "flash-up" : ""} ${flash === "down" ? "flash-down" : ""} ${flash === "new" ? "flash-new" : ""}`}
-                style={{ transform: `translateY(${i * ROW_H}px)`, cursor: clickable ? "pointer" : "default" }}
+                style={{ transform: `translateY(${i * ROW_H}px)` }}
                 title={clickable ? `View ${r.username}'s profile` : undefined}
               >
                 <span className="tw-livelb-rank">
@@ -119,7 +130,9 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                 <span className="tw-livelb-name" style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                   {/* Gold padding ring on PRO subscribers — visible over the
                       existing frame so even a regular frame gets the
-                      PRO halo. Without a frame, this becomes the frame. */}
+                      PRO halo. Without a frame, this becomes the frame.
+                      OtherAvatar so the equipped frame data is actually
+                      rendered (regular Avatar ignores per-row cosmetics). */}
                   <span style={{
                     display: "inline-flex",
                     padding: r.pro ? 2 : 0,
@@ -128,7 +141,7 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                     boxShadow: r.pro ? "0 0 6px rgba(245,158,11,0.6)" : "none",
                     flexShrink: 0,
                   }}>
-                    <Avatar value={r.avatar} size={22} />
+                    <OtherAvatar value={r.avatar} cosmetics={r.public_cosmetics} size={22} />
                   </span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}>
                     <PlayerFlair username={r.username} cosmetics={r.public_cosmetics} badges={r.badges} compact />
@@ -138,7 +151,7 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                 </span>
                 <span className="tw-livelb-level">L{r.level}</span>
                 <span className="tw-livelb-score">{r.high_score.toLocaleString()}</span>
-              </div>
+              </Tag>
             );
           })}
         </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import { decode } from "html-entities";
 import { rt } from "../realtime/client";
 import {
@@ -17,6 +17,7 @@ import { safeNavigate } from "../utils/navigate";
 
 export default function Online() {
   const dispatch = useDispatch();
+  const store = useStore();
   const user = useSelector((s) => s.auth.user);
   // Only fields actually rendered here. `lastReaction` is consumed by
   // <ReactionLayer/> via its own selector — pulling it here just causes
@@ -62,12 +63,20 @@ export default function Online() {
         case "session_ended": {
           // Continue-vote timed out, opponent declined, or room closed.
           // No penalty — just navigate the player home cleanly.
+          //
+          // We only fire the "Game over" toast if the player was
+          // ACTUALLY in a room/match-end state. The realtime client
+          // emits a synthetic session_ended with reason="connection_lost"
+          // when the WS gives up reconnecting — without the room
+          // guard, every transient outage spammed "Connection lost"
+          // toasts even when the user was just sitting on Home.
+          const hadActiveSession = !!store.getState().online.room
+                                || !!store.getState().online.matchEnd
+                                || !!store.getState().online.waiting;
           dispatch(leftRoom());
           const reason = msg.reason;
           const declinedBySelf = reason === "declined" && msg.byUserId === user.id;
-          // The person who clicked Decline already knows they declined —
-          // don't pop a toast that frames it as the opponent's decision.
-          if (!declinedBySelf) {
+          if (!declinedBySelf && hadActiveSession) {
             const text = reason === "declined" ? "Opponent decided not to continue."
                        : reason === "continue_timeout" ? "Rematch timer ran out."
                        : reason === "connection_lost" ? "Connection lost — couldn't reach the server."

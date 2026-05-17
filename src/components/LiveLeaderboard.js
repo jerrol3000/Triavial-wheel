@@ -6,7 +6,6 @@ import { useT } from "../i18n";
 import Avatar from "./Avatar";
 import OtherAvatar from "./OtherAvatar";
 import Icon from "./Icon";
-import { PlayerFlair } from "./PlayerFlair";
 import { ProBadge } from "./PublicProfile";
 
 // Polls the global leaderboard every POLL_MS and animates row position
@@ -144,7 +143,14 @@ export default function LiveLeaderboard({ limit = 8, compact = false }) {
                     <OtherAvatar value={r.avatar} cosmetics={r.public_cosmetics} size={22} />
                   </span>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <PlayerFlair username={r.username} cosmetics={r.public_cosmetics} badges={r.badges} compact />
+                    {/* Bare username on the row — title chip and
+                        showcase badges used to render here via
+                        PlayerFlair but cluttered the single line
+                        on narrow screens. They're visible on the
+                        Public Profile modal one tap away. PRO pill
+                        + "(you)" hint stay because they're tiny
+                        and read at a glance. */}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{r.username}</span>
                     {r.pro && <ProBadge small />}
                     {mine && <span className="tw-livelb-you"> · {t("common.you").toLowerCase()}</span>}
                   </span>

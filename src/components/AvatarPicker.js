@@ -4,6 +4,7 @@ import Avatar from "./Avatar";
 import { api } from "../api/client";
 import { fetchMe } from "../store/authSlice";
 import { pushToast } from "../store/uiSlice";
+import { AVATAR_PRESETS } from "../data/icons";
 
 // Server caps the BASE64-ENCODED data URL at 4.5MB. Base64 expansion is
 // roughly 4/3, so 3.3MB raw → ~4.4MB encoded fits inside. Set the raw
@@ -144,8 +145,40 @@ export default function AvatarPicker({ value, onChange, compact = false, save = 
         </div>
       </div>
 
+      {/* Featured illustrated avatars — the in-house PNG set from
+          /icons/cosmetics/avatars/ rendered as a quick-pick row at
+          the top. Falls back gracefully to the emoji if a file is
+          missing (Avatar component handles the onError swap). */}
+      {(() => {
+        const featured = AVATAR_PRESETS.filter((p) => p.file);
+        if (!featured.length) return null;
+        return (
+          <>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 12, marginBottom: 4 }}>
+              Featured
+            </div>
+            <div className="tw-avpicker-grid" style={{ marginBottom: 8 }}>
+              {featured.map((p) => {
+                const val = `preset:${p.id}`;
+                const selected = localValue === val;
+                return (
+                  <button key={p.id} type="button" disabled={busy}
+                          className={`tw-avpicker-cell ${selected ? "selected" : ""}`}
+                          onClick={() => set(val)} title={p.id}>
+                    <Avatar value={val} size={compact ? 36 : 44} />
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        );
+      })()}
+
       {/* Style selector — 6 visual languages to pick from. */}
-      <div className="tw-row" style={{ gap: 4, flexWrap: "wrap", marginTop: 12, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.6, marginTop: 4 }}>
+        Generated
+      </div>
+      <div className="tw-row" style={{ gap: 4, flexWrap: "wrap", marginTop: 4, marginBottom: 8 }}>
         {DICEBEAR_STYLES.map((s) => (
           <button key={s.id} type="button"
                   className={`tw-pill ${dbStyle === s.id ? "selected" : ""}`}

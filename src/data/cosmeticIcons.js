@@ -17,9 +17,9 @@ const CATEGORY_FOLDER = {
   boost:       "boosts",
   bundle:      "bundles",
   spins:       "spin_packs",
+  title:       "titles",        // decorative emblems shown in the store
   celebration: "celebrations",  // empty until art drops in
   pointer:     "pointers",      // empty until art drops in
-  // titles are pure text chips — no folder
 };
 
 // IDs that have art today. Add new IDs here when their PNG ships.
@@ -36,7 +36,11 @@ const HAS_ART = new Set([
   "bundle_starter", "bundle_collector", "bundle_elite",
   // spin packs (3/3 — full set)
   "spins_5", "spins_15", "spins_50",
-  // pointers, celebrations, titles — TODO when art generates
+  // titles (8/8 — emblem art for the store grid; in-game still
+  // renders the title text chip via CSS unchanged)
+  "title_newbie", "title_thinker", "title_genius", "title_master",
+  "title_lord", "title_oracle", "title_goat", "title_pro",
+  // pointers, celebrations — TODO when art generates
 ]);
 
 export function cosmeticIconUrl(item) {

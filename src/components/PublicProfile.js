@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { closeModal, pushToast } from "../store/uiSlice";
 import OtherAvatar from "./OtherAvatar";
-import { BadgeCase } from "./PlayerFlair";
+import { BadgeCase, PlayerFlair } from "./PlayerFlair";
 import { rt } from "../realtime/client";
 
 // Lightweight public profile preview. Opened when a player taps
@@ -100,16 +100,14 @@ export default function PublicProfile({ userId }) {
                   <strong style={{ fontFamily: "Fredoka", fontSize: 22 }}>{data.username}</strong>
                   {data.pro && <ProBadge />}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.85)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(255,255,255,0.85)", flexWrap: "wrap", justifyContent: "center" }}>
                   <span>⭐ Level {data.level}</span>
-                  {data.public_cosmetics && data.public_cosmetics.title && data.public_cosmetics.title.data && (
-                    <span
-                      className="tw-title-chip"
-                      style={{
-                        color: data.public_cosmetics.title.data.color || "#fff",
-                        borderColor: data.public_cosmetics.title.data.color || "rgba(255,255,255,0.3)",
-                      }}
-                    >{data.public_cosmetics.title.data.text}</span>
+                  {/* PlayerFlair with empty username renders just the
+                      premium chip (emblem + title text) so this
+                      header reads the same as how others see this
+                      player on the leaderboard / scoreboard. */}
+                  {data.public_cosmetics && data.public_cosmetics.title && (
+                    <PlayerFlair username="" cosmetics={data.public_cosmetics} badges={[]} />
                   )}
                 </div>
               </div>

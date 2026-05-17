@@ -12,7 +12,7 @@ import Avatar from "./Avatar";
 import Icon from "./Icon";
 import BadgesPanel from "./BadgesPanel";
 import Inventory from "./Inventory";
-import { BadgeCase } from "./PlayerFlair";
+import { BadgeCase, PlayerFlair } from "./PlayerFlair";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -56,7 +56,10 @@ export default function Profile() {
         {user && <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
           <ProfileBadgeCase />
         </div>}
-        <div style={{ fontSize: 14, color: "var(--text-dim)" }}>{user ? `@${user.username}` : "Guest"}</div>
+        <div style={{ fontSize: 14, color: "var(--text-dim)", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span>{user ? `@${user.username}` : "Guest"}</span>
+          {user && <ProfileTitleChip />}
+        </div>
         <div style={{ fontFamily: "Fredoka", fontSize: 30, fontWeight: 700, margin: "4px 0" }}>
           ⭐ Level {prog.level}
         </div>
@@ -180,6 +183,18 @@ function ProfileBadgeCase() {
   const equipped = useSelector((s) => s.badges.equipped);
   if (!equipped || !equipped.length) return null;
   return <BadgeCase badges={equipped} size="md" />;
+}
+
+// Pulls the user's equipped title cosmetic from redux and renders it
+// through PlayerFlair so the chip looks identical to how OTHER players
+// see this player on the leaderboard. We pass an empty username so
+// only the chip shows (we already render the username separately
+// above this).
+function ProfileTitleChip() {
+  const equippedId = useSelector((s) => s.cosmetics.equipped.title);
+  const titleItem = useSelector((s) => equippedId ? s.cosmetics.catalog.find((c) => c.id === equippedId) : null);
+  if (!titleItem || !titleItem.data || !titleItem.data.text) return null;
+  return <PlayerFlair username="" cosmetics={{ title: titleItem }} badges={[]} />;
 }
 
 // Privacy control for the public-profile showcase. When toggled off,

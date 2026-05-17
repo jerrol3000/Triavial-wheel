@@ -1462,18 +1462,75 @@ img.tw-avatar { background: none; }
 .tw-mini-badge.tier-gold      { background: linear-gradient(135deg, rgba(255,215,0,0.35), rgba(255,215,0,0.18)); border-color: rgba(255,215,0,0.6); }
 .tw-mini-badge.tier-legendary { background: linear-gradient(135deg, rgba(245,158,11,0.5), rgba(239,68,68,0.4)); border-color: rgba(245,158,11,0.7); box-shadow: 0 0 8px rgba(245,158,11,0.4); }
 
-/* Username title chip (custom-colored short text). */
+/* Username title chip — earned/purchased flair next to the player's
+   name. Driven by --title-color (set by PlayerFlair from catalog
+   data.color). Tinted gradient background + matching glow halo make
+   a paid title read as a "premium" badge rather than just colored
+   text. The emblem PNG sits flush-left, optionally followed by the
+   title text in non-compact contexts. */
 .tw-title-chip {
+  --title-color: #a855f7;
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  gap: 5px;
+  padding: 2px 9px 2px 4px;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
+  color: var(--title-color);
   border-radius: 999px;
-  border: 1px solid currentColor;
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--title-color);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--title-color) 22%, transparent),
+      color-mix(in srgb, var(--title-color) 8%, transparent));
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--title-color) 35%, transparent),
+    inset 0 0 0 1px rgba(255,255,255,0.04);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--title-color) 40%, transparent);
+  vertical-align: middle;
+  white-space: nowrap;
+  transition: transform 120ms ease, box-shadow 200ms ease;
+}
+.tw-title-chip:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 14px color-mix(in srgb, var(--title-color) 50%, transparent),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+/* Compact mode: emblem-only, smaller pill — used in tight rows
+   (e.g., leaderboard) where horizontal space is precious. */
+.tw-title-chip.compact {
+  padding: 2px;
+  gap: 0;
+}
+.tw-title-emblem {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  /* Match the inner-chip darkness so the PNG's transparent edges
+     blend with the gradient bg rather than showing the page through. */
+  background: rgba(0, 0, 0, 0.25);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--title-color) 55%, transparent));
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.tw-title-chip.compact .tw-title-emblem {
+  width: 20px;
+  height: 20px;
+}
+.tw-title-text {
+  /* Tabular-num-style padding so capital + lowercase mix doesn't
+     wobble between paid titles like "G.O.A.T." and "Newbie". */
+  line-height: 1;
+  padding-top: 1px;
+}
+
+/* Honor prefers-reduced-motion on the hover lift. */
+@media (prefers-reduced-motion: reduce) {
+  .tw-title-chip { transition: none; }
+  .tw-title-chip:hover { transform: none; }
 }
 
 /* ─── Limited-edition store badge ────────────────────────────────────── */

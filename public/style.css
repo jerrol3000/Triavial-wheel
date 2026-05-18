@@ -97,15 +97,14 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 
 .tw-banner {
   display: flex; align-items: center; justify-content: space-between;
-  /* Fixed height so the logo can fill it edge-to-edge without
-     growing the bar. Right-side stats pills stay at their natural
-     size and center vertically inside this height. Horizontal
-     padding only — vertical is 0 so the logo image defines the
-     bar's visible top + bottom edges. 72 px chosen so the square
-     SPINLORE app-icon logo (wheel + wordmark ribbon stacked) has
-     enough vertical room for the embedded text to be readable. */
-  height: 72px;
-  padding: 0 16px;
+  /* Fixed height — logo fills it edge-to-edge via height:100%,
+     stats pills stay at their natural size and vertically center
+     inside. Sized to comfortably contain the right-side pills
+     (~30 px) + a thin breathing band, while letting the
+     horizontal-lockup logo render its embedded SPINLORE wordmark
+     legibly. */
+  height: 56px;
+  padding: 0 14px;
   background: rgba(15, 12, 41, 0.6);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -113,22 +112,24 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   position: sticky; top: 0; z-index: 10;
 }
 .tw-logo { display: flex; align-items: center; gap: 10px; font-family: "Fredoka"; font-weight: 700; font-size: 20px; color: var(--text); }
-/* Logo fills the banner edge-to-edge vertically (100% of the bar
-   height) so the SPINLORE wordmark inside the lockup is as readable
-   as possible without making the bar itself any taller. auto width
-   preserves aspect ratio; max-width caps it so it can't crowd the
-   right-side stats pills off the bar. */
+/* Horizontal SPINLORE lockup, cropped to its true content bounds
+   (488×224, ~2.2:1 aspect). Fills the bar edge-to-edge via
+   height:100%, width:auto preserves the lockup proportions, and
+   max-width caps growth so it can never crowd the stats pills
+   off the right side. block display kills the inline baseline
+   gap that would add 2-3 px of phantom space below the image. */
 .tw-logo img {
+  display: block;
   height: 100%;
   width: auto;
-  max-width: 220px;
+  max-width: 200px;
   object-fit: contain;
   filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
 }
-/* Make the logo button itself match the bar height so the inner
-   <img height:100%> has the right reference. Remove default button
-   padding that would shrink the available space. */
-.tw-logo-btn { height: 100%; padding: 0 8px 0 4px; }
+/* Logo button matches the bar height so the inner <img height:100%>
+   has the right reference. Tight padding + no border so the lockup
+   appears flush against the banner's inner edges. */
+.tw-logo-btn { height: 100%; padding: 0 6px; }
 /* The logo is also the Back-to-Home button. When NOT on home, render with a
  * pill background + arrow so its interactivity is obvious. */
 .tw-logo-btn {
@@ -151,12 +152,11 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-logo-back-arrow { font-size: 18px; line-height: 1; margin-right: 2px; }
 @media (max-width: 480px) {
   .tw-logo { font-size: 16px; gap: 6px; }
-  /* Fixed height on mobile since the bar drops its desktop
-     fixed-height in this breakpoint — preserves the bar feeling
-     "right-sized" without overgrowing on narrow phones. max-width
-     tightened so the lockup never pushes the bell + pills off the
-     right side. */
-  .tw-logo img { height: 44px; width: auto; max-width: 160px; }
+  /* Fixed-pixel height on mobile since the bar drops its desktop
+     fixed-height in this breakpoint to allow pill wrap. Lockup
+     stays proportional + capped so it never pushes the right-side
+     bell/pills off the bar. */
+  .tw-logo img { height: 40px; width: auto; max-width: 150px; }
   /* Hide the wordmark on the very smallest screens — the logo image
      alone is enough of a brand anchor and saves ~110px of bar width. */
   .tw-logo > span { display: none; }

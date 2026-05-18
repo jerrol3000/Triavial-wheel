@@ -1,11 +1,9 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v4: SW now uses network-first for .js/.css bundles so a stale
-// service worker can never freeze a client on old code. v3 still
-// did cache-first for everything, which meant a browser holding a
-// pre-fix bundle in cache kept serving it and reporting bugs that
-// were already fixed server-side.
-const CACHE = "trivia-wheel-v4";
+// v5: ship the server-authoritative spin debit. Force evict so any
+// browser holding v4 code (which didn't call /use-free-spin on the
+// wheel click) refreshes onto the new bundle that does.
+const CACHE = "trivia-wheel-v5";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

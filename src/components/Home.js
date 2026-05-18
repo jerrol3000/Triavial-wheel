@@ -7,7 +7,7 @@ import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
 import { setView, pushToast, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed, markAchievement, unlockAchievement } from "../store/statsSlice";
+import { markCategoryPlayed, markAchievement, unlockAchievement, consumeFreeSpin, useFreeSpin } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
 import LiveLeaderboard from "./LiveLeaderboard";
@@ -136,18 +136,30 @@ export default function Home() {
       dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }));
       return;
     }
-    // Pro skips the gate. Everyone else needs at least one spin in the
-    // bank — out of spins routes through the OutOfSpinsCard. (The spin
-    // itself is now free; the cost is only paid on a failed round in
-    // Play.js — so a spin only fires if you still have at least one
-    // chance left to spend on a possible loss.)
+    // Pro skips the gate (unlimited spins). Everyone else needs at
+    // least one spin in the bank — out of spins routes through the
+    // Shop. Each spin debits one server-side, atomically.
     if (!stats.pro && (stats.free_spins || 0) <= 0) {
       dispatch(setView("shop"));
       return;
     }
     setSpinning(true);
+    // Optimistic local decrement so the banner reflects the spend
+    // immediately (no perceptible lag between click and visible
+    // change). The server call below is the source of truth — its
+    // response will overwrite this local value with the authoritative
+    // count from the DB, so any race/desync self-heals within one
+    // round-trip. Without this server call the local change was the
+    // ONLY change happening, and a page refresh would restore the
+    // pre-spin count from the still-untouched DB.
+    if (user && !stats.pro) dispatch(consumeFreeSpin());
     if (wheelRef.current) wheelRef.current.spin();
     try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
+    // Fire the atomic server debit. The thunk's extraReducer merges
+    // the authoritative post-debit stats row in the same response —
+    // no follow-up /stats fetch needed. On rejection the extraReducer
+    // rolls the optimistic local decrement back automatically.
+    if (user) dispatch(useFreeSpin());
   };
 
   const onWheelStop = (winningIdx) => {

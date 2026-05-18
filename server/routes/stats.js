@@ -226,7 +226,19 @@ router.post("/watch-ad-reward", requireAuth, (req, res) => {
 });
 
 // Spend one free spin (called when the user spins the wheel if they have any).
+// This is now the SOLE path for spin debits — the failure-based debit in
+// /stats/game and the quit-penalty spin debit have both been retired
+// because they could double-charge or, worse, silently drop in transit
+// (the cause of the "balance keeps resetting" bug). One spin, one
+// server write, one source of truth.
 router.post("/use-free-spin", requireAuth, (req, res) => {
+  // Pro users skip the gate entirely — they have unlimited spins.
+  // Return full loadStats so the client can mergeStats() without a
+  // follow-up /stats round-trip.
+  const proRow = db.prepare("SELECT pro_until FROM stats WHERE user_id = ?").get(req.user.id);
+  if (proRow && proRow.pro_until && proRow.pro_until > Date.now()) {
+    return res.json({ ok: true, pro: true, stats: loadStats(req.user.id) });
+  }
   // Atomic decrement guarded by `free_spins > 0` in the WHERE clause.
   // The previous read-then-write let two concurrent requests both
   // pass the check and drop the column to -1.
@@ -246,24 +258,22 @@ router.post("/use-free-spin", requireAuth, (req, res) => {
         "UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ? AND free_spins > 0"
       ).run(now, req.user.id);
   if (upd.changes === 0) return res.status(400).json({ error: "no_free_spins" });
-  const row = db.prepare("SELECT free_spins FROM stats WHERE user_id = ?").get(req.user.id);
-  res.json({ ok: true, free_spins: row ? row.free_spins : 0 });
+  // Return the FULL stats row so the client can mergeStats in one
+  // round-trip instead of firing a follow-up /stats fetch. Single
+  // source of truth — the client just mirrors whatever the server
+  // says, no derivation needed.
+  res.json({ ok: true, stats: loadStats(req.user.id) });
 });
 
 // Quit-mid-round penalty. Used by safeNavigate when the player leaves
-// an in-progress game via the Banner-back or BottomNav. Previously
-// the client did `dispatch(loseLife())` + `dispatch(addCoins(-5))`
-// LOCAL-ONLY — and the very next /stats fetch would clobber those
-// deductions with the server's stale pre-penalty values, producing
-// the user-visible "balance keeps resetting" bug. This endpoint
-// applies the penalty atomically server-side so the next loadStats
-// reflects the truth.
+// an in-progress game via Banner-back or BottomNav. The spin was
+// already debited up-front on the wheel click (/use-free-spin) so
+// this endpoint ONLY handles the abandonment fee — currently just
+// the solo round's -5 coins. Daily / multi / online have their own
+// dedicated quit paths (streak break, rating drop) handled elsewhere.
 //
-// Context decides the penalty matrix (must mirror safeNavigate):
-//   solo       : -1 free_spin (non-Pro), -5 coins
-//   daily      : -1 free_spin (non-Pro)
-//   online_mid : -1 free_spin (non-Pro)  (rating drop handled by realtime)
-//   multi      : -1 free_spin (non-Pro)
+// Kept as a single endpoint with a context arg so we can extend
+// per-context fees later without adding new routes.
 router.post("/quit-penalty", requireAuth, (req, res) => {
   const VALID = new Set(["solo", "daily", "online_mid", "multi"]);
   const context = String(req.body && req.body.context || "");
@@ -273,29 +283,17 @@ router.post("/quit-penalty", requireAuth, (req, res) => {
   try {
     const tx = db.transaction(() => {
       const row = db.prepare(
-        "SELECT free_spins, free_spins_updated_at, coins, pro_until FROM stats WHERE user_id = ?"
+        "SELECT coins FROM stats WHERE user_id = ?"
       ).get(req.user.id);
       if (!row) { response = { status: 404, body: { error: "no_stats_row" } }; return; }
-      const isPro = !!(row.pro_until && row.pro_until > now);
-      // Pro players don't lose a free spin (unlimited), but solo's
-      // 5-coin penalty still applies to everyone.
-      const spinDebit = isPro ? 0 : 1;
       const coinDebit = context === "solo" ? 5 : 0;
-      const newFreeSpins = Math.max(0, (row.free_spins || 0) - spinDebit);
-      const newCoins     = Math.max(0, (row.coins      || 0) - coinDebit);
-      const newSpinsUpdatedAt =
-        (spinDebit > 0 && (row.free_spins || 0) === SPIN_REGEN_FLOOR)
-          ? now
-          : (row.free_spins_updated_at || now);
-      db.prepare(`
-        UPDATE stats SET
-          free_spins = ?,
-          free_spins_updated_at = ?,
-          coins = ?,
-          updated_at = ?
-        WHERE user_id = ?
-      `).run(newFreeSpins, newSpinsUpdatedAt, newCoins, now, req.user.id);
-      response = { status: 200, body: { ok: true, spin_debited: spinDebit, coin_debited: coinDebit } };
+      if (coinDebit > 0) {
+        const newCoins = Math.max(0, (row.coins || 0) - coinDebit);
+        db.prepare(`
+          UPDATE stats SET coins = ?, updated_at = ? WHERE user_id = ?
+        `).run(newCoins, now, req.user.id);
+      }
+      response = { status: 200, body: { ok: true, coin_debited: coinDebit } };
     });
     tx.immediate();
   } catch (e) {
@@ -827,13 +825,11 @@ router.post("/game", requireAuth, (req, res) => {
   // × 13 (8 base + 5 per-Q) + 25 streak + 3 achievements × 20 +
   // level-up 50·25 ≈ 1500 — well under 10k even pathologically.
   const coins_gained = clampInt(body.coins_gained,    0, 10000);
-  // free_spins_spent: 0 or 1 — set by the client when the round
-  // failed (Play.js > FAILURE_THRESHOLD). Server is the source of
-  // truth for free_spins; previously the client's spendLife() decrement
-  // was silently overwritten by the loadStats response which carried
-  // the stale pre-decrement count. Now the same /stats/game call
-  // does both the game-state update AND the spin debit atomically.
-  const free_spins_spent = clampInt(body.free_spins_spent, 0, 1);
+  // NOTE: free_spins_spent retired here. Every spin is now debited
+  // upfront via /stats/use-free-spin when the player clicks the
+  // wheel — debiting AGAIN here would double-charge on a failed
+  // round. The body param is accepted (for backward-compat with
+  // old clients still sending it) but intentionally ignored.
   const best_streak_run = clampInt(body.best_streak_run, 0, 50);
   const category_id  = body.category_id != null ? Number(body.category_id) : null;
   const now = Date.now();
@@ -856,18 +852,11 @@ router.post("/game", requireAuth, (req, res) => {
     powerupsUpdate = JSON.stringify(p);
   }
 
-  // Atomic spin debit. Only debits if the player actually has the
-  // spin to spend (clamped via MAX(0, free_spins - ?)) and only when
-  // not Pro. Also restamps free_spins_updated_at IFF the spend lands
-  // at the regen floor — that's the moment regen starts ticking.
-  const isPro = !!(stats.pro_until && stats.pro_until > now);
-  const spinsToDebit = (!isPro && free_spins_spent > 0) ? 1 : 0;
-  const newFreeSpins = Math.max(0, (stats.free_spins || 0) - spinsToDebit);
-  const newSpinsUpdatedAt =
-    (spinsToDebit > 0 && (stats.free_spins || 0) === SPIN_REGEN_FLOOR)
-      ? now
-      : (stats.free_spins_updated_at || now);
-
+  // free_spins is intentionally NOT touched here. The /use-free-spin
+  // endpoint owns every spin debit; this UPDATE only writes the
+  // round-result columns. Keeping that separation means a failed
+  // round can't accidentally double-charge a spin that was already
+  // paid when the wheel was spun.
   db.prepare(`
     UPDATE stats SET
       xp = ?, level = ?,
@@ -877,8 +866,6 @@ router.post("/game", requireAuth, (req, res) => {
       incorrect = incorrect + ?,
       best_streak = ?,
       powerups_json = ?,
-      free_spins = ?,
-      free_spins_updated_at = ?,
       updated_at = ?
     WHERE user_id = ?
   `).run(
@@ -886,7 +873,6 @@ router.post("/game", requireAuth, (req, res) => {
     Math.max(0, Math.floor(coins_gained)),
     Math.max(0, correct), Math.max(0, incorrect),
     newBest, powerupsUpdate,
-    newFreeSpins, newSpinsUpdatedAt,
     now, req.user.id
   );
 

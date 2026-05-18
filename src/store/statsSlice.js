@@ -152,6 +152,22 @@ export const claimSpins = createAsyncThunk("stats/claimSpins", async (_, { rejec
   }
 });
 
+// Atomic server-side spin debit. Fired by Home.onSpin the moment the
+// player clicks the wheel. Server returns the full updated stats row;
+// extraReducer below merges it so the client's free_spins matches the
+// DB without any local-only mutation that could be rolled back on
+// refresh. THIS IS THE ONLY PATH that decrements free_spins for play
+// — the old failure-debit in submitGame and the quit-penalty spin
+// debit were both removed to avoid double-charging.
+export const useFreeSpin = createAsyncThunk("stats/useFreeSpin", async (_, { rejectWithValue }) => {
+  try {
+    const { data } = await api.post("/stats/use-free-spin");
+    return data;
+  } catch (e) {
+    return rejectWithValue(e?.response?.data?.error || "failed");
+  }
+});
+
 // Single energy resource: SPINS. They regenerate up to a floor of 5
 // (one every 30 min). Spins EARNED or BOUGHT stack ABOVE the floor with
 // no upper cap — regen only tops you back up to 5 if you're below it.
@@ -359,6 +375,26 @@ const slice = createSlice({
        persist(merged);
        return merged;
      })
+     .addCase(useFreeSpin.fulfilled, (s, a) => {
+       // Authoritative post-debit stats. Mirrors claimSpins: merge the
+       // server's full row so free_spins (and any side-effect fields
+       // like free_spins_updated_at, pending_spin_claims) all land
+       // together. No local consume/grant needed beyond what the merge
+       // does — single source of truth.
+       const merged = mergeStats(s, a.payload.stats || {});
+       persist(merged);
+       return merged;
+     })
+     .addCase(useFreeSpin.rejected, (s) => {
+       // Server rejected the debit (most likely the client thought it
+       // had a spin but the DB disagreed — sync race). The optimistic
+       // local consume already happened in Home.onSpin; without a
+       // server confirmation it'd survive until the next /stats fetch
+       // and look like a free spin. Roll the optimistic spend back
+       // here so the visible count immediately matches reality.
+       if (!s.pro) s.free_spins = (s.free_spins || 0) + 1;
+       persist(s);
+     })
      .addCase(fetchLeaderboard.fulfilled, (s, a) => {
        s.leaderboard = a.payload;
        persist(s);
@@ -371,6 +407,10 @@ export const {
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
   grantTheme, markCategoryPlayed, markAchievement, dequeueAchievementUnlock, setPro, resetLocal,
 } = slice.actions;
+
+// re-export so Home.onSpin can drive the spin debit through the thunk
+// (and Redux extraReducer merges the server response in one shot).
+export { /* useFreeSpin already exported above */ };
 
 // Re-export the regen constants the client uses for the countdown UI
 // (Banner pill, claim modal). Server is authoritative; these are only

@@ -115,14 +115,10 @@ export default function Play() {
       sfx.lose();
       haptic.heavy();
     }
-    // NOTE: client-side spendLife() removed intentionally. The server
-    // now decrements free_spins atomically inside /stats/game using
-    // the `free_spins_spent` flag below, and its loadStats response
-    // carries the post-decrement count. Previously spendLife wrote
-    // locally and was IMMEDIATELY overwritten by submitGame's response
-    // (which had the stale pre-decrement free_spins) — every failure
-    // appeared to "restore" the spent spin. Bug fixed by routing the
-    // debit through the same write that already updates the row.
+    // NOTE: NO spin debit here. Every spin is debited up-front via
+    // /stats/use-free-spin when the wheel is clicked in Home.onSpin.
+    // The previous failure-based debit (free_spins_spent: 1 here)
+    // would have double-charged on top of that.
 
     if (user) {
       // Send the FULL coin total — every stream that was previously
@@ -141,8 +137,6 @@ export default function Play() {
         xp_gained: xpGained,
         coins_gained: totalCoinsGained,
         best_streak_run: game.bestStreakRun,
-        // Server-side atomic decrement — see the comment above.
-        free_spins_spent: failed && !stats.pro ? 1 : 0,
         // Send the round's category so the server can mark it
         // played-today and drive the "play N different categories"
         // daily quest. Without this, those quests were unwinnable

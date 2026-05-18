@@ -1,11 +1,11 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v3: bumped to force-evict stale clients holding the pre-fix
-// coin/spin sync bundle. Without this bump, browsers serving the
-// cached old main.<hash>.js would keep dropping coin/spin gains
-// on the floor and report the "balance keeps resetting" bug even
-// after the fix shipped.
-const CACHE = "trivia-wheel-v3";
+// v4: SW now uses network-first for .js/.css bundles so a stale
+// service worker can never freeze a client on old code. v3 still
+// did cache-first for everything, which meant a browser holding a
+// pre-fix bundle in cache kept serving it and reporting bugs that
+// were already fixed server-side.
+const CACHE = "trivia-wheel-v4";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {
@@ -35,6 +35,31 @@ self.addEventListener("fetch", (e) => {
   // decide what HTML to serve, and avoids cache-miss → undefined Response bugs.
   if (req.mode === "navigate") return;
 
+  // JS/CSS bundles are NETWORK-FIRST. Webpack hashes filenames per build
+  // so a new bundle has a new URL — but a stale SW serving the OLD URL
+  // from cache would freeze the client on whatever code shipped last
+  // time. Network-first guarantees the user always pulls the live bundle
+  // (with cache as offline fallback). This is the key defense against
+  // "I deployed a fix but my browser keeps running the old code".
+  const pn = url.pathname;
+  const isCodeAsset = pn.endsWith(".js") || pn.endsWith(".css") || pn.endsWith(".map");
+  if (isCodeAsset) {
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((c) => c || Response.error()))
+    );
+    return;
+  }
+
+  // Everything else (images, fonts, manifest) stays cache-first with a
+  // background network update.
   e.respondWith(
     caches.match(req).then((cached) => {
       const fromNetwork = fetch(req)
@@ -46,7 +71,6 @@ self.addEventListener("fetch", (e) => {
           return res;
         })
         .catch(() => cached || Response.error());
-      // Cache-first for static assets, but kick off a network update in the background.
       return cached || fromNetwork;
     }).catch(() => Response.error())
   );

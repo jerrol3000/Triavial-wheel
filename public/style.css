@@ -101,8 +101,10 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
      growing the bar. Right-side stats pills stay at their natural
      size and center vertically inside this height. Horizontal
      padding only — vertical is 0 so the logo image defines the
-     bar's visible top + bottom edges. */
-  height: 60px;
+     bar's visible top + bottom edges. 72 px chosen so the square
+     SPINLORE app-icon logo (wheel + wordmark ribbon stacked) has
+     enough vertical room for the embedded text to be readable. */
+  height: 72px;
   padding: 0 16px;
   background: rgba(15, 12, 41, 0.6);
   backdrop-filter: blur(14px);

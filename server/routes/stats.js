@@ -218,9 +218,9 @@ const QUEST_TEMPLATES = [
   { id: "win_online_3",  text: "Win 3 online matches",              target: 3,  metric: "online_wins_today",    reward: { coins: 180, free_spins: 2 } },
   { id: "play_online",   text: "Play 2 online matches",             target: 2,  metric: "online_played_today",  reward: { coins: 50 } },
 
-  // Power-ups / progression
-  { id: "use_powerup",   text: "Use 2 power-ups",                   target: 2,  metric: "powerups_used_today",  reward: { coins: 25 } },
-  { id: "use_powerup_5", text: "Use 5 power-ups",                   target: 5,  metric: "powerups_used_today",  reward: { coins: 75, free_spins: 1 } },
+  // Progression — power-up templates removed for now; no server-side
+  // tracker increments powerups_used_today, so those would have been
+  // unwinnable. Re-add when /stats/powerup-used + a client hook ship.
   { id: "level_up",      text: "Level up once",                     target: 1,  metric: "level_ups_today",      reward: { coins: 80, free_spins: 1 } },
 
   // Engagement
@@ -239,7 +239,12 @@ function ensureQuests(userId) {
   const today = todayKey();
   const row = db.prepare("SELECT quests_date, quests_json FROM stats WHERE user_id = ?").get(userId);
   if (row && row.quests_date === today) {
-    try { return JSON.parse(row.quests_json); } catch (e) { /* regenerate */ }
+    try { return JSON.parse(row.quests_json); }
+    catch (e) {
+      // Don't silently swallow — surface in logs so a bad migration
+      // or hand-edit doesn't disappear without a trace.
+      console.warn("[quests] malformed quests_json for user", userId, "regenerating:", e.message);
+    }
   }
   // Pick 3 quests deterministically using user id + date as the seed.
   const seedStr = `${userId}|${today}`;
@@ -253,7 +258,10 @@ function ensureQuests(userId) {
     chosen.push({ ...pool[idx], progress: 0, claimed: false });
     pool.splice(idx, 1);
   }
-  db.prepare("UPDATE stats SET quests_date = ?, quests_json = ?, updated_at = ? WHERE user_id = ?")
+  // Reset the per-day distinct-categories set in the SAME row update
+  // so the daily category quests truly track unique categories,
+  // not per-round counts.
+  db.prepare("UPDATE stats SET quests_date = ?, quests_json = ?, categories_today_json = '[]', updated_at = ? WHERE user_id = ?")
     .run(today, JSON.stringify(chosen), Date.now(), userId);
   return chosen;
 }
@@ -289,7 +297,7 @@ const WEEKLY_QUEST_TEMPLATES = [
   // Engagement
   { id: "w_spin_30",       text: "Spin the wheel 30 times",          target: 30,  metric: "spins_this_week",         reward: { coins: 300, free_spins: 5 } },
   { id: "w_watch_ads_10",  text: "Watch 10 reward ads",              target: 10,  metric: "ads_watched_this_week",   reward: { coins: 250, free_spins: 5 } },
-  { id: "w_powerups_15",   text: "Use 15 power-ups",                 target: 15,  metric: "powerups_used_this_week", reward: { coins: 350, free_spins: 5 } },
+  // Power-ups: see daily templates — removed pending a server-side tracker.
 
   // Exploration / collection
   { id: "w_categories_all",text: "Play all 10 categories this week", target: 10,  metric: "categories_this_week",    reward: { coins: 600, free_spins: 8 } },
@@ -313,7 +321,8 @@ function ensureWeeklyQuests(userId) {
   const wk = weekKey();
   const row = db.prepare("SELECT weekly_quests_week, weekly_quests_json FROM stats WHERE user_id = ?").get(userId);
   if (row && row.weekly_quests_week === wk) {
-    try { const parsed = JSON.parse(row.weekly_quests_json); if (Array.isArray(parsed)) return parsed; } catch (e) {}
+    try { const parsed = JSON.parse(row.weekly_quests_json); if (Array.isArray(parsed)) return parsed; }
+    catch (e) { console.warn("[weekly-quests] malformed json for user", userId, "regenerating:", e.message); }
   }
   // Deterministic shuffle from a different hash space than dailies so
   // a player's weekly + daily quests rarely overlap on the same metric.
@@ -683,7 +692,25 @@ router.post("/game", requireAuth, (req, res) => {
   ];
   if (isPerfect) questEvents.push({ metric: "perfect_rounds_today", amount: 1 });
   if (leveledUp) questEvents.push({ metric: "level_ups_today", amount: 1 });
-  if (category_id) questEvents.push({ metric: "categories_today", amount: 1 });
+
+  // Distinct-category tracker — categories_today templates ask for
+  // "Play N DIFFERENT categories", so we maintain a per-day set in
+  // stats.categories_today_json and progress with the SET SIZE via
+  // setMode:"max" (instead of incrementing per round, which let two
+  // rounds of the same category count as 2). Set resets in
+  // ensureQuests when the day rolls.
+  if (category_id) {
+    ensureQuests(req.user.id); // make sure the day's row is fresh first
+    const catRow = db.prepare("SELECT categories_today_json FROM stats WHERE user_id = ?").get(req.user.id);
+    let cats = [];
+    try { cats = JSON.parse(catRow?.categories_today_json || "[]") || []; } catch (e) {}
+    if (!cats.includes(category_id)) {
+      cats.push(category_id);
+      db.prepare("UPDATE stats SET categories_today_json = ?, updated_at = ? WHERE user_id = ?")
+        .run(JSON.stringify(cats), Date.now(), req.user.id);
+    }
+    questEvents.push({ metric: "categories_today", amount: cats.length, setMode: "max" });
+  }
   progressAllQuestsFor(req.user.id, questEvents);
 
   // Award any newly-eligible badges from this game. New ones come back in

@@ -114,6 +114,11 @@ export default function Play() {
         xp_gained: xpGained,
         coins_gained: coinsGained,
         best_streak_run: game.bestStreakRun,
+        // Send the round's category so the server can mark it
+        // played-today and drive the "play N different categories"
+        // daily quest. Without this, those quests were unwinnable
+        // since submitGame omitted the field entirely.
+        category_id: game.activeCategoryId || null,
       })).then((r) => {
         // Server tells us which badges were unlocked by this game; mirror
         // into local state and fire a celebration toast for each one.

@@ -14,6 +14,13 @@ import Icon from "./Icon";
 export default function QuestsHub() {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
+  // games_played + online_wins + coins are the most sensitive
+  // signals that quest progress probably moved. When any of them
+  // change we re-fetch the quest list so the progress bars don't
+  // stay stale until the user navigates away.
+  const gamesPlayed = useSelector((s) => s.stats.games_played);
+  const onlineWins = useSelector((s) => s.stats.online_wins);
+  const coins = useSelector((s) => s.stats.coins);
   const [tab, setTab] = useState("daily");
   const [daily, setDaily] = useState([]);
   const [weekly, setWeekly] = useState([]);
@@ -36,6 +43,17 @@ export default function QuestsHub() {
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh whenever a game or online win lands. Throttled by
+  // a small debounce so a single round-end + stats poll doesn't fire
+  // two requests back-to-back. Skips the initial mount (load()
+  // already ran above).
+  useEffect(() => {
+    if (!user) return;
+    const t = setTimeout(load, 400);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gamesPlayed, onlineWins, coins]);
 
   if (!user) {
     return (

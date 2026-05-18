@@ -459,6 +459,26 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty, room) 
         if (isWinner) events.push({ metric: "online_wins_today", amount: 1 });
       }
       if (coinsReward > 0) events.push({ metric: "coins_earned_today", amount: coinsReward });
+
+      // Online matches now also progress the generic round / correct
+      // / streak metrics so weekly quests like "Play 25 rounds this
+      // week" and "Get 150 correct this week" are achievable for
+      // players who only do online VS. Without this, online-only
+      // players couldn't claim the bulk of weekly quests despite
+      // playing constantly. progressAllQuestsFor auto-mirrors each
+      // _today metric to its _this_week sibling.
+      const correctCount = Math.max(0, Math.min(50, Number(p.correct) || 0));
+      const questionsAnswered = room && room.index ? Math.max(0, Math.min(50, room.index)) : 0;
+      if (questionsAnswered > 0) {
+        events.push({ metric: "rounds_today", amount: 1 });
+        if (correctCount > 0) events.push({ metric: "correct_today", amount: correctCount });
+        // Perfect round in VS: every answered question correct (rare
+        // in 5-question matches but cheap to track).
+        if (correctCount === questionsAnswered && questionsAnswered >= 5) {
+          events.push({ metric: "perfect_rounds_today", amount: 1 });
+        }
+      }
+
       if (events.length && stats.progressAllQuestsFor) stats.progressAllQuestsFor(p.id, events);
       else if (events.length && stats.progressQuestsFor) stats.progressQuestsFor(p.id, events);
     } catch (e) {}

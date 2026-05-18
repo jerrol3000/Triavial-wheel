@@ -270,6 +270,13 @@ ensureColumn("stats", "notifications_cleared_at", "INTEGER NOT NULL DEFAULT 0");
 // since the whole purpose of buying cosmetics is to flaunt them.
 ensureColumn("stats", "showcase_public", "INTEGER NOT NULL DEFAULT 1");
 
+// Distinct-category set played today (JSON array of category_ids).
+// Reset to '[]' whenever the daily quest set rolls (ensureQuests).
+// Used to turn `categories_today` quests into a true distinct-set
+// counter — without this, the metric was just a per-round counter
+// (and two rounds of the same category counted as 2).
+ensureColumn("stats", "categories_today_json", "TEXT NOT NULL DEFAULT '[]'");
+
 // Backfill for cosmetics columns added after the table was first created.
 // CREATE TABLE IF NOT EXISTS is a no-op on schema-changed tables, so the
 // limited-edition windows + bundle pointer need an explicit migration.

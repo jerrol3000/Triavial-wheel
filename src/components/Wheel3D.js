@@ -60,8 +60,14 @@ const Wheel3D = forwardRef(function Wheel3D(
   useImperativeHandle(ref, () => ({
     spin: () => {
       if (stateRef.current.spinning) return;
-      const ω0 = 14 + Math.random() * 8;
-      const friction = 1.6 + Math.random() * 0.8;
+      // Tuned for ~2.5–3.5 s total spin (was ~7–9 s under the
+      // longer-spin original values). A quiz wheel needs to feel
+      // snappy — the player taps Spin to see their question, not to
+      // watch the wheel rotate. Starting velocity gives 1.6–2.4 full
+      // rotations of visible spinning, then friction + magnetic
+      // settle land it on a segment.
+      const ω0 = 10 + Math.random() * 5;
+      const friction = 3 + Math.random() * 1;
       stateRef.current.velocity = ω0;
       stateRef.current.friction = friction;
       stateRef.current.spinning = true;
@@ -98,12 +104,13 @@ const Wheel3D = forwardRef(function Wheel3D(
       s.velocity = Math.max(0, s.velocity - decel * dt);
 
       // Magnetic settling. Once we're slow enough that friction alone
-      // could leave the pointer mid-segment, add a gentle pull toward
-      // the nearest segment center. Mimics how real pegs guide a
-      // wheel onto a flap as it slows. Strength ramps from 0 at the
-      // entry threshold (0.8 rad/s) up to full at v=0 — invisible at
-      // speed, decisive at the very end. No teleport, no snap.
-      const SETTLE_THRESHOLD = 0.8;
+      // could leave the pointer mid-segment, add a decisive pull
+      // toward the nearest segment center. Threshold raised (1.4 vs
+      // 0.8) and strength bumped (14 vs 7) so the wheel locks in
+      // within ~400 ms of dropping below the threshold instead of
+      // drifting for over a second. Pull ramps from 0 at entry up to
+      // full at v=0 — invisible at speed, snappy at the very end.
+      const SETTLE_THRESHOLD = 1.4;
       let err = 0;
       if (s.velocity < SETTLE_THRESHOLD) {
         const idx = computeSegmentIndex(s.angle, data.length);
@@ -113,7 +120,7 @@ const Wheel3D = forwardRef(function Wheel3D(
         while (err >  Math.PI) err -= Math.PI * 2;
         while (err < -Math.PI) err += Math.PI * 2;
         const pull = (SETTLE_THRESHOLD - s.velocity) / SETTLE_THRESHOLD; // 0..1
-        s.velocity += err * 7 * pull * dt;
+        s.velocity += err * 14 * pull * dt;
       }
 
       s.angle += s.velocity * dt;
@@ -134,11 +141,12 @@ const Wheel3D = forwardRef(function Wheel3D(
         }
       }
 
-      // Stop condition: very low velocity AND essentially at a
-      // segment center. The 0.02 rad gate is ~1.1° — sub-pixel for a
-      // 460-px wheel, so the final clamp is visually invisible. No
-      // more teleport from "somewhere in segment" to its center.
-      if (Math.abs(s.velocity) < 0.05 && Math.abs(err) < 0.02) {
+      // Stop condition: low velocity AND close to a segment center.
+      // Looser tolerances (0.15 rad/s, 0.04 rad ≈ 2.3°) than the
+      // original cautious gates — the slack is invisible at 460-px
+      // wheel scale but cuts the average "limp to a halt" tail by
+      // half a second.
+      if (Math.abs(s.velocity) < 0.15 && Math.abs(err) < 0.04) {
         const idx = computeSegmentIndex(s.angle, data.length);
         const targetAngle = -Math.PI / 2 - idx * segAng - segAng / 2;
         s.angle = targetAngle;

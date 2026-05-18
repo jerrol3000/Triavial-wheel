@@ -1562,6 +1562,35 @@ img.tw-avatar { background: none; }
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
 }
 
+/* Equipped pointer PNG — sized to sit over the flap area without
+   reaching the wheel slices. Width slightly larger than the default
+   flap (54px vs 22px) for visual weight, but height capped so the
+   bottom edge of the art lines up with the bottom of the default
+   flap (60px from the wrapper top). object-fit:contain preserves
+   aspect so tall art (dragon head, crown) doesn't squash to square.
+   Inherits the parent's `.flicking` transform so the cosmetic
+   animates in sync with peg strikes. */
+.tw-wheel3d-pointer-art {
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  width: 54px;
+  height: 72px;
+  object-fit: contain;
+  object-position: center top;
+  transform: translateX(-50%);
+  pointer-events: none;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.55));
+  z-index: 1;
+}
+
+/* When a cosmetic pointer is equipped, hide the default yellow flap
+   and pivot dome so only the cosmetic art shows. Without this, the
+   yellow flap peeks around the edges of non-rectangular PNGs (dragon,
+   rocket) and looks like an art bug. */
+.tw-wheel3d-pointer.has-art::before,
+.tw-wheel3d-pointer.has-art::after { display: none; }
+
 /* ─── Celebration particle layer ─────────────────────────────────────── */
 .tw-celebration-layer {
   position: fixed;

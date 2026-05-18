@@ -10,12 +10,12 @@
   {"id":"frame_diamond","category":"frame","name":"Diamond","description":"Animated rainbow shimmer.","price_coins":12000,"rarity":"legendary","icon":"💍","data":{"style":"shimmer","colors":["#22d3ee","#fbbf24","#ec4899","#10b981"],"width":4,"glow":"#ffffff"},"sort_order":80},
   {"id":"frame_pro","category":"frame","name":"Pro Member","description":"Exclusive Pro-only ring.","price_coins":0,"rarity":"legendary","icon":"⭐","data":{"style":"gradient","colors":["#f59e0b","#ef4444"],"width":4,"glow":"#f59e0b"},"pro_only":1,"sort_order":90},
 
-  {"id":"pointer_default","category":"pointer","name":"Classic Arrow","description":"The default wheel pointer.","price_coins":0,"rarity":"common","icon":"▼","data":{"emoji":"▼"},"sort_order":0},
-  {"id":"pointer_star","category":"pointer","name":"Falling Star","description":"Aim with a star.","price_coins":500,"rarity":"common","icon":"⭐","data":{"emoji":"⭐"},"sort_order":10},
-  {"id":"pointer_lightning","category":"pointer","name":"Lightning Bolt","description":"Striking precision.","price_coins":1200,"rarity":"rare","icon":"⚡","data":{"emoji":"⚡"},"sort_order":20},
-  {"id":"pointer_rocket","category":"pointer","name":"Rocket","description":"Blast off to the answer.","price_coins":2000,"rarity":"rare","icon":"🚀","data":{"emoji":"🚀"},"sort_order":30},
-  {"id":"pointer_crown","category":"pointer","name":"Crown","description":"For the trivia royalty.","price_coins":3500,"rarity":"epic","icon":"👑","data":{"emoji":"👑"},"sort_order":40},
-  {"id":"pointer_dragon","category":"pointer","name":"Dragon","description":"Ancient power.","price_coins":7500,"rarity":"legendary","icon":"🐉","data":{"emoji":"🐉"},"sort_order":50},
+  {"id":"pointer_default","category":"pointer","name":"Classic Arrow","description":"Wheel pointer · the default yellow flap that picks your category each spin.","price_coins":0,"rarity":"common","icon":"▼","data":{"emoji":"▼"},"sort_order":0},
+  {"id":"pointer_star","category":"pointer","name":"Falling Star","description":"Wheel pointer · swaps the default flap for a glowing star. Cosmetic only — same spin physics.","price_coins":400,"rarity":"common","icon":"⭐","data":{"emoji":"⭐"},"sort_order":10},
+  {"id":"pointer_lightning","category":"pointer","name":"Lightning Bolt","description":"Wheel pointer · strikes the wheel with a lightning flap. Equip from your Inventory.","price_coins":900,"rarity":"rare","icon":"⚡","data":{"emoji":"⚡"},"sort_order":20},
+  {"id":"pointer_rocket","category":"pointer","name":"Rocket","description":"Wheel pointer · rides above the wheel with a fiery rocket flap. Swap any time.","price_coins":1600,"rarity":"rare","icon":"🚀","data":{"emoji":"🚀"},"sort_order":30},
+  {"id":"pointer_crown","category":"pointer","name":"Golden Crown","description":"Wheel pointer · regal crown that crests the wheel. Epic showpiece, no gameplay effect.","price_coins":2800,"rarity":"epic","icon":"👑","data":{"emoji":"👑"},"sort_order":40},
+  {"id":"pointer_dragon","category":"pointer","name":"Dragon Head","description":"Wheel pointer · legendary dragon perches above the wheel. Pure flex, swap whenever.","price_coins":5500,"rarity":"legendary","icon":"🐉","data":{"emoji":"🐉"},"sort_order":50},
 
   {"id":"celebration_default","category":"celebration","name":"Default Confetti","description":"Standard win celebration.","price_coins":0,"rarity":"common","icon":"🎉","data":{"effect":"confetti"},"sort_order":0},
   {"id":"celebration_fireworks","category":"celebration","name":"Fireworks","description":"Light up the sky.","price_coins":800,"rarity":"common","icon":"🎆","data":{"effect":"fireworks"},"sort_order":10},

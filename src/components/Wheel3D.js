@@ -1,6 +1,7 @@
 import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 import { useSelector } from "react-redux";
 import { sfx } from "../utils/sound";
+import { pointerPngUrl } from "../data/cosmeticIcons";
 
 // Wheel-of-Fortune-style canvas wheel.
 //
@@ -298,31 +299,59 @@ const Wheel3D = forwardRef(function Wheel3D(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, theme && theme.wheelColors && theme.wheelColors.join(",")]);
 
-  // The equipped pointer cosmetic's emoji rides on top of the default
-  // wheel pointer. Falls back to nothing (the default flap stays) when
-  // no pointer is equipped or the user isn't signed in.
-  const pointerEmoji = useEquippedPointerEmoji();
+  // The equipped pointer cosmetic rides on top of the default flap.
+  // Prefers the PNG art (looks crisp at retina sizes) and falls back
+  // to the emoji from `data.emoji` so older items without art still
+  // render. Returns null when no pointer is equipped or the user
+  // picked the default arrow — the bare yellow flap stays.
+  const pointerArt = useEquippedPointerArt();
 
   return (
     <div className="tw-wheel3d-wrap" style={{ maxWidth: size, margin: "0 auto", position: "relative" }}>
       <div className="tw-wheel3d-tilt">
         <canvas ref={canvasRef} className="tw-wheel3d-canvas" />
       </div>
-      <div ref={pointerRef} className="tw-wheel3d-pointer" aria-hidden="true">
-        {pointerEmoji && pointerEmoji !== "▼" && (
-          <span className="tw-wheel3d-pointer-emoji" aria-hidden="true">{pointerEmoji}</span>
-        )}
+      <div
+        ref={pointerRef}
+        // `has-art` swaps the default yellow flap out for the cosmetic
+        // PNG cleanly — without it, the yellow shows around the edges
+        // of any non-rectangular art (dragon, rocket, etc).
+        className={`tw-wheel3d-pointer ${pointerArt && pointerArt.png ? "has-art" : ""}`}
+        aria-hidden="true"
+      >
+        {pointerArt && pointerArt.png ? (
+          // PNG path — sized + positioned via CSS so the art sits
+          // over the flap area and never reaches the wheel slices.
+          // <img> for native lazy-load + a clean 404 fallback.
+          <img
+            className="tw-wheel3d-pointer-art"
+            src={pointerArt.png}
+            alt=""
+            draggable={false}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        ) : pointerArt && pointerArt.emoji && pointerArt.emoji !== "▼" ? (
+          <span className="tw-wheel3d-pointer-emoji" aria-hidden="true">{pointerArt.emoji}</span>
+        ) : null}
       </div>
     </div>
   );
 });
 
-function useEquippedPointerEmoji() {
+// Returns { png, emoji } for the equipped pointer. `png` takes
+// precedence in Wheel3D; emoji is the fallback for catalog items
+// whose art hasn't shipped yet. Returns null entirely when the user
+// hasn't equipped a pointer cosmetic.
+function useEquippedPointerArt() {
   const equippedId = useSelector((s) => s.cosmetics?.equipped?.pointer);
   const item = useSelector((s) => equippedId
     ? s.cosmetics.catalog.find((c) => c.id === equippedId)
     : null);
-  return item && item.data && item.data.emoji ? item.data.emoji : null;
+  if (!item) return null;
+  return {
+    png: pointerPngUrl(item),
+    emoji: item.data && item.data.emoji ? item.data.emoji : null,
+  };
 }
 
 function shade(hex, amount) {

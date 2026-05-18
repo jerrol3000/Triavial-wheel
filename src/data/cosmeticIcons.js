@@ -42,6 +42,11 @@ const HAS_ART = new Set([
   // renders the title text chip via CSS unchanged)
   "title_newbie", "title_thinker", "title_genius", "title_master",
   "title_lord", "title_oracle", "title_goat", "title_pro",
+  // pointers (6/6 — store thumbnails + the in-game wheel pointer
+  // overlay. Replaces the default ▼ arrow when equipped; see
+  // useEquippedPointerArt in Wheel3D for the in-game render path.)
+  "pointer_default", "pointer_star", "pointer_lightning",
+  "pointer_rocket", "pointer_crown", "pointer_dragon",
   // badges (35/35 — achievement art surfaced in the unlock
   // celebration + profile badge case)
   "milestone_first_game", "milestone_games_10", "milestone_games_50",
@@ -55,7 +60,7 @@ const HAS_ART = new Set([
   "spending_first_purchase", "spending_1k", "spending_10k", "spending_50k",
   "spending_200k", "spending_pro_1m", "spending_pro_12m",
   "collector_5", "collector_15", "collector_all",
-  // pointers, celebrations — TODO when art generates
+  // celebrations — TODO when art generates
 ]);
 
 // Badge art lookup — `badge_id` doesn't carry a category in the
@@ -97,6 +102,19 @@ export function cosmeticIconUrl(item) {
 
 export function hasCosmeticArt(item) {
   return !!cosmeticIconUrl(item);
+}
+
+// Resolves the equipped wheel-pointer cosmetic to its PNG. Used by
+// Wheel3D to overlay the chosen pointer art on top of the default
+// arrow flap. Returns null for "no pointer" / "default arrow" so the
+// bare yellow flap renders untouched (avoids the "the default looks
+// like a missing-asset square" trap).
+export function pointerPngUrl(itemOrId) {
+  if (!itemOrId) return null;
+  const id = typeof itemOrId === "string" ? itemOrId : itemOrId.id;
+  if (!id || id === "pointer_default") return null;
+  if (!HAS_ART.has(id)) return null;
+  return `/icons/cosmetics/pointers/${id}.png`;
 }
 
 // Specifically resolves a frame item's PNG so the Avatar / OtherAvatar

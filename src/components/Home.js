@@ -7,7 +7,7 @@ import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
 import { setView, pushToast, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed, markAchievement, unlockAchievement, useFreeSpin } from "../store/statsSlice";
+import { markCategoryPlayed, markAchievement, unlockAchievement, useFreeSpin, consumeFreeSpin } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
 import LiveLeaderboard from "./LiveLeaderboard";
@@ -127,7 +127,7 @@ export default function Home() {
     dispatch(setView("play"));
   };
 
-  const onSpin = async () => {
+  const onSpin = () => {
     if (spinning) return;
     // Hard wall for guests at GUEST_HARD_LIMIT rounds. Opens the auth
     // modal directly so the upgrade path is one click away.
@@ -138,36 +138,24 @@ export default function Home() {
     }
     // Pro skips the gate (unlimited spins). Everyone else needs at
     // least one spin in the bank — out of spins routes through the
-    // Shop. Each spin debits one server-side, atomically.
+    // Shop.
     if (!stats.pro && (stats.free_spins || 0) <= 0) {
       dispatch(setView("shop"));
       return;
     }
     setSpinning(true);
-    // PESSIMISTIC: await the server's atomic debit BEFORE starting the
-    // wheel. Earlier "optimistic local + background sync" model had a
-    // race where a fast page refresh during the in-flight POST could
-    // restore the spin (server hadn't written yet, fetchStats on boot
-    // returned the pre-debit count). Awaiting eliminates the race
-    // completely — the server is the only source of truth, and the
-    // wheel can't even begin until the DB row is updated. The thunk's
-    // .fulfilled reducer merges the server's post-debit stats so the
-    // banner reflects the new count BEFORE the wheel starts.
-    if (user) {
-      const r = await dispatch(useFreeSpin());
-      if (r.meta.requestStatus !== "fulfilled") {
-        setSpinning(false);
-        const err = r.payload;
-        dispatch(pushToast({
-          icon: "⚠️",
-          title: err === "no_free_spins" ? "Out of spins" : "Couldn't spin",
-          text: err === "no_free_spins" ? "Visit the Store to top up." : "Try again in a moment.",
-        }));
-        return;
-      }
-    }
+    // Optimistic local decrement so the banner reflects the spend
+    // immediately. The server call below is the authoritative debit
+    // — its .fulfilled reducer merges the post-debit stats so the
+    // count syncs even if local & server were briefly out of step.
+    // We DO NOT gate the wheel on the server response: the wheel
+    // always spins (great UX, no waiting), and the server catches
+    // up in the background. Worst case: a rare auth blip means the
+    // server didn't debit — the next fetchStats reconciles.
+    if (user && !stats.pro) dispatch(consumeFreeSpin());
     if (wheelRef.current) wheelRef.current.spin();
     try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
+    if (user) dispatch(useFreeSpin());
   };
 
   const onWheelStop = (winningIdx) => {

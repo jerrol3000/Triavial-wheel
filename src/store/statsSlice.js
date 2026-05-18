@@ -385,10 +385,17 @@ const slice = createSlice({
        persist(merged);
        return merged;
      })
-     .addCase(useFreeSpin.rejected, () => {
-       // Pessimistic model — no optimistic update to roll back. The
-       // caller in Home.onSpin handles the rejected status by showing
-       // a toast and NOT starting the wheel. State is untouched here.
+     .addCase(useFreeSpin.rejected, (s) => {
+       // Server rejected (network blip, 401 during a deploy, etc.).
+       // The wheel already spun and the local consumeFreeSpin already
+       // decremented — don't roll back here. The next fetchStats will
+       // reconcile if needed (the server's value is the source of
+       // truth). Rolling back here would cause the user to see "I
+       // spun the wheel but my count went back up" — far worse UX
+       // than the rare "I got a free spin once because of a network
+       // hiccup."
+       // Intentional no-op.
+       void s;
      })
      .addCase(fetchLeaderboard.fulfilled, (s, a) => {
        s.leaderboard = a.payload;

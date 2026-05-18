@@ -137,6 +137,21 @@ export const fetchLeaderboard = createAsyncThunk("stats/leaderboard", async () =
   return data;
 });
 
+// Manually claim accrued spin regen. The server is the single source of
+// truth — it computes how many "regen ticks" the player has earned since
+// their last spend below the floor, caps at the floor, and returns the
+// refreshed stats row. The client just dispatches and lets fetchStats's
+// extraReducer merge the response.
+export const claimSpins = createAsyncThunk("stats/claimSpins", async (_, { rejectWithValue }) => {
+  try {
+    const { data } = await api.post("/stats/spin-claim");
+    return data;
+  } catch (e) {
+    const err = e?.response?.data?.error || "failed";
+    return rejectWithValue({ error: err, next_in_ms: e?.response?.data?.next_in_ms });
+  }
+});
+
 // Single energy resource: SPINS. They regenerate up to a floor of 5
 // (one every 30 min). Spins EARNED or BOUGHT stack ABOVE the floor with
 // no upper cap — regen only tops you back up to 5 if you're below it.
@@ -167,23 +182,29 @@ const slice = createSlice({
   name: "stats",
   initialState: loadInitial(),
   reducers: {
-    // Periodic ticker (App.js fires every 30s). Only adds spins if the
-    // user is below the regen floor and the clock has advanced enough
-    // since the last bump. Pro skips entirely.
+    // Periodic ticker (App.js fires every 30 s). Used to auto-add spins
+    // locally — but that secretly minted free spins for users who never
+    // opened the app (the elapsed timer accrued whether or not the
+    // server saw any activity). Now: ticker just refreshes the "pending
+    // claims" counter from the LAST known server stats so the Banner's
+    // claim pill updates without a /stats round-trip on every tick.
+    // Actual claiming happens through dispatch(claimSpins) — server
+    // is the single source of truth.
     tickLives: (s) => {
       if (s.pro) return;
-      if ((s.free_spins || 0) >= SPIN_REGEN_FLOOR) {
-        s.free_spins_updated_at = Date.now();
+      const updatedAt = s.free_spins_updated_at || 0;
+      if (!updatedAt) return;
+      const floor = SPIN_REGEN_FLOOR;
+      const capacity = Math.max(0, floor - (s.free_spins || 0));
+      if (capacity === 0) {
+        s.pending_spin_claims = 0;
+        s.next_spin_claim_in_ms = 0;
         return;
       }
-      const now = Date.now();
-      const elapsed = now - (s.free_spins_updated_at || now);
-      const regen = Math.floor(elapsed / SPIN_REGEN_MS);
-      if (regen > 0) {
-        s.free_spins = Math.min(SPIN_REGEN_FLOOR, (s.free_spins || 0) + regen);
-        s.free_spins_updated_at = (s.free_spins_updated_at || now) + regen * SPIN_REGEN_MS;
-        persist(s);
-      }
+      const elapsed = Math.max(0, Date.now() - updatedAt);
+      const ticks = Math.floor(elapsed / SPIN_REGEN_MS);
+      s.pending_spin_claims = Math.min(ticks, capacity);
+      s.next_spin_claim_in_ms = SPIN_REGEN_MS - (elapsed % SPIN_REGEN_MS);
     },
     // Single decrement helper: every spin costs one. No more lives-vs-
     // free-spins fork — there's only one resource now. Pro doesn't pay.
@@ -330,6 +351,14 @@ const slice = createSlice({
        persist(merged);
        return merged;
      })
+     .addCase(claimSpins.fulfilled, (s, a) => {
+       // Server returns the freshly-claimed stats row. Mirrors the
+       // merge logic used by /stats so partial server fields don't
+       // wipe local-only ones (categories_played etc).
+       const merged = mergeStats(s, a.payload.stats || {});
+       persist(merged);
+       return merged;
+     })
      .addCase(fetchLeaderboard.fulfilled, (s, a) => {
        s.leaderboard = a.payload;
        persist(s);
@@ -342,6 +371,12 @@ export const {
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
   grantTheme, markCategoryPlayed, markAchievement, dequeueAchievementUnlock, setPro, resetLocal,
 } = slice.actions;
+
+// Re-export the regen constants the client uses for the countdown UI
+// (Banner pill, claim modal). Server is authoritative; these are only
+// for "next claim in 14 min" cosmetic display.
+export const SPIN_REGEN_FLOOR_EXPORT = SPIN_REGEN_FLOOR;
+export const SPIN_REGEN_MS_EXPORT = SPIN_REGEN_MS;
 
 export default slice.reducer;
 // Re-exported under the old names so the existing UI imports keep

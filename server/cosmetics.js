@@ -170,15 +170,14 @@ function buyItem(userId, cosmeticId, isPro) {
         db.prepare(`INSERT INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)`)
           .run(userId, it.id, Date.now());
       }
-      if (!it.consumable && EQUIPPABLE.has(it.category)) {
-        const cur = db.prepare(`SELECT cosmetic_id FROM user_equipped WHERE user_id = ? AND category = ?`).get(userId, it.category);
-        if (!cur || !cur.cosmetic_id) {
-          db.prepare(
-            `INSERT INTO user_equipped(user_id, category, cosmetic_id) VALUES (?, ?, ?)
-             ON CONFLICT(user_id, category) DO UPDATE SET cosmetic_id = excluded.cosmetic_id`
-          ).run(userId, it.category, it.id);
-        }
-      }
+      // NOTE: Auto-equip removed intentionally. Previously, the first
+      // item in an empty slot would auto-equip on purchase — which
+      // made buys silently REPLACE other player state and confused
+      // bundle buyers (4 frames arrive, only the last one is on, no
+      // explanation). New rule: every purchased item goes to the
+      // inventory, full stop. Player decides when to equip from the
+      // Inventory tab. Pairs with the "purchase_thanks" notification
+      // + the toast that points players straight to the inventory.
       grantedItems.push(it);
     };
 

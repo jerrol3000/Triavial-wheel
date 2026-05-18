@@ -161,6 +161,14 @@ function StoreItemCard({ item, onNeedCoins }) {
   const owned = useSelector((s) => isOwned(s, item.id));
   const qty = useSelector((s) => selectOwnedQty(s, item.id));
   const isEquipped = EQUIPPABLE_CATEGORIES.has(item.category) && equippedId === item.id;
+  // Spin packs and bundles are always re-buyable — they convert
+  // directly into spendable currency (spins in the user's balance, or
+  // the full bundle contents). Showing them as "Owned" after the first
+  // buy was the bug players were hitting: the card looked permanently
+  // disabled even though re-buying is a valid path. Now: no OWNED
+  // ribbon for these, no disabled state — the Buy button is always
+  // tappable.
+  const isAlwaysRebuyable = item.category === "spins" || item.category === "bundle";
   const rar = RARITY_COLORS[item.rarity] || RARITY_COLORS.common;
   // Debounce protects against double-tap on Buy / Equip / Use —
   // server already idempotent for equip, but two rapid Buy clicks
@@ -219,10 +227,15 @@ function StoreItemCard({ item, onNeedCoins }) {
       const title = isSpins ? `+${item.data?.spins || 0} spins added!`
                   : isBundle ? `${item.name} unlocked!`
                   : `${item.name} unlocked!`;
+      // Wording note: cosmetics now say "equip from Inventory" because
+      // auto-equip on buy was removed (it silently replaced the player's
+      // existing equip choices — confusing for bundle buyers especially).
+      // Bundles route to inventory too. Spin packs land in the balance
+      // directly (no inventory step) since spins ARE the consumable.
       const text = isSpins ? "Added to your spin bank — happy spinning!"
                  : item.consumable ? "Added to your inventory — tap Use when ready."
-                 : isBundle ? "All items added to your inventory."
-                 : "Added to your inventory and equipped.";
+                 : isBundle ? "All items added to your inventory. Equip them from there."
+                 : "Added to your inventory. Equip it from your Inventory tab.";
       dispatch(pushToast({ icon: "🛍️", title, text, duration: 4500 }));
       // Bundles + spin packs change the broader stats picture (spins
       // count + multiple new owns) so a fresh /stats pull is worth
@@ -289,8 +302,14 @@ function StoreItemCard({ item, onNeedCoins }) {
     }
   };
 
-  const canEquip = (item.price_coins === 0 || owned) && !item.consumable && !item.pro_only;
-  const canEquipPro = item.pro_only && pro;
+  // Equip only applies to items in an equippable slot. Without this
+  // category check, an owned spin pack (category="spins", not consumable,
+  // not pro_only) would render an "Equip" button — clicking it 400's
+  // server-side with `not_equippable`. Same for bundles.
+  const canEquip = EQUIPPABLE_CATEGORIES.has(item.category)
+                && (item.price_coins === 0 || owned)
+                && !item.consumable && !item.pro_only;
+  const canEquipPro = EQUIPPABLE_CATEGORIES.has(item.category) && item.pro_only && pro;
 
   // Frames are CSS-driven effects, not static art — always use the
   // live preview so what you see in the store is exactly the ring
@@ -304,12 +323,14 @@ function StoreItemCard({ item, onNeedCoins }) {
     >
       {/* Corner ribbons — only the most relevant single status shows.
           Priority: LIMITED > EQUIPPED > OWNED. Keeps the corner from
-          getting crowded. */}
+          getting crowded. Spins + bundles never show "Owned" since
+          they're always re-buyable — the badge would falsely imply
+          the player can't buy again. */}
       {item.available_until ? (
         <span className="tw-store-ribbon limited">⏰ LIMITED</span>
       ) : isEquipped ? (
         <span className="tw-store-ribbon equipped">✓ EQUIPPED</span>
-      ) : owned && !item.consumable ? (
+      ) : owned && !item.consumable && !isAlwaysRebuyable ? (
         <span className="tw-store-ribbon owned">OWNED</span>
       ) : null}
 

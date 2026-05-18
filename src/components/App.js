@@ -66,15 +66,34 @@ export default function App() {
       // Daily login bonus — claim once per UTC day. Backend is idempotent.
       // The response includes the fresh stats so we only fetchStats once
       // (used to fire twice and the second could clobber the first).
+      // After stats land, surface a single "your free spins are ready"
+      // toast if the player has unclaimed regen waiting. The Banner pill
+      // is the primary affordance (animated + tappable); the toast just
+      // makes sure first-time players notice the new mechanic.
+      const afterStats = (statsPayload) => {
+        const pending = (statsPayload && !statsPayload.pro) ? (statsPayload.pending_spin_claims || 0) : 0;
+        if (pending > 0) {
+          dispatch(pushToast({
+            icon: "🎡",
+            title: `${pending} free spin${pending === 1 ? "" : "s"} ready!`,
+            text: "Tap the glowing pill in the top bar to claim.",
+            duration: 5500,
+          }));
+        }
+      };
       api.post("/stats/daily-login").then((r) => {
         if (r.data && !r.data.alreadyClaimed) {
           dispatch(setModal({ name: "dailyBonus", data: r.data }));
         }
-        dispatch(fetchStats());
+        dispatch(fetchStats()).then((res) => {
+          if (res && res.meta && res.meta.requestStatus === "fulfilled") afterStats(res.payload);
+        });
       }).catch(() => {
         // Even if daily-login fails (e.g., offline), make sure we still
         // load stats so the UI isn't blank.
-        dispatch(fetchStats());
+        dispatch(fetchStats()).then((res) => {
+          if (res && res.meta && res.meta.requestStatus === "fulfilled") afterStats(res.payload);
+        });
       });
     }
     const id = setInterval(() => dispatch(tickLives()), 30 * 1000);

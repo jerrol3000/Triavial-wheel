@@ -1252,6 +1252,18 @@ img.tw-avatar { background: none; }
   50%      { transform: scale(1.04); box-shadow: 0 10px 28px rgba(16,185,129,0.55); }
 }
 
+/* Pulsing "Claim N spins" CTA in the banner. Three-stop ring expansion
+   gives it a calls-attention-but-doesn't-shout cadence. Pairs with the
+   gradient bg set inline in Banner.js (orange→pink — distinct from any
+   other pill so the eye lands on it immediately). */
+@keyframes twClaimPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(245,158,11,0.55); transform: scale(1); }
+  60%  { box-shadow: 0 0 0 10px rgba(245,158,11,0);    transform: scale(1.04); }
+  100% { box-shadow: 0 0 0 0   rgba(245,158,11,0);    transform: scale(1); }
+}
+.tw-claim-pill:hover  { filter: brightness(1.08); }
+.tw-claim-pill:active { transform: scale(0.97); }
+
 .tw-quest-locked {
   width: 32px; height: 32px;
   border-radius: 50%;

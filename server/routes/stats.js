@@ -25,6 +25,39 @@ function clampInt(v, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Spin regen — server is now the single source of truth. The client used
+// to auto-add spins via a 30 s setInterval (`tickLives`) which silently
+// minted free spins for users who never opened the app (the timer kept
+// ticking against `free_spins_updated_at`, then on next /stats fetch the
+// client's hydrated count overwrote the server's). New model: regen ticks
+// accrue on the server while the player is OFFLINE, but they only land
+// in the player's balance when the player explicitly opens the app and
+// CLAIMS them. Capped at SPIN_REGEN_FLOOR so leaving the game open for
+// a month doesn't bank 720 free spins.
+const SPIN_REGEN_FLOOR = 3;
+const SPIN_REGEN_MS = 60 * 60 * 1000;
+
+// Compute claim state without mutating. Returns `{ pending, next_in_ms,
+// floor }` — pending is min(elapsed-ticks, capacity-below-floor). Pro
+// skips the gate entirely.
+function computeClaimState(row) {
+  if (!row) return { pending: 0, next_in_ms: 0, floor: SPIN_REGEN_FLOOR };
+  const isPro = !!(row.pro_until && row.pro_until > Date.now());
+  if (isPro) return { pending: 0, next_in_ms: 0, floor: SPIN_REGEN_FLOOR };
+  const now = Date.now();
+  const updatedAt = row.free_spins_updated_at || now;
+  const elapsed = Math.max(0, now - updatedAt);
+  const tickedSinceClaim = Math.floor(elapsed / SPIN_REGEN_MS);
+  const capacity = Math.max(0, SPIN_REGEN_FLOOR - (row.free_spins || 0));
+  const pending = Math.min(tickedSinceClaim, capacity);
+  // Time to next tick — 0 if we're already at/over the floor (nothing
+  // more to claim regardless of how long they wait).
+  const next_in_ms = capacity === 0
+    ? 0
+    : SPIN_REGEN_MS - (elapsed % SPIN_REGEN_MS);
+  return { pending, next_in_ms, floor: SPIN_REGEN_FLOOR };
+}
+
 function loadStats(userId) {
   const row = db.prepare("SELECT * FROM stats WHERE user_id = ?").get(userId);
   if (!row) return null;
@@ -35,6 +68,7 @@ function loadStats(userId) {
   // sole spin/energy resource now. Sending lives from the server would
   // overwrite the client's regenerating spin counter on every fetch.
   const { lives, lives_updated_at, ...clean } = row;
+  const claim = computeClaimState(row);
   return {
     ...clean,
     powerups: clean.powerups_json ? JSON.parse(clean.powerups_json) : {},
@@ -42,6 +76,13 @@ function loadStats(userId) {
     pro: !!(clean.pro_until && clean.pro_until > Date.now()),
     achievements,
     perks: getPerks(userId),
+    // New claim fields — drive the Banner's pulsing "Claim N spins" pill
+    // and the boot-time toast. Server is authoritative; the client never
+    // adds spins on its own anymore.
+    pending_spin_claims: claim.pending,
+    next_spin_claim_in_ms: claim.next_in_ms,
+    spin_regen_floor: claim.floor,
+    spin_regen_ms: SPIN_REGEN_MS,
   };
 }
 
@@ -189,12 +230,99 @@ router.post("/use-free-spin", requireAuth, (req, res) => {
   // Atomic decrement guarded by `free_spins > 0` in the WHERE clause.
   // The previous read-then-write let two concurrent requests both
   // pass the check and drop the column to -1.
-  const upd = db.prepare(
-    "UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ? AND free_spins > 0"
-  ).run(Date.now(), req.user.id);
+  // Also stamps `free_spins_updated_at` IFF the decrement crosses the
+  // regen floor — that's the moment the regen clock starts ticking
+  // for the next claim. Spending while ABOVE the floor doesn't start
+  // a claim accrual; only dropping into the floor band does.
+  const before = db.prepare("SELECT free_spins, free_spins_updated_at FROM stats WHERE user_id = ?").get(req.user.id);
+  if (!before || (before.free_spins || 0) <= 0) return res.status(400).json({ error: "no_free_spins" });
+  const willEnterFloor = before.free_spins === SPIN_REGEN_FLOOR;
+  const now = Date.now();
+  const upd = willEnterFloor
+    ? db.prepare(
+        "UPDATE stats SET free_spins = free_spins - 1, free_spins_updated_at = ?, updated_at = ? WHERE user_id = ? AND free_spins > 0"
+      ).run(now, now, req.user.id)
+    : db.prepare(
+        "UPDATE stats SET free_spins = free_spins - 1, updated_at = ? WHERE user_id = ? AND free_spins > 0"
+      ).run(now, req.user.id);
   if (upd.changes === 0) return res.status(400).json({ error: "no_free_spins" });
   const row = db.prepare("SELECT free_spins FROM stats WHERE user_id = ?").get(req.user.id);
   res.json({ ok: true, free_spins: row ? row.free_spins : 0 });
+});
+
+// Manually claim accrued spin regen. Server is the single source of
+// truth for regen now — the old client-side `tickLives` ticker would
+// mint spins for users who never opened the app (worst-of-both:
+// server saw no engagement, but the user came back to a fat balance).
+// This endpoint is the ONLY path that converts wall-clock time into
+// free spins, and the player must actively claim them.
+//
+// Returns the same shape as /stats — the client can drop the response
+// straight into the slice without a second /stats round-trip.
+router.post("/spin-claim", requireAuth, (req, res) => {
+  let result;
+  try {
+    const tx = db.transaction(() => {
+      const row = db.prepare(
+        "SELECT free_spins, free_spins_updated_at, pro_until FROM stats WHERE user_id = ?"
+      ).get(req.user.id);
+      if (!row) { result = { status: 404, body: { error: "no_stats_row" } }; return; }
+      const isPro = !!(row.pro_until && row.pro_until > Date.now());
+      if (isPro) {
+        // Pro doesn't need to claim — they have unlimited spins. Keep
+        // the response shape stable so the client can still refresh
+        // stats from it.
+        result = { status: 400, body: { error: "pro_no_claim_needed" } };
+        return;
+      }
+      const now = Date.now();
+      const updatedAt = row.free_spins_updated_at || now;
+      const elapsed = Math.max(0, now - updatedAt);
+      const pendingTicks = Math.floor(elapsed / SPIN_REGEN_MS);
+      if (pendingTicks <= 0) {
+        result = {
+          status: 400,
+          body: { error: "no_claim_ready", next_in_ms: SPIN_REGEN_MS - elapsed },
+        };
+        return;
+      }
+      const capacity = Math.max(0, SPIN_REGEN_FLOOR - (row.free_spins || 0));
+      if (capacity <= 0) {
+        // At/above the floor — the regen clock is paused entirely
+        // (nothing to claim until they spend back into the floor band).
+        result = { status: 400, body: { error: "at_floor", floor: SPIN_REGEN_FLOOR } };
+        return;
+      }
+      const claimable = Math.min(pendingTicks, capacity);
+      // Advance free_spins_updated_at by the claimed ticks, NOT to
+      // "now". This preserves the partial tick the player is currently
+      // accruing: if they're 47 min into the next hour, claiming now
+      // leaves 47 min of credit toward the FOLLOWING claim instead of
+      // resetting the clock to zero.
+      const newUpdatedAt = updatedAt + claimable * SPIN_REGEN_MS;
+      const upd = db.prepare(`
+        UPDATE stats SET
+          free_spins = free_spins + ?,
+          free_spins_updated_at = ?,
+          updated_at = ?
+        WHERE user_id = ? AND free_spins = ?
+      `).run(claimable, newUpdatedAt, now, req.user.id, row.free_spins);
+      if (upd.changes === 0) {
+        // Lost the race — another /spin-claim or a buy-spins purchase
+        // changed free_spins between our read and write. Bail; the
+        // client can retry and the next loadStats will reflect truth.
+        result = { status: 409, body: { error: "claim_conflict" } };
+        return;
+      }
+      result = { status: 200, body: { ok: true, claimed: claimable } };
+    });
+    tx.immediate();
+  } catch (e) {
+    console.error("[spin-claim] failed", e);
+    return res.status(500).json({ error: "claim_failed" });
+  }
+  if (result.status !== 200) return res.status(result.status).json(result.body);
+  res.json({ ...result.body, stats: loadStats(req.user.id) });
 });
 
 // Daily quests — 3 quests generated per UTC date, deterministic per user

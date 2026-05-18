@@ -16,6 +16,7 @@ import AdRewardModal from "./AdRewardModal";
 import PublicProfile from "./PublicProfile";
 import Toasts from "./Toasts";
 import BadgeUnlock from "./BadgeUnlock";
+import AchievementUnlock from "./AchievementUnlock";
 import InstallPrompt from "./InstallPrompt";
 import { I18nProvider } from "../i18n";
 import { tickLives, fetchStats } from "../store/statsSlice";
@@ -138,6 +139,10 @@ export default function App() {
             Redux queue so multiple simultaneous unlocks play in
             sequence (~3.8 s each). */}
         <BadgeUnlock />
+        {/* Side-slide achievement unlock toast — lighter touch than
+            BadgeUnlock because achievements fire much more often.
+            Same queue pattern, FIFO. */}
+        <AchievementUnlock />
       </div>
     </I18nProvider>
   );

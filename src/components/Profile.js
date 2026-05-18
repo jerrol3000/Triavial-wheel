@@ -13,6 +13,7 @@ import Icon from "./Icon";
 import BadgesPanel from "./BadgesPanel";
 import Inventory from "./Inventory";
 import { BadgeCase, PlayerFlair } from "./PlayerFlair";
+import { achievementIconUrl } from "../data/cosmeticIcons";
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -134,10 +135,31 @@ export default function Profile() {
         <div className="tw-grid-2">
           {ACHIEVEMENTS.map((a) => {
             const got = unlocked.has(a.id);
+            const png = achievementIconUrl(a.id);
             return (
-              <div key={a.id} className="tw-card" style={{ opacity: got ? 1 : 0.5, padding: 12 }}>
-                <div style={{ fontSize: 28 }}>{a.icon}</div>
-                <div style={{ fontWeight: 700 }}>{a.title}</div>
+              <div
+                key={a.id}
+                className={`tw-card tw-achievement-card ${got ? "earned" : "locked"}`}
+                style={{ padding: 12 }}
+              >
+                <div className="tw-achievement-icon">
+                  {png ? (
+                    <img
+                      src={png}
+                      alt={a.title}
+                      width={64}
+                      height={64}
+                      loading="lazy"
+                      draggable={false}
+                      style={{ objectFit: "contain" }}
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: 36 }}>{a.icon}</span>
+                  )}
+                  {!got && <span className="tw-achievement-lock" aria-hidden="true">🔒</span>}
+                </div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>{a.title}</div>
                 <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{a.desc}</div>
                 {got && <div style={{ fontSize: 11, color: "var(--good)", marginTop: 4 }}>✓ Unlocked</div>}
               </div>

@@ -1703,10 +1703,58 @@ img.tw-avatar { background: none; }
    defaults that could bleed through. */
 .tw-badge-icon img,
 .tw-mini-badge img,
-.tw-bu-face img {
+.tw-bu-face img,
+.tw-achievement-icon img,
+.tw-au-art img {
   background: transparent !important;
   -webkit-backdrop-filter: none;
           backdrop-filter: none;
+}
+
+/* ─── Achievement cards (Profile → Achievements tab) ─────────────────
+   Shield-sticker PNG centered on each card. Earned cards full
+   color; locked cards desaturate to ~30% with a small lock icon
+   in the bottom-right of the art. isolation:isolate guards against
+   the same iOS Safari alpha-flatten bug we patched for badges. */
+.tw-achievement-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  transition: transform 0.12s ease, box-shadow 0.18s ease;
+}
+.tw-achievement-card.earned:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(124,58,237,0.25);
+}
+.tw-achievement-card.locked {
+  opacity: 0.55;
+  filter: saturate(0.3) brightness(0.85);
+}
+.tw-achievement-icon {
+  position: relative;
+  isolation: isolate;
+  width: 72px; height: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tw-achievement-icon img {
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
+  transition: transform 0.2s ease;
+}
+.tw-achievement-card.earned:hover .tw-achievement-icon img {
+  transform: scale(1.08) rotate(-3deg);
+}
+.tw-achievement-lock {
+  position: absolute;
+  bottom: -2px; right: -2px;
+  font-size: 16px;
+  background: rgba(0,0,0,0.7);
+  border-radius: 50%;
+  padding: 2px;
+  line-height: 1;
 }
 .tw-badge-progress {
   width: 100%;

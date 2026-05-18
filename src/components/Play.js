@@ -69,13 +69,14 @@ export default function Play() {
 
     newlyUnlocked.forEach((id) => {
       const def = ACHIEVEMENT_MAP[id];
+      // markAchievement both records the unlock AND pushes onto the
+      // achievement-unlock queue — AchievementUnlock drains it and
+      // plays the side-slide celebration (with its own sfx +
+      // haptic), so the previous inline sfx.achieve + pushToast is
+      // no longer needed (those now happen inside the component).
       dispatch(markAchievement(id));
       if (user) dispatch(unlockAchievement(id));
-      if (def) {
-        sfx.achieve();
-        dispatch(pushToast({ icon: def.icon, title: def.title, text: def.desc, duration: 3500 }));
-        dispatch(addCoins(20));
-      }
+      if (def) dispatch(addCoins(20));
     });
 
     if (nextLevel > prevLevel) {

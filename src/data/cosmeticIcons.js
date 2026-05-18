@@ -70,6 +70,23 @@ export function badgePngUrl(badgeId) {
 // used behind every badge during the unlock animation.
 export const BADGE_UNLOCK_BURST = "/icons/cosmetics/badges/_unlock_burst.png";
 
+// Achievements are a separate system from cosmetic badges — see
+// src/data/achievements.js for the IDs. They live in
+// /icons/achievements/ (not /icons/cosmetics/badges/) and use a
+// distinct shield-sticker visual language vs. the circular metal
+// badges.
+const ACHIEVEMENT_IDS = new Set([
+  "first_correct", "streak_5", "streak_10", "perfect_round",
+  "daily_3", "daily_7", "daily_30",
+  "level_5", "level_10", "level_25",
+  "fifty_used", "all_categories", "speed_demon",
+  "high_score_1000", "friend_winner",
+]);
+export function achievementIconUrl(id) {
+  if (!id || !ACHIEVEMENT_IDS.has(id)) return null;
+  return `/icons/achievements/${id}.png`;
+}
+
 export function cosmeticIconUrl(item) {
   if (!item || !item.id) return null;
   if (!HAS_ART.has(item.id)) return null;

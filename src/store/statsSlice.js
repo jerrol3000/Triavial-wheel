@@ -253,8 +253,20 @@ const slice = createSlice({
       const id = a.payload;
       if (!s.achievements.find((x) => x.achievement_id === id)) {
         s.achievements = [...s.achievements, { achievement_id: id, unlocked_at: Date.now() }];
+        // Push onto a transient queue the AchievementUnlock component
+        // drains to play the side-slide celebration. Lives on stats
+        // (not persisted across reload) so a queued-but-not-shown
+        // celebration doesn't fire after a refresh.
+        if (!s.achievementUnlockQueue) s.achievementUnlockQueue = [];
+        if (!s.achievementUnlockQueue.find((q) => q === id)) {
+          s.achievementUnlockQueue = [...s.achievementUnlockQueue, id];
+        }
         persist(s);
       }
+    },
+    dequeueAchievementUnlock: (s) => {
+      if (!s.achievementUnlockQueue) return;
+      s.achievementUnlockQueue = s.achievementUnlockQueue.slice(1);
     },
     setPro: (s, a) => {
       s.pro = !!a.payload.pro;
@@ -294,7 +306,7 @@ const slice = createSlice({
 export const {
   tickLives, spendLife, refillLives, loseLife, addCoins, spendCoins, syncCoins, consumeFreeSpin, grantFreeSpins,
   grantPowerup, usePowerup, addXp, recordGame, setActiveTheme,
-  grantTheme, markCategoryPlayed, markAchievement, setPro, resetLocal,
+  grantTheme, markCategoryPlayed, markAchievement, dequeueAchievementUnlock, setPro, resetLocal,
 } = slice.actions;
 
 export default slice.reducer;

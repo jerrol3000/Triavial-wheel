@@ -85,43 +85,66 @@ const Wheel3D = forwardRef(function Wheel3D(
 
     if (stateRef.current.spinning) {
       const s = stateRef.current;
-
-      const jitter = 1 + (Math.random() - 0.5) * 0.08;
-      s.velocity = Math.max(0, s.velocity - s.friction * dt * jitter);
-
-      let extra = 0;
-      if (!s.settling && s.velocity < 1.2) {
-        s.settling = true;
-        s.settleStart = now;
-      }
-      if (s.settling) {
-        const t = (now - s.settleStart) / 1000;
-        extra = 0.6 * Math.sin(t * 12) * Math.exp(-t * 2.5);
-      }
-      s.angle += (s.velocity + extra) * dt;
-
-      // Peg-passing-pointer detection. Each segAng of rotation past the
-      // baseline counts as one peg striking the pointer. Fires the flick
-      // animation + clack sound. Volume tapers with velocity so the last
-      // few clacks are subtle "tink"s.
       const segAng = (Math.PI * 2) / Math.max(1, data.length);
-      const crossings = Math.floor((s.angle - s.lastPointerCrossing) / segAng);
-      if (crossings > 0) {
+
+      // Deceleration model. Linear friction dominates; a tiny
+      // velocity-proportional drag (0.04·v) adds gentle curvature so
+      // the slowdown FADES rather than dropping at a perfectly
+      // constant rate — what air resistance + bearing friction do on
+      // a real wheel. Removed the per-frame ±4 % "jitter" multiplier:
+      // it was random noise on the deceleration that read as
+      // judder when the eye was tracking the settle.
+      const decel = s.friction + 0.04 * s.velocity;
+      s.velocity = Math.max(0, s.velocity - decel * dt);
+
+      // Magnetic settling. Once we're slow enough that friction alone
+      // could leave the pointer mid-segment, add a gentle pull toward
+      // the nearest segment center. Mimics how real pegs guide a
+      // wheel onto a flap as it slows. Strength ramps from 0 at the
+      // entry threshold (0.8 rad/s) up to full at v=0 — invisible at
+      // speed, decisive at the very end. No teleport, no snap.
+      const SETTLE_THRESHOLD = 0.8;
+      let err = 0;
+      if (s.velocity < SETTLE_THRESHOLD) {
+        const idx = computeSegmentIndex(s.angle, data.length);
+        const targetAngle = -Math.PI / 2 - idx * segAng - segAng / 2;
+        err = targetAngle - s.angle;
+        // Shortest signed angular distance (wrap to [-π, π]).
+        while (err >  Math.PI) err -= Math.PI * 2;
+        while (err < -Math.PI) err += Math.PI * 2;
+        const pull = (SETTLE_THRESHOLD - s.velocity) / SETTLE_THRESHOLD; // 0..1
+        s.velocity += err * 7 * pull * dt;
+      }
+
+      s.angle += s.velocity * dt;
+
+      // Peg-passing-pointer detection. Each segAng of rotation past
+      // the baseline counts as one peg striking the pointer. Fires
+      // the flick animation + clack sound. Volume tapers with
+      // velocity so the last few clacks are subtle "tink"s. Uses
+      // absolute crossings to handle the brief backward motion the
+      // magnet can introduce as the wheel settles.
+      const dCross = s.angle - s.lastPointerCrossing;
+      const crossings = Math.trunc(dCross / segAng);
+      if (crossings !== 0) {
         s.lastPointerCrossing += crossings * segAng;
         if (s.velocity > 0.12) {
           sfx.clack();
-          // Flick intensity drops with velocity for visual realism.
           flickPointer(Math.min(1, s.velocity / 8));
         }
       }
 
-      if (s.velocity < 0.05 && (!s.settling || (now - s.settleStart) > 700)) {
+      // Stop condition: very low velocity AND essentially at a
+      // segment center. The 0.02 rad gate is ~1.1° — sub-pixel for a
+      // 460-px wheel, so the final clamp is visually invisible. No
+      // more teleport from "somewhere in segment" to its center.
+      if (Math.abs(s.velocity) < 0.05 && Math.abs(err) < 0.02) {
+        const idx = computeSegmentIndex(s.angle, data.length);
+        const targetAngle = -Math.PI / 2 - idx * segAng - segAng / 2;
+        s.angle = targetAngle;
+        s.velocity = 0;
         s.spinning = false;
         s.settling = false;
-        const idx = computeSegmentIndex(s.angle, data.length);
-        const segAng2 = (Math.PI * 2) / data.length;
-        const snapTarget = -Math.PI / 2 - idx * segAng2 - segAng2 / 2;
-        s.angle = snapTarget;
         draw();
         sfx.coin();
         if (onStop) onStop(idx);

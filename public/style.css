@@ -108,13 +108,14 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 /* Logo is a horizontal lockup (wheel + SPINLORE wordmark beside it).
    Sized by HEIGHT with auto width so it renders at its natural
    aspect ratio instead of getting cropped/squished into a square
-   slot. Drop-shadow lifts it off the translucent banner backdrop. */
+   slot. Drop-shadow lifts it off the translucent banner backdrop.
+   Bumped 44→72 px so the wordmark is actually readable at glance. */
 .tw-logo img {
-  height: 44px;
+  height: 72px;
   width: auto;
-  max-width: 200px;
+  max-width: 320px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
 }
 /* The logo is also the Back-to-Home button. When NOT on home, render with a
  * pill background + arrow so its interactivity is obvious. */
@@ -138,9 +139,10 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-logo-back-arrow { font-size: 18px; line-height: 1; margin-right: 2px; }
 @media (max-width: 480px) {
   .tw-logo { font-size: 16px; gap: 6px; }
-  /* Tighter height on phones so the horizontal lockup doesn't
-     dominate the banner. auto width preserves aspect ratio. */
-  .tw-logo img { height: 34px; width: auto; max-width: 160px; }
+  /* Phones get a smaller-but-still-bold height — auto width
+     preserves the lockup aspect ratio. Cap max-width so it doesn't
+     squeeze the right-side stats pills out of the banner. */
+  .tw-logo img { height: 52px; width: auto; max-width: 220px; }
   /* Hide the wordmark on the very smallest screens — the logo image
      alone is enough of a brand anchor and saves ~110px of bar width. */
   .tw-logo > span { display: none; }

@@ -4,7 +4,7 @@ import CelebrationEffect from "./CelebrationEffect";
 import QuestionCard from "./QuestionCard";
 import GameOver from "./GameOver";
 import { resetRound } from "../store/gameSlice";
-import { spendLife, addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement, grantPowerup } from "../store/statsSlice";
+import { addXp, addCoins, recordGame, submitGame, unlockAchievement, markAchievement, grantPowerup } from "../store/statsSlice";
 import { awardLocal } from "../store/badgesSlice";
 import { setView, pushToast } from "../store/uiSlice";
 import { safeNavigate } from "../utils/navigate";
@@ -48,10 +48,15 @@ export default function Play() {
     const user = auth.user;
 
     const xpGained = Math.round(game.score / 10) + game.correct * 10;
-    const coinsGained = game.correct * 8 + (game.bestStreakRun >= 5 ? 25 : 0);
+    // Base coin reward — what the previous version sent to the server.
+    // Tracked separately from the FULL total so we know how much to
+    // add locally for the base portion (the per-question + 5/correct
+    // was already credited in QuestionCard as each question landed,
+    // and the achievement/level-up bonuses are added below).
+    const baseCoinsGained = game.correct * 8 + (game.bestStreakRun >= 5 ? 25 : 0);
     const prevLevel = stats.level;
     dispatch(addXp(xpGained));
-    dispatch(addCoins(coinsGained));
+    dispatch(addCoins(baseCoinsGained));
     dispatch(recordGame({ correct: game.correct, incorrect: game.incorrect, best_streak_run: game.bestStreakRun }));
 
     const unlockedIds = new Set(stats.achievements.map((a) => a.achievement_id));
@@ -67,6 +72,7 @@ export default function Play() {
     if (nextLevel >= 10) tryUnlock("level_10");
     if (nextLevel >= 25) tryUnlock("level_25");
 
+    let achievementCoins = 0;
     newlyUnlocked.forEach((id) => {
       const def = ACHIEVEMENT_MAP[id];
       // markAchievement both records the unlock AND pushes onto the
@@ -76,13 +82,18 @@ export default function Play() {
       // no longer needed (those now happen inside the component).
       dispatch(markAchievement(id));
       if (user) dispatch(unlockAchievement(id));
-      if (def) dispatch(addCoins(20));
+      if (def) {
+        dispatch(addCoins(20));
+        achievementCoins += 20;
+      }
     });
 
+    let levelUpCoins = 0;
     if (nextLevel > prevLevel) {
       sfx.levelup();
       const reward = nextLevel * 50;
       dispatch(addCoins(reward));
+      levelUpCoins = reward;
       dispatch(grantPowerup({ id: "freeze", count: 1 }));
       dispatch(pushToast({ icon: "🆙", title: `Level ${nextLevel}!`, text: `+${reward} 🪙 and a freeze power-up`, duration: 3500 }));
     }
@@ -104,16 +115,34 @@ export default function Play() {
       sfx.lose();
       haptic.heavy();
     }
-    if (failed && !stats.pro) dispatch(spendLife());
+    // NOTE: client-side spendLife() removed intentionally. The server
+    // now decrements free_spins atomically inside /stats/game using
+    // the `free_spins_spent` flag below, and its loadStats response
+    // carries the post-decrement count. Previously spendLife wrote
+    // locally and was IMMEDIATELY overwritten by submitGame's response
+    // (which had the stale pre-decrement free_spins) — every failure
+    // appeared to "restore" the spent spin. Bug fixed by routing the
+    // debit through the same write that already updates the row.
 
     if (user) {
+      // Send the FULL coin total — every stream that was previously
+      // added only client-side (per-question +5 from QuestionCard,
+      // achievement +20s, level-up reward) now goes to the server so
+      // a page refresh / fetchStats doesn't roll the coin count back
+      // to "base only". Per-question +5 has already been credited
+      // locally during the game, so we add it to the gained total here.
+      const perQuestionCoins = game.correct * 5;
+      const totalCoinsGained =
+        baseCoinsGained + perQuestionCoins + achievementCoins + levelUpCoins;
       dispatch(submitGame({
         score: game.score,
         correct: game.correct,
         incorrect: game.incorrect,
         xp_gained: xpGained,
-        coins_gained: coinsGained,
+        coins_gained: totalCoinsGained,
         best_streak_run: game.bestStreakRun,
+        // Server-side atomic decrement — see the comment above.
+        free_spins_spent: failed && !stats.pro ? 1 : 0,
         // Send the round's category so the server can mark it
         // played-today and drive the "play N different categories"
         // daily quest. Without this, those quests were unwinnable

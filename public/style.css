@@ -1565,45 +1565,60 @@ img.tw-avatar { background: none; }
 /* ── Tethered cosmetic pointer ──
    Cosmetic art "hangs" from the same metallic pivot dome as the
    default pointer. Three parts:
-     1. Anchor — the original ::after dome (we keep it visible)
-     2. Tether — the ::before pseudo, slimmed to a hanging stem
-     3. Charm — the PNG itself, positioned just below the tether
-   This makes any cosmetic (dragon, star, crown) read as a CHARM
-   on a pivot — same metaphor as the default flap, no per-PNG art
-   changes needed. */
+     1. Anchor — the ::after dome, slightly enlarged so it reads as
+        a substantial fixture next to the bigger cosmetic charm
+     2. Tether — the ::before pseudo, absolutely positioned as a
+        chunky brass stem with ~4 px of visible stem between dome
+        and charm so the chain of connection is unambiguous
+     3. Charm — the PNG, sized 64×48 (much more pronounced than the
+        old 50×44) and OVERLAPPING the bottom of the tether so the
+        attachment point is hidden inside the art (looks fastened
+        to the stem rather than just floating below it). */
 
-/* Anchor pivot stays visible — overrides the broad "hide everything"
-   default that previously zeroed the dome too. */
-.tw-wheel3d-pointer.has-art::after { display: block; }
+/* Bigger metallic anchor — same gradient as default, scaled up and
+   nudged slightly to the left so it visually grips the wheel rim. */
+.tw-wheel3d-pointer.has-art::after {
+  display: block;
+  top: -8px;
+  width: 22px;
+  height: 22px;
+}
 
-/* Slim metallic tether — replaces the full yellow flap. Same gradient
-   palette as the dome so the anchor + tether read as one cast piece.
-   Sits just below the dome; the cosmetic charm hangs at the bottom. */
+/* Brass tether — absolutely positioned so its top is INSIDE the dome
+   (2 px overlap = visually fastened to it), and the charm overlaps
+   the bottom 4 px so the joint is hidden behind the art. Net visible
+   stem between dome and charm: ~4 px — small but unambiguous. */
 .tw-wheel3d-pointer.has-art::before {
   content: "";
   display: block;
-  width: 5px;
-  height: 14px;
-  margin: 4px auto 0;
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: 7px;
+  height: 10px;
+  margin: 0;
+  transform: translateX(-50%);
   background: linear-gradient(180deg, #fde68a 0%, #b45309 100%);
   border-radius: 2px;
   border: 1px solid rgba(0, 0, 0, 0.4);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
-/* Equipped pointer PNG — the "charm". Hangs from the tether so the
-   reading order is: pivot dome (anchor) → slim stem (tether) →
-   cosmetic art (charm). Bottom edge stays within the original 60-px
-   flap envelope (top 22 + height 44 = 66 ≈ original flap depth) so
-   the charm never overlaps wheel slices. object-fit:contain
-   preserves aspect (1024×1280 dragon won't squash). Inherits the
+/* Equipped pointer PNG — the "charm". Top intentionally OVERLAPS the
+   tether's bottom 4 px so the charm reads as fastened to the stem,
+   not floating below it. Width bumped 50 → 64 and height 44 → 48 so
+   the cosmetic art has real visual weight against the bigger anchor.
+   Bottom edge at top 18 + height 48 = 66 — within the safe band
+   above the segment text labels (which sit ~80 px down from the
+   wheel-wrap top on a 460-px wheel). object-fit:contain preserves
+   aspect so a 1024×1280 dragon doesn't squash. Inherits the
    parent's `.flicking` transform so the charm swings on peg strikes. */
 .tw-wheel3d-pointer-art {
   position: absolute;
   left: 50%;
-  top: 22px;
-  width: 50px;
-  height: 44px;
+  top: 18px;
+  width: 64px;
+  height: 48px;
   object-fit: contain;
   object-position: center top;
   transform: translateX(-50%);

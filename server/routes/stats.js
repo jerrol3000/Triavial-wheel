@@ -759,12 +759,25 @@ router.post("/game", requireAuth, (req, res) => {
   const body = req.body || {};
   // Clamp every numeric input so a malicious client can't write huge
   // values into the leaderboard. Hard caps cover the largest plausible
-  // single-round outcome (10 questions × hard difficulty × multipliers).
+  // single-round outcome (10 questions × hard difficulty × multipliers
+  // × all bonus streams: base + per-question + achievements + level-up).
   const score        = clampInt(body.score,           0, 20000);
   const correct      = clampInt(body.correct,         0, 50);
   const incorrect    = clampInt(body.incorrect,       0, 50);
   const xp_gained    = clampInt(body.xp_gained,       0, 5000);
-  const coins_gained = clampInt(body.coins_gained,    0, 5000);
+  // Cap bumped 5000 → 10000 so the FULL coin total (base + every
+  // local-only bonus the client was previously dropping on the floor)
+  // fits without silent truncation. Max realistic round = 10 correct
+  // × 13 (8 base + 5 per-Q) + 25 streak + 3 achievements × 20 +
+  // level-up 50·25 ≈ 1500 — well under 10k even pathologically.
+  const coins_gained = clampInt(body.coins_gained,    0, 10000);
+  // free_spins_spent: 0 or 1 — set by the client when the round
+  // failed (Play.js > FAILURE_THRESHOLD). Server is the source of
+  // truth for free_spins; previously the client's spendLife() decrement
+  // was silently overwritten by the loadStats response which carried
+  // the stale pre-decrement count. Now the same /stats/game call
+  // does both the game-state update AND the spin debit atomically.
+  const free_spins_spent = clampInt(body.free_spins_spent, 0, 1);
   const best_streak_run = clampInt(body.best_streak_run, 0, 50);
   const category_id  = body.category_id != null ? Number(body.category_id) : null;
   const now = Date.now();
@@ -787,6 +800,18 @@ router.post("/game", requireAuth, (req, res) => {
     powerupsUpdate = JSON.stringify(p);
   }
 
+  // Atomic spin debit. Only debits if the player actually has the
+  // spin to spend (clamped via MAX(0, free_spins - ?)) and only when
+  // not Pro. Also restamps free_spins_updated_at IFF the spend lands
+  // at the regen floor — that's the moment regen starts ticking.
+  const isPro = !!(stats.pro_until && stats.pro_until > now);
+  const spinsToDebit = (!isPro && free_spins_spent > 0) ? 1 : 0;
+  const newFreeSpins = Math.max(0, (stats.free_spins || 0) - spinsToDebit);
+  const newSpinsUpdatedAt =
+    (spinsToDebit > 0 && (stats.free_spins || 0) === SPIN_REGEN_FLOOR)
+      ? now
+      : (stats.free_spins_updated_at || now);
+
   db.prepare(`
     UPDATE stats SET
       xp = ?, level = ?,
@@ -796,9 +821,18 @@ router.post("/game", requireAuth, (req, res) => {
       incorrect = incorrect + ?,
       best_streak = ?,
       powerups_json = ?,
+      free_spins = ?,
+      free_spins_updated_at = ?,
       updated_at = ?
     WHERE user_id = ?
-  `).run(newXp, newLevel, Math.max(0, Math.floor(coins_gained)), Math.max(0, correct), Math.max(0, incorrect), newBest, powerupsUpdate, now, req.user.id);
+  `).run(
+    newXp, newLevel,
+    Math.max(0, Math.floor(coins_gained)),
+    Math.max(0, correct), Math.max(0, incorrect),
+    newBest, powerupsUpdate,
+    newFreeSpins, newSpinsUpdatedAt,
+    now, req.user.id
+  );
 
   // Per-category mastery.
   if (category_id) {

@@ -17,6 +17,7 @@ import { addCoins, fetchStats } from "../store/statsSlice";
 import { resetRound } from "../store/gameSlice";
 import { rt } from "../realtime/client";
 import { api, getToken } from "../api/client";
+import { confirmDialog } from "./confirm";
 
 // Apply the server-side quit penalty AND keep the local UI snappy.
 // The spin was already debited up-front in Home.onSpin via
@@ -35,7 +36,7 @@ function applyQuitPenalty(dispatch, context, opts = {}) {
 }
 
 export function safeNavigate(targetView) {
-  return (dispatch, getState) => {
+  return async (dispatch, getState) => {
     const state = getState();
     const view = state.ui.view;
     const game = state.game;
@@ -50,21 +51,40 @@ export function safeNavigate(targetView) {
     const inOnlinePreGame  = view === "online" && online.room && !online.room.started && !online.room.finished;
     const inMulti    = view === "multi"  && game.questions.length > 0 && !game.finished;
 
-    const isPro = !!state.stats.pro;
     const isSupporter = !!perks.is_supporter;
-    const lifeLost = isPro ? "" : " −1 life";
 
     if (inSoloGame) {
-      if (!confirm("Quit this round? You'll lose 5 coins.")) return;
+      if (!(await confirmDialog(dispatch, {
+        icon: "💔",
+        title: "Quit this round?",
+        message: "You'll lose 5 coins as an abandonment fee. Your spin is already spent.",
+        confirmText: "Quit round",
+        cancelText: "Keep playing",
+        destructive: true,
+      }))) return;
       applyQuitPenalty(dispatch, "solo", { localCoinPenalty: 5 });
       dispatch(pushToast({ icon: "💔", title: "Round abandoned", text: "−5 coins" }));
       dispatch(resetRound());
     } else if (inDaily) {
-      if (!confirm("Forfeit today's daily? No rewards earned.")) return;
+      if (!(await confirmDialog(dispatch, {
+        icon: "📅",
+        title: "Forfeit today's daily?",
+        message: "No rewards earned for today's challenge, and your daily streak will break.",
+        confirmText: "Forfeit",
+        cancelText: "Keep playing",
+        destructive: true,
+      }))) return;
       dispatch(pushToast({ icon: "📅", title: "Daily forfeited", text: "No rewards" }));
       dispatch(resetRound());
     } else if (inOnlineMidMatch) {
-      if (!confirm("Forfeit the match? Rating drops sharply.")) return;
+      if (!(await confirmDialog(dispatch, {
+        icon: "💔",
+        title: "Forfeit the match?",
+        message: "Rating drops sharply (−30) and the win is awarded to your opponent.",
+        confirmText: "Forfeit",
+        cancelText: "Stay in match",
+        destructive: true,
+      }))) return;
       dispatch(pushToast({ icon: "💔", title: "Match forfeit", text: "−30 rating" }));
       try { rt.send({ type: "leave_room" }); } catch (e) {}
     } else if (inOnlinePreGame) {
@@ -72,16 +92,30 @@ export function safeNavigate(targetView) {
       const freeRem = isSupporter ? "unlimited" : Math.max(0, (perks.free_skips_per_day || 1) - (perks.skips_today || 0));
       const willPenalize = !isSupporter && (perks.skips_today || 0) >= (perks.free_skips_per_day || 1);
       const msg = isSupporter
-        ? "Leave the matchmaking room?"
+        ? "Leave the matchmaking room? Supporters get unlimited free skips."
         : willPenalize
-          ? `Leave the matchmaking room? Costs ${perks.skip_rating_penalty || 5} rating (you've used your free skip today). Supporters get unlimited skips — see Shop.`
-          : `Leave the matchmaking room? Your first skip today is free (${freeRem} remaining).`;
-      if (!confirm(msg)) return;
+          ? `Costs ${perks.skip_rating_penalty || 5} rating — you've used your free skip today. Supporters get unlimited skips (see Shop).`
+          : `Your first skip today is free (${freeRem} remaining).`;
+      if (!(await confirmDialog(dispatch, {
+        icon: "🚪",
+        title: "Leave matchmaking?",
+        message: msg,
+        confirmText: "Leave",
+        cancelText: "Stay",
+        destructive: willPenalize,
+      }))) return;
       // Server will apply rating penalty if applicable and reply via "left_room".
       try { rt.send({ type: "leave_room" }); } catch (e) {}
       // The Online view will surface the actual penalty via toast on left_room.
     } else if (inMulti) {
-      if (!confirm("Quit the pass-and-play match? Scores are lost.")) return;
+      if (!(await confirmDialog(dispatch, {
+        icon: "💔",
+        title: "Quit pass-and-play?",
+        message: "Both players' scores will be lost.",
+        confirmText: "Quit match",
+        cancelText: "Keep playing",
+        destructive: true,
+      }))) return;
       dispatch(pushToast({ icon: "💔", title: "Match abandoned", text: "Scores lost" }));
       dispatch(resetRound());
     }

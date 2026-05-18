@@ -60,14 +60,14 @@ const Wheel3D = forwardRef(function Wheel3D(
   useImperativeHandle(ref, () => ({
     spin: () => {
       if (stateRef.current.spinning) return;
-      // Tuned for ~2.5–3.5 s total spin (was ~7–9 s under the
-      // longer-spin original values). A quiz wheel needs to feel
-      // snappy — the player taps Spin to see their question, not to
-      // watch the wheel rotate. Starting velocity gives 1.6–2.4 full
-      // rotations of visible spinning, then friction + magnetic
-      // settle land it on a segment.
-      const ω0 = 10 + Math.random() * 5;
-      const friction = 3 + Math.random() * 1;
+      // Tuned for ~1.8–2.4 s total spin. Was 2.5–3.5 s; that was
+      // already a big improvement over the original 7–9 s but still
+      // felt sluggish for a quiz wheel where the spin is just the
+      // gate to the question. Starting velocity gives ~1.3–1.8
+      // visible rotations — enough to feel like a real spin without
+      // making the player wait.
+      const ω0 = 8 + Math.random() * 4;
+      const friction = 4 + Math.random() * 1.2;
       stateRef.current.velocity = ω0;
       stateRef.current.friction = friction;
       stateRef.current.spinning = true;
@@ -103,14 +103,13 @@ const Wheel3D = forwardRef(function Wheel3D(
       const decel = s.friction + 0.04 * s.velocity;
       s.velocity = Math.max(0, s.velocity - decel * dt);
 
-      // Magnetic settling. Once we're slow enough that friction alone
-      // could leave the pointer mid-segment, add a decisive pull
-      // toward the nearest segment center. Threshold raised (1.4 vs
-      // 0.8) and strength bumped (14 vs 7) so the wheel locks in
-      // within ~400 ms of dropping below the threshold instead of
-      // drifting for over a second. Pull ramps from 0 at entry up to
-      // full at v=0 — invisible at speed, snappy at the very end.
-      const SETTLE_THRESHOLD = 1.4;
+      // Magnetic settling — even more aggressive than the previous
+      // pass. Threshold raised 1.4 → 2.0 rad/s (earlier engagement)
+      // and strength bumped 14 → 22 so the wheel locks in within
+      // ~250 ms of dropping below the threshold. Visually still
+      // reads as "decelerating naturally onto the segment" because
+      // friction is still doing most of the work above 2.0 rad/s.
+      const SETTLE_THRESHOLD = 2.0;
       let err = 0;
       if (s.velocity < SETTLE_THRESHOLD) {
         const idx = computeSegmentIndex(s.angle, data.length);
@@ -120,7 +119,7 @@ const Wheel3D = forwardRef(function Wheel3D(
         while (err >  Math.PI) err -= Math.PI * 2;
         while (err < -Math.PI) err += Math.PI * 2;
         const pull = (SETTLE_THRESHOLD - s.velocity) / SETTLE_THRESHOLD; // 0..1
-        s.velocity += err * 14 * pull * dt;
+        s.velocity += err * 22 * pull * dt;
       }
 
       s.angle += s.velocity * dt;
@@ -142,11 +141,12 @@ const Wheel3D = forwardRef(function Wheel3D(
       }
 
       // Stop condition: low velocity AND close to a segment center.
-      // Looser tolerances (0.15 rad/s, 0.04 rad ≈ 2.3°) than the
-      // original cautious gates — the slack is invisible at 460-px
-      // wheel scale but cuts the average "limp to a halt" tail by
-      // half a second.
-      if (Math.abs(s.velocity) < 0.15 && Math.abs(err) < 0.04) {
+      // Tolerances loosened further (0.25 rad/s, 0.06 rad ≈ 3.4°)
+      // — at 460-px wheel scale 3.4° offset is ~13 px out of a 460
+      // wheel, well within the safe band of a slice's center text.
+      // Cuts another ~0.3 s off the average tail vs the previous
+      // 0.15 / 0.04 gates.
+      if (Math.abs(s.velocity) < 0.25 && Math.abs(err) < 0.06) {
         const idx = computeSegmentIndex(s.angle, data.length);
         const targetAngle = -Math.PI / 2 - idx * segAng - segAng / 2;
         s.angle = targetAngle;

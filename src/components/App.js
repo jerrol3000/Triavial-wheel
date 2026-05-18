@@ -14,6 +14,7 @@ import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
 import PublicProfile from "./PublicProfile";
+import ConfirmModal from "./ConfirmModal";
 import Toasts from "./Toasts";
 import BadgeUnlock from "./BadgeUnlock";
 import AchievementUnlock from "./AchievementUnlock";
@@ -151,6 +152,7 @@ export default function App() {
         {modal && typeof modal === "object" && modal.name === "dailyBonus" && <DailyBonusModal data={modal.data} />}
         {modal && typeof modal === "object" && modal.name === "adReward" && <AdRewardModal reward={modal.data?.reward} />}
         {modal && typeof modal === "object" && modal.name === "publicProfile" && <PublicProfile userId={modal.data?.userId} />}
+        {modal && typeof modal === "object" && modal.name === "confirm" && <ConfirmModal data={modal.data} />}
         <InstallPrompt />
         <Toasts />
         {/* Full-screen badge unlock celebration. Mounts at app root

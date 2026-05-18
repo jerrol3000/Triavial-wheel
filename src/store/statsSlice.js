@@ -385,15 +385,10 @@ const slice = createSlice({
        persist(merged);
        return merged;
      })
-     .addCase(useFreeSpin.rejected, (s) => {
-       // Server rejected the debit (most likely the client thought it
-       // had a spin but the DB disagreed — sync race). The optimistic
-       // local consume already happened in Home.onSpin; without a
-       // server confirmation it'd survive until the next /stats fetch
-       // and look like a free spin. Roll the optimistic spend back
-       // here so the visible count immediately matches reality.
-       if (!s.pro) s.free_spins = (s.free_spins || 0) + 1;
-       persist(s);
+     .addCase(useFreeSpin.rejected, () => {
+       // Pessimistic model — no optimistic update to roll back. The
+       // caller in Home.onSpin handles the rejected status by showing
+       // a toast and NOT starting the wheel. State is untouched here.
      })
      .addCase(fetchLeaderboard.fulfilled, (s, a) => {
        s.leaderboard = a.payload;

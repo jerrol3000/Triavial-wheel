@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { rt } from "../realtime/client";
 import { pushToast } from "../store/uiSlice";
+import { confirmDialog } from "../utils/confirm";
 
 const PRESETS = ["GG!", "Nice try!", "Good luck!", "👋", "Tough one!", "You got this!"];
 const REACTIONS = ["👋","👏","🔥","😢","🎉","💪","🤔","😱","💯"];
@@ -42,8 +43,15 @@ export default function ChatPanel({ disabled = false }) {
     if (disabled) return;
     rt.send({ type: "reaction", emoji });
   };
-  const report = (m) => {
-    if (!confirm("Report this message to moderators?")) return;
+  const report = async (m) => {
+    if (!(await confirmDialog(dispatch, {
+      icon: "🛡️",
+      title: "Report this message?",
+      message: "A moderator will review the message and take action if it violates community rules.",
+      confirmText: "Report",
+      cancelText: "Cancel",
+      destructive: true,
+    }))) return;
     rt.send({ type: "report_message", messageId: m.id, reason: "user_reported" });
     dispatch(pushToast({ icon: "🛡️", title: "Reported", text: "Thanks — a moderator will review." }));
   };

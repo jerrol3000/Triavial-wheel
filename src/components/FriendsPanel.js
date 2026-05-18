@@ -5,6 +5,7 @@ import { pushToast, setModal, setView } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { rt } from "../realtime/client";
 import { sfx } from "../utils/sound";
+import { confirmDialog } from "../utils/confirm";
 import OtherAvatar from "./OtherAvatar";
 import Icon from "./Icon";
 import { EmptyFriendsIcon, GiftIcon } from "./SvgIcons";
@@ -70,7 +71,14 @@ export default function FriendsPanel({ compact = false }) {
     catch (e) {}
   };
   const remove = async (id) => {
-    if (!confirm("Remove this friend?")) return;
+    if (!(await confirmDialog(dispatch, {
+      icon: "👋",
+      title: "Remove this friend?",
+      message: "You can always send another friend request later.",
+      confirmText: "Remove",
+      cancelText: "Cancel",
+      destructive: true,
+    }))) return;
     try { await api.delete(`/friends/${id}`); load(); }
     catch (e) { dispatch(pushToast({ icon: "⚠️", title: "Failed" })); }
   };

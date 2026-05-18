@@ -8,6 +8,7 @@ import {
 } from "../store/onlineSlice";
 import { setView, setModal, pushToast } from "../store/uiSlice";
 import { fetchStats, markAchievement, unlockAchievement } from "../store/statsSlice";
+import { confirmDialog } from "../utils/confirm";
 import ChatPanel from "./ChatPanel";
 import Icon from "./Icon";
 import { PlayerFlair } from "./PlayerFlair";
@@ -322,14 +323,20 @@ function LiveMatch() {
   const startingSoon = !room.started && room.players.filter(Boolean).length === 2;
   const countdown = room.questionEndsAt ? Math.max(0, Math.ceil((room.questionEndsAt - Date.now()) / 1000)) : null;
 
-  const leave = () => {
+  const leave = async () => {
     // Pre-game (room exists but match not yet started): plain leave, no penalty.
     if (!room.started || room.finished) {
-      if (!confirm("Leave room?")) return;
+      if (!(await confirmDialog(dispatch, {
+        icon: "🚪",
+        title: "Leave room?",
+        message: "You'll return to the home screen.",
+        confirmText: "Leave",
+        cancelText: "Stay",
+      }))) return;
       rt.send({ type: "leave_room" });
       return;
     }
-    // Mid-match: full forfeit penalty (−1 life + server-side rating drop).
+    // Mid-match: full forfeit penalty (rating drop + opponent gets the win).
     dispatch(safeNavigate("home"));
   };
 
@@ -387,9 +394,16 @@ function LiveMatch() {
   }
 
   const isFriendly = room.kind === "private";
-  const skipOpponent = () => {
+  const skipOpponent = async () => {
     if (isFriendly) return;
-    if (!confirm("Skip this opponent? You'll take a rating hit (free once a day for non-supporters).")) return;
+    if (!(await confirmDialog(dispatch, {
+      icon: "⏭️",
+      title: "Skip this opponent?",
+      message: "You'll take a rating hit. Free once a day for non-supporters.",
+      confirmText: "Skip",
+      cancelText: "Stay",
+      destructive: true,
+    }))) return;
     rt.send({ type: "skip_opponent" });
   };
 

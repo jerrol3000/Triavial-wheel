@@ -272,6 +272,42 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
 }
 
+/* ── Custom confirm modal (replaces native window.confirm) ──
+   Compact variant of the standard modal — narrower, denser, with a
+   header row that pairs an optional emoji icon with the title. Used
+   for quit prompts, forfeits, and any other "are you sure" flow that
+   used to fall back to the browser-styled OS dialog. */
+.tw-confirm-modal { max-width: 380px; padding: 22px; }
+.tw-confirm-head {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 10px;
+}
+.tw-confirm-icon { font-size: 28px; line-height: 1; }
+.tw-confirm-title {
+  font-family: Fredoka, system-ui, sans-serif;
+  font-size: 18px; font-weight: 700; color: #fff;
+}
+.tw-confirm-body {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+.tw-confirm-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+}
+.tw-confirm-actions .tw-btn { padding: 8px 18px; min-width: 96px; }
+/* Destructive variant — the "Quit" button on a forfeit, etc.
+   Red gradient telegraphs the irreversible action without needing
+   the user to read the label twice. */
+.tw-btn.danger {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  border: none;
+  color: #fff;
+}
+.tw-btn.danger:hover { filter: brightness(1.08); }
+.tw-btn.danger:active { transform: scale(0.97); }
+
 .tw-nav {
   position: fixed; bottom: 0; left: 0; right: 0;
   display: flex; justify-content: space-around;

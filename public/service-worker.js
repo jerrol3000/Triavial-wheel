@@ -1,9 +1,8 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v5: ship the server-authoritative spin debit. Force evict so any
-// browser holding v4 code (which didn't call /use-free-spin on the
-// wheel click) refreshes onto the new bundle that does.
-const CACHE = "trivia-wheel-v5";
+// v6: bulletproof spin debit — await server before wheel spins +
+// custom confirm modal + tighter wheel physics. Force-evict.
+const CACHE = "trivia-wheel-v6";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

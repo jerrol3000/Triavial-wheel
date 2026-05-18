@@ -7,7 +7,7 @@ import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
 import { setView, pushToast, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed, markAchievement, unlockAchievement, consumeFreeSpin, useFreeSpin } from "../store/statsSlice";
+import { markCategoryPlayed, markAchievement, unlockAchievement, useFreeSpin } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
 import LiveLeaderboard from "./LiveLeaderboard";
@@ -127,7 +127,7 @@ export default function Home() {
     dispatch(setView("play"));
   };
 
-  const onSpin = () => {
+  const onSpin = async () => {
     if (spinning) return;
     // Hard wall for guests at GUEST_HARD_LIMIT rounds. Opens the auth
     // modal directly so the upgrade path is one click away.
@@ -144,22 +144,30 @@ export default function Home() {
       return;
     }
     setSpinning(true);
-    // Optimistic local decrement so the banner reflects the spend
-    // immediately (no perceptible lag between click and visible
-    // change). The server call below is the source of truth — its
-    // response will overwrite this local value with the authoritative
-    // count from the DB, so any race/desync self-heals within one
-    // round-trip. Without this server call the local change was the
-    // ONLY change happening, and a page refresh would restore the
-    // pre-spin count from the still-untouched DB.
-    if (user && !stats.pro) dispatch(consumeFreeSpin());
+    // PESSIMISTIC: await the server's atomic debit BEFORE starting the
+    // wheel. Earlier "optimistic local + background sync" model had a
+    // race where a fast page refresh during the in-flight POST could
+    // restore the spin (server hadn't written yet, fetchStats on boot
+    // returned the pre-debit count). Awaiting eliminates the race
+    // completely — the server is the only source of truth, and the
+    // wheel can't even begin until the DB row is updated. The thunk's
+    // .fulfilled reducer merges the server's post-debit stats so the
+    // banner reflects the new count BEFORE the wheel starts.
+    if (user) {
+      const r = await dispatch(useFreeSpin());
+      if (r.meta.requestStatus !== "fulfilled") {
+        setSpinning(false);
+        const err = r.payload;
+        dispatch(pushToast({
+          icon: "⚠️",
+          title: err === "no_free_spins" ? "Out of spins" : "Couldn't spin",
+          text: err === "no_free_spins" ? "Visit the Store to top up." : "Try again in a moment.",
+        }));
+        return;
+      }
+    }
     if (wheelRef.current) wheelRef.current.spin();
     try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
-    // Fire the atomic server debit. The thunk's extraReducer merges
-    // the authoritative post-debit stats row in the same response —
-    // no follow-up /stats fetch needed. On rejection the extraReducer
-    // rolls the optimistic local decrement back automatically.
-    if (user) dispatch(useFreeSpin());
   };
 
   const onWheelStop = (winningIdx) => {
@@ -167,8 +175,15 @@ export default function Home() {
     setFlash(true);
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    flashTimerRef.current = setTimeout(() => setFlash(false), 320);
-    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 420);
+    // Tightened: flash 320 → 200 ms, nav delay 420 → 250 ms. The
+    // flash still registers visually (one heartbeat at 60 fps is
+    // ~17 ms; 200 ms is ~12 frames) and the navigation pause is now
+    // just long enough to feel like "the wheel landed and I'm
+    // going to the question" instead of "the wheel landed and I'm
+    // waiting for something to happen". Total click-to-question
+    // shortened by ~300 ms.
+    flashTimerRef.current = setTimeout(() => setFlash(false), 200);
+    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 250);
   };
 
   return (

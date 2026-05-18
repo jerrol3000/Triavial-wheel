@@ -1,9 +1,10 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v7: wheel always spins (optimistic local + background server debit);
-// pessimistic await broke the wheel for users on flaky networks.
-// Force-evict.
-const CACHE = "trivia-wheel-v7";
+// v8: server DB migration adds the missing free_spins_updated_at
+// column (which was silently 500-ing every /use-free-spin call →
+// no debits were ever happening server-side). Plus restored
+// realistic wheel speed (~3-4 s, not 1.8-2.4). Force-evict.
+const CACHE = "trivia-wheel-v8";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

@@ -385,16 +385,16 @@ const slice = createSlice({
        persist(merged);
        return merged;
      })
-     .addCase(useFreeSpin.rejected, (s) => {
+     .addCase(useFreeSpin.rejected, (s, a) => {
        // Server rejected (network blip, 401 during a deploy, etc.).
        // The wheel already spun and the local consumeFreeSpin already
-       // decremented — don't roll back here. The next fetchStats will
-       // reconcile if needed (the server's value is the source of
-       // truth). Rolling back here would cause the user to see "I
-       // spun the wheel but my count went back up" — far worse UX
-       // than the rare "I got a free spin once because of a network
-       // hiccup."
-       // Intentional no-op.
+       // decremented — don't roll back state here. The next fetchStats
+       // will reconcile if needed. BUT we surface the error to the
+       // console so a persistent failure (like the SqliteError that
+       // hid the missing free_spins_updated_at migration for several
+       // commits) is visible to anyone with DevTools open instead of
+       // silently dropping debits on the floor.
+       try { console.warn("[useFreeSpin] server rejected:", a.payload || "unknown"); } catch (_) {}
        void s;
      })
      .addCase(fetchLeaderboard.fulfilled, (s, a) => {

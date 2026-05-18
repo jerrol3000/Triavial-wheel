@@ -218,6 +218,14 @@ ensureColumn("users", "language", "TEXT");
 
 // v3 schema additions: free spins economy + online match stats + daily login streak.
 ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 5");
+// Stamps when the player's free_spins last crossed the regen floor —
+// used by /stats/use-free-spin to start the regen clock and by
+// /stats/spin-claim to compute how many ticks of regen are claimable.
+// Without this column, /use-free-spin throws SqliteError "no such
+// column" → 500 → wheel debit silently fails on the deployed DB
+// (the migration was missed in an earlier commit). Default = now so
+// existing rows aren't treated as having infinite regen pending.
+ensureColumn("stats", "free_spins_updated_at", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "last_login_date", "TEXT");
 ensureColumn("stats", "login_streak", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "online_wins", "INTEGER NOT NULL DEFAULT 0");

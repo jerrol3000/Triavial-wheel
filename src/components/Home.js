@@ -163,15 +163,12 @@ export default function Home() {
     setFlash(true);
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    // Tightened: flash 320 → 200 ms, nav delay 420 → 250 ms. The
-    // flash still registers visually (one heartbeat at 60 fps is
-    // ~17 ms; 200 ms is ~12 frames) and the navigation pause is now
-    // just long enough to feel like "the wheel landed and I'm
-    // going to the question" instead of "the wheel landed and I'm
-    // waiting for something to happen". Total click-to-question
-    // shortened by ~300 ms.
-    flashTimerRef.current = setTimeout(() => setFlash(false), 200);
-    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 250);
+    // Flash 280 ms (clearly visible), nav delay 380 ms (long enough
+    // for the player to register WHICH category was selected before
+    // the round screen takes over). Faster than the original 420 ms
+    // but not so snappy that the wheel-stop feels skipped.
+    flashTimerRef.current = setTimeout(() => setFlash(false), 280);
+    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 380);
   };
 
   return (

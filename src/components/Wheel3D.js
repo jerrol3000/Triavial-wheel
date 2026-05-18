@@ -60,14 +60,17 @@ const Wheel3D = forwardRef(function Wheel3D(
   useImperativeHandle(ref, () => ({
     spin: () => {
       if (stateRef.current.spinning) return;
-      // Tuned for ~1.8–2.4 s total spin. Was 2.5–3.5 s; that was
-      // already a big improvement over the original 7–9 s but still
-      // felt sluggish for a quiz wheel where the spin is just the
-      // gate to the question. Starting velocity gives ~1.3–1.8
-      // visible rotations — enough to feel like a real spin without
-      // making the player wait.
-      const ω0 = 8 + Math.random() * 4;
-      const friction = 4 + Math.random() * 1.2;
+      // Tuned for ~3–4 s total spin — a "realistic" wheel-of-fortune
+      // feel. Several iterations:
+      //   original 14-22 ω / 1.6-2.4 f  → 7-9 s   (way too long)
+      //   first cut 10-15 / 3-4          → 2.5-3.5 s (good)
+      //   over-tuned 8-12 / 4-5.2        → 1.8-2.4 s (felt unrealistically fast)
+      //   now: 11-15 / 3.2-4.2           → ~3-4 s  (weighty but not slow)
+      // Initial velocity gives 1.7-2.4 visible rotations — enough for
+      // the player to see the wheel actually pick up speed and slow
+      // down naturally, not just teleport to a category.
+      const ω0 = 11 + Math.random() * 4;
+      const friction = 3.2 + Math.random() * 1.0;
       stateRef.current.velocity = ω0;
       stateRef.current.friction = friction;
       stateRef.current.spinning = true;
@@ -103,13 +106,12 @@ const Wheel3D = forwardRef(function Wheel3D(
       const decel = s.friction + 0.04 * s.velocity;
       s.velocity = Math.max(0, s.velocity - decel * dt);
 
-      // Magnetic settling — even more aggressive than the previous
-      // pass. Threshold raised 1.4 → 2.0 rad/s (earlier engagement)
-      // and strength bumped 14 → 22 so the wheel locks in within
-      // ~250 ms of dropping below the threshold. Visually still
-      // reads as "decelerating naturally onto the segment" because
-      // friction is still doing most of the work above 2.0 rad/s.
-      const SETTLE_THRESHOLD = 2.0;
+      // Magnetic settling. Engages at 1.6 rad/s — late enough that
+      // the deceleration reads as natural friction, early enough
+      // that the magnet locks onto a segment center within ~400 ms
+      // of crossing the threshold. Strength 18 (down from the
+      // over-tuned 22) so the lock feels deliberate, not snappy.
+      const SETTLE_THRESHOLD = 1.6;
       let err = 0;
       if (s.velocity < SETTLE_THRESHOLD) {
         const idx = computeSegmentIndex(s.angle, data.length);
@@ -119,7 +121,7 @@ const Wheel3D = forwardRef(function Wheel3D(
         while (err >  Math.PI) err -= Math.PI * 2;
         while (err < -Math.PI) err += Math.PI * 2;
         const pull = (SETTLE_THRESHOLD - s.velocity) / SETTLE_THRESHOLD; // 0..1
-        s.velocity += err * 22 * pull * dt;
+        s.velocity += err * 18 * pull * dt;
       }
 
       s.angle += s.velocity * dt;

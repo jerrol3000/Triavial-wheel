@@ -1,6 +1,6 @@
 {
-  "name": "Trivia Wheel",
-  "short_name": "Trivia",
+  "name": "Spinlore",
+  "short_name": "Spinlore",
   "description": "Spin the wheel, race the clock, beat your friends.",
   "start_url": "/",
   "display": "standalone",

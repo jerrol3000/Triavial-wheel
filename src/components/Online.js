@@ -363,8 +363,8 @@ function LiveMatch() {
                   }}>📋 Copy code</button>
                 <button className="tw-btn ghost" title="Share via your device's share sheet"
                   onClick={async () => {
-                    const text = `Join my Trivia Wheel match with code: ${room.code}\nhttps://triviawheel.app`;
-                    if (navigator.share) { try { await navigator.share({ title: "Trivia Wheel", text }); } catch (e) {} }
+                    const text = `Join my Spinlore match with code: ${room.code}\nhttps://triviawheel.app`;
+                    if (navigator.share) { try { await navigator.share({ title: "Spinlore", text }); } catch (e) {} }
                     else { try { await navigator.clipboard.writeText(text); dispatch(pushToast({ icon: "📋", title: "Invite copied" })); } catch (e) {} }
                   }}>↗️ Share</button>
               </div>

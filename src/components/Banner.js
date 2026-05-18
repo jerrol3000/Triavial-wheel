@@ -26,11 +26,14 @@ export default function Banner() {
       <button
         className={`tw-logo tw-logo-btn ${notHome ? "back" : ""}`}
         onClick={onHomeClick}
-        title={notHome ? "Back to home" : "Trivia Wheel — home"}
+        title={notHome ? "Back to home" : "Spinlore — home"}
+        aria-label="Spinlore home"
       >
         {notHome && <span className="tw-logo-back-arrow" aria-hidden="true">←</span>}
-        <img src="/logo-no-background.png" alt="" />
-        <span>Trivia&nbsp;Wheel</span>
+        {/* The new SPINLORE logo PNG has the wordmark baked in, so the
+            separate text span next to it would double up. Logo art
+            carries the brand on its own. */}
+        <img src="/logo-no-background.png" alt="Spinlore" />
       </button>
       <div className="tw-row tw-banner-stats">
         {/* Single spins pill — no more lives/free-spins dual display. */}

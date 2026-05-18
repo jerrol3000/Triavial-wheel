@@ -17,5 +17,5 @@ export async function shareText({ title, text, url }) {
 
 export function buildDailyShareText({ date, score, correct, total, results }) {
   const grid = results.map((r) => (r === true ? "🟩" : r === false ? "🟥" : "⬛")).join("");
-  return `Trivia Wheel — Daily ${date}\nScore: ${score}  ·  ${correct}/${total}\n${grid}\nplay → https://triviawheel.app`;
+  return `Spinlore — Daily ${date}\nScore: ${score}  ·  ${correct}/${total}\n${grid}\nplay → https://triviawheel.app`;
 }

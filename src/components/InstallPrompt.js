@@ -67,7 +67,7 @@ export default function InstallPrompt() {
       <div className="tw-row" style={{ gap: 10 }}>
         <span style={{ fontSize: 28 }}>📲</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700 }}>Install Trivia Wheel</div>
+          <div style={{ fontWeight: 700 }}>Install Spinlore</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Plays offline, opens like an app, no ads when Pro.</div>
         </div>
         <button className="tw-btn" onClick={install}>Install</button>

@@ -140,7 +140,7 @@ export default function Daily() {
       total: result.total,
       results: result.perQuestion,
     });
-    const out = await shareText({ title: "Trivia Wheel — Daily", text });
+    const out = await shareText({ title: "Spinlore — Daily", text });
     if (out === "copied") dispatch(pushToast({ icon: "📋", title: "Copied to clipboard" }));
   };
 
@@ -180,7 +180,7 @@ export default function Daily() {
             {result && (
               <>
                 <div className="tw-share-card" style={{ marginTop: 14, fontSize: 18 }}>
-                  {`Trivia Wheel — Daily ${daily.date}\nScore: ${result.score}  ·  ${result.correct}/${result.total}\n${result.perQuestion.map((r) => r === true ? "🟩" : r === false ? "🟥" : "⬛").join("")}`}
+                  {`Spinlore — Daily ${daily.date}\nScore: ${result.score}  ·  ${result.correct}/${result.total}\n${result.perQuestion.map((r) => r === true ? "🟩" : r === false ? "🟥" : "⬛").join("")}`}
                 </div>
                 <button className="tw-btn block" style={{ marginTop: 14 }} onClick={onShare}>Share result</button>
               </>

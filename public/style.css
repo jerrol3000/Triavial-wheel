@@ -105,7 +105,11 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   position: sticky; top: 0; z-index: 10;
 }
 .tw-logo { display: flex; align-items: center; gap: 10px; font-family: "Fredoka"; font-weight: 700; font-size: 20px; color: var(--text); }
-.tw-logo img { width: 32px; height: 32px; }
+/* Logo image bumped 32→52 px now that the wordmark lives inside the
+   PNG itself — the SPINLORE text baked into the art needs more
+   pixels to stay legible at banner size. Drop-shadow lifts it off
+   the translucent banner backdrop. */
+.tw-logo img { width: 52px; height: 52px; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35)); }
 /* The logo is also the Back-to-Home button. When NOT on home, render with a
  * pill background + arrow so its interactivity is obvious. */
 .tw-logo-btn {
@@ -128,7 +132,9 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
 .tw-logo-back-arrow { font-size: 18px; line-height: 1; margin-right: 2px; }
 @media (max-width: 480px) {
   .tw-logo { font-size: 16px; gap: 6px; }
-  .tw-logo img { width: 26px; height: 26px; }
+  /* Logo PNG carries the wordmark on its own now; keep it at 42 px
+     on phones — smaller than desktop's 52 px but still readable. */
+  .tw-logo img { width: 42px; height: 42px; }
   /* Hide the wordmark on the very smallest screens — the logo image
      alone is enough of a brand anchor and saves ~110px of bar width. */
   .tw-logo > span { display: none; }

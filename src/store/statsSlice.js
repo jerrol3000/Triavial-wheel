@@ -141,8 +141,16 @@ export const fetchLeaderboard = createAsyncThunk("stats/leaderboard", async () =
 // (one every 30 min). Spins EARNED or BOUGHT stack ABOVE the floor with
 // no upper cap — regen only tops you back up to 5 if you're below it.
 // Pro players ignore the gate entirely (no decrement, no regen needed).
-const SPIN_REGEN_FLOOR = 5;
-const SPIN_REGEN_MS = 30 * 60 * 1000;
+// Spin regeneration economy — tuned to make the Store + ad-watch
+// the primary spin sources for active players. Was floor=5 / 30min,
+// which gave 240 free spins per day at the regen ceiling — enough
+// that nobody needed the store. Now floor=3 / 60min = 72 free
+// spins/day max. Still doable for casual play, but heavy players
+// or quest hunters now have real incentive to top up via the store
+// or watch an ad. Pro skips the gate entirely (regen + cap don't
+// apply), so the upgrade still feels like the unlimited tier.
+const SPIN_REGEN_FLOOR = 3;
+const SPIN_REGEN_MS = 60 * 60 * 1000;
 
 function persist(state) {
   // achievementUnlockQueue is transient — celebrations should ONLY

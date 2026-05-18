@@ -23,6 +23,7 @@ const TAB_DEFS = [
   { id: "spins",       label: "Spins",         iconName: "free_spin", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
   { id: "bundle",      label: "Bundles",       iconName: "gift", description: "Save by buying multiple items together. Most include bonus spins." },
   { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
+  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Replace the wheel's default pointer with your own style." },
   { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
   { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
   { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
@@ -30,8 +31,11 @@ const TAB_DEFS = [
 ];
 
 // Categories hidden from the store tabs but still present in the catalog
-// (so already-owned items keep working). Featured rotation also skips them.
-const HIDDEN_CATEGORIES = new Set(["pointer"]);
+// (so already-owned items keep working). Featured rotation also skips
+// them. Pointer used to be here but now has its own tab — the cosmetic
+// already renders on the wheel via Wheel3D.js, so making it purchasable
+// completes the loop.
+const HIDDEN_CATEGORIES = new Set([]);
 
 // Deterministic daily rotation — picks 4 items keyed off today's date so
 // every player sees the same featured set today but tomorrow it changes.
@@ -205,18 +209,21 @@ function StoreItemCard({ item, onNeedCoins }) {
       // we wait on fetchStats.
       const coinsAfter = r.payload?.coins_after;
       if (typeof coinsAfter === "number") dispatch(syncCoins(coinsAfter));
-      // Bundles + spin packs are not "unlocked", they're delivered.
-      // Per-category wording so the toast feels right.
+      // Per-category wording. Every variant explicitly says "added
+      // to your inventory" so players know exactly where to find
+      // what they just bought — combined with the bell thank-you
+      // notification the server pushes on success, players get a
+      // clear receipt + a way back to it.
       const isSpins = item.category === "spins";
       const isBundle = item.category === "bundle";
-      const title = isSpins ? `+${item.data?.spins || 0} spins`
+      const title = isSpins ? `+${item.data?.spins || 0} spins added!`
                   : isBundle ? `${item.name} unlocked!`
-                  : `Unlocked ${item.name}!`;
+                  : `${item.name} unlocked!`;
       const text = isSpins ? "Added to your spin bank — happy spinning!"
-                 : item.consumable ? "Tap Use from your inventory."
-                 : isBundle ? "Everything in the pack is yours — check your inventory."
-                 : "Now equipped.";
-      dispatch(pushToast({ icon: "✨", title, text }));
+                 : item.consumable ? "Added to your inventory — tap Use when ready."
+                 : isBundle ? "All items added to your inventory."
+                 : "Added to your inventory and equipped.";
+      dispatch(pushToast({ icon: "🛍️", title, text, duration: 4500 }));
       // Bundles + spin packs change the broader stats picture (spins
       // count + multiple new owns) so a fresh /stats pull is worth
       // the round-trip. Single equippables skip it since we already

@@ -140,6 +140,12 @@ export default function NotificationBell() {
     if (n.actionType === "view_friends") {
       dispatch(setProfileTab("friends"));
       dispatch(setView("profile"));
+    } else if (n.actionType === "view_inventory") {
+      // Purchase thank-you notification → tap takes the player
+      // straight to their inventory so they can equip / use the
+      // new item without hunting for it.
+      dispatch(setProfileTab("inventory"));
+      dispatch(setView("profile"));
     }
   };
 

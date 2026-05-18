@@ -68,6 +68,37 @@ router.post("/buy", requireAuth, (req, res) => {
     if (stats.progressAllQuestsFor) stats.progressAllQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
     else if (stats.progressQuestsFor) stats.progressQuestsFor(req.user.id, [{ metric: "purchases_today", amount: 1 }]);
   } catch (e) {}
+
+  // Push a "thank you" notification to the player's bell — both as
+  // a delightful confirmation AND a permanent inventory receipt
+  // they can revisit. Lists every item delivered (the main one
+  // plus any bundle children) so a bundle purchase shows what was
+  // unlocked rather than just the bundle name.
+  try {
+    const realtime = require("../realtime");
+    if (realtime.sendToUser) {
+      const granted = (result.granted || []).filter((g) => g && g.id && g.id !== result.item.id);
+      const grantedNames = granted.map((g) => g.name).filter(Boolean);
+      const text = grantedNames.length
+        ? `${result.item.name} + ${grantedNames.length} item${grantedNames.length === 1 ? "" : "s"} added to your inventory.`
+        : `${result.item.name} added to your inventory.`;
+      realtime.sendToUser(req.user.id, {
+        type: "notification",
+        notification: {
+          id: `purchase-${result.item.id}-${Date.now()}`,
+          type: "purchase_thanks",
+          icon: "🛍️",
+          title: "Thanks for your purchase!",
+          text,
+          at: Date.now(),
+          actor: null,
+          actionType: "view_inventory",
+          purchasedId: result.item.id,
+        },
+      });
+    }
+  } catch (e) { /* notification best-effort */ }
+
   res.json({ ...result, new_badges: newBadges });
 });
 

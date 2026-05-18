@@ -53,6 +53,7 @@ function CosmeticArt({ item, size = 56 }) {
 
 const EQUIPPABLE_CATS = [
   { id: "frame",       label: "Avatar Frame" },
+  { id: "pointer",     label: "Wheel Pointer" },
   { id: "celebration", label: "Win Celebration" },
   { id: "title",       label: "Username Title" },
 ];

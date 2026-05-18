@@ -361,7 +361,10 @@ function OutOfSpinsCard() {
         <Icon name="free_spin" size={22} /> Out of spins
       </div>
       <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
-      <NextSpinTicker />
+      {/* The "next free spin in m:ss" countdown was removed — it
+          telegraphed exactly how long until the player could spin
+          for free, undercutting the Store + ad-watch paths. Now the
+          out-of-spins card surfaces the spending paths instead. */}
       <div className="tw-out-of-spins-actions">
         {/* Free path is the PRIMARY CTA — no reason to push spending. */}
         <button
@@ -384,34 +387,6 @@ function OutOfSpinsCard() {
   );
 }
 
-// Live-updating "next spin in m:ss" pulled from stats.free_spins_updated_at
-// and the regen interval. Ticks every second via setInterval so the
-// number actually moves without a refresh. Hidden if already at the
-// regen floor or on Pro (no regen needed).
-function NextSpinTicker() {
-  const stats = useSelector((s) => s.stats);
-  // useState bump forces re-render every second so the displayed mm:ss
-  // counts down in real time.
-  const [, setTick] = React.useState(0);
-  React.useEffect(() => {
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-  if (stats.pro) return null;
-  if ((stats.free_spins || 0) >= 5) return null;
-  const elapsed = Date.now() - (stats.free_spins_updated_at || Date.now());
-  const period = 30 * 60 * 1000; // SPIN_REGEN_MS — matches statsSlice
-  const left = Math.max(0, period - (elapsed % period));
-  const m = Math.floor(left / 60000);
-  const s = Math.floor((left % 60000) / 1000);
-  return (
-    <div style={{
-      margin: "6px 0 10px",
-      fontSize: 12,
-      color: "var(--text-dim)",
-      textAlign: "center",
-    }}>
-      ⏳ Next free spin in <strong style={{ color: "var(--text)" }}>{m}:{String(s).padStart(2, "0")}</strong>
-    </div>
-  );
-}
+// NextSpinTicker removed — see OutOfSpinsCard. Revealing the exact
+// regen countdown nudged players to wait instead of spending or
+// watching an ad; gone in favor of the Store + ad-reward CTAs.

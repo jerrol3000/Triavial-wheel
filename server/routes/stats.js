@@ -98,7 +98,12 @@ router.post("/daily-login", requireAuth, (req, res) => {
         newStreak = 1;
       }
       const tier = Math.min(7, newStreak);
-      const spinsReward = tier <= 2 ? 1 : tier <= 5 ? 2 : 3;
+      // Spin reward capped at 1/day so a 30-day login streak no
+      // longer grants 90 free spins. Coins reward keeps its
+      // streak-scaling — coins are easier to spend back on the
+      // store + don't bypass the spin economy. The 7-day login
+      // becomes a small coin bonus pile, not a free-play farm.
+      const spinsReward = 1;
       const coinsReward = Math.min(100, 25 * tier);
       // The single-row guard against double-credit: only update if
       // last_login_date is still NOT today (race-safe).
@@ -200,37 +205,41 @@ router.post("/use-free-spin", requireAuth, (req, res) => {
 const QUEST_TEMPLATES = [
   // Volume — easy daily floor
   { id: "play_3",        text: "Play 3 rounds",                     target: 3,  metric: "rounds_today",         reward: { coins: 30 } },
-  { id: "play_5",        text: "Play 5 rounds",                     target: 5,  metric: "rounds_today",         reward: { coins: 60, free_spins: 1 } },
-  { id: "correct_15",    text: "Get 15 questions right",            target: 15, metric: "correct_today",        reward: { coins: 70 } },
-  { id: "correct_30",    text: "Get 30 questions right",            target: 30, metric: "correct_today",        reward: { coins: 130, free_spins: 1 } },
-  { id: "earn_coins_200",text: "Earn 200 coins from play",          target: 200,metric: "coins_earned_today",   reward: { coins: 50 } },
-  { id: "earn_xp_300",   text: "Earn 300 XP",                       target: 300,metric: "xp_earned_today",      reward: { coins: 60 } },
+  { id: "play_5",        text: "Play 5 rounds",                     target: 5,  metric: "rounds_today",         reward: { coins: 80 } },
+  { id: "correct_15",    text: "Get 15 questions right",            target: 15, metric: "correct_today",        reward: { coins: 90 } },
+  { id: "correct_30",    text: "Get 30 questions right",            target: 30, metric: "correct_today",        reward: { coins: 160, free_spins: 1 } },
+  { id: "earn_coins_200",text: "Earn 200 coins from play",          target: 200,metric: "coins_earned_today",   reward: { coins: 60 } },
+  { id: "earn_xp_300",   text: "Earn 300 XP",                       target: 300,metric: "xp_earned_today",      reward: { coins: 70 } },
 
   // Streak / accuracy — skill plays
-  { id: "streak_5",      text: "Hit a 5-correct streak",            target: 5,  metric: "best_streak_today",    reward: { coins: 60, free_spins: 1 } },
-  { id: "streak_10",     text: "Hit a 10-correct streak",           target: 10, metric: "best_streak_today",    reward: { coins: 120, free_spins: 1 } },
-  { id: "perfect_round", text: "Get a perfect round (10/10)",       target: 1,  metric: "perfect_rounds_today", reward: { coins: 100, free_spins: 2 } },
-  { id: "perfect_round_x2", text: "Get 2 perfect rounds",           target: 2,  metric: "perfect_rounds_today", reward: { coins: 200, free_spins: 2 } },
+  { id: "streak_5",      text: "Hit a 5-correct streak",            target: 5,  metric: "best_streak_today",    reward: { coins: 80 } },
+  { id: "streak_10",     text: "Hit a 10-correct streak",           target: 10, metric: "best_streak_today",    reward: { coins: 150, free_spins: 1 } },
+  { id: "perfect_round", text: "Get a perfect round (10/10)",       target: 1,  metric: "perfect_rounds_today", reward: { coins: 130, free_spins: 1 } },
+  { id: "perfect_round_x2", text: "Get 2 perfect rounds",           target: 2,  metric: "perfect_rounds_today", reward: { coins: 250, free_spins: 1 } },
 
   // Daily / Online — drives the social + ritual hooks
-  { id: "daily_play",    text: "Play today's Daily Challenge",      target: 1,  metric: "daily_played_today",   reward: { coins: 40, free_spins: 1 } },
-  { id: "win_online_1",  text: "Win 1 online match",                target: 1,  metric: "online_wins_today",    reward: { coins: 50, free_spins: 1 } },
-  { id: "win_online_3",  text: "Win 3 online matches",              target: 3,  metric: "online_wins_today",    reward: { coins: 180, free_spins: 2 } },
-  { id: "play_online",   text: "Play 2 online matches",             target: 2,  metric: "online_played_today",  reward: { coins: 50 } },
+  { id: "daily_play",    text: "Play today's Daily Challenge",      target: 1,  metric: "daily_played_today",   reward: { coins: 60 } },
+  { id: "win_online_1",  text: "Win 1 online match",                target: 1,  metric: "online_wins_today",    reward: { coins: 70 } },
+  { id: "win_online_3",  text: "Win 3 online matches",              target: 3,  metric: "online_wins_today",    reward: { coins: 220, free_spins: 1 } },
+  { id: "play_online",   text: "Play 2 online matches",             target: 2,  metric: "online_played_today",  reward: { coins: 60 } },
 
   // Progression — power-up templates removed for now; no server-side
   // tracker increments powerups_used_today, so those would have been
   // unwinnable. Re-add when /stats/powerup-used + a client hook ship.
-  { id: "level_up",      text: "Level up once",                     target: 1,  metric: "level_ups_today",      reward: { coins: 80, free_spins: 1 } },
+  { id: "level_up",      text: "Level up once",                     target: 1,  metric: "level_ups_today",      reward: { coins: 100 } },
 
   // Engagement
+  // Ads — keep these spin-rewarding because ad watches ARE the
+  // revenue path. Players who watch ads should feel rewarded.
   { id: "watch_ad",      text: "Watch 1 reward ad",                 target: 1,  metric: "ads_watched_today",    reward: { coins: 20 } },
   { id: "watch_ads_3",   text: "Watch 3 reward ads",                target: 3,  metric: "ads_watched_today",    reward: { coins: 80, free_spins: 1 } },
-  { id: "spin_wheel_3",  text: "Spin the wheel 3 times",            target: 3,  metric: "spins_today",          reward: { coins: 30 } },
-  { id: "spin_wheel_8",  text: "Spin the wheel 8 times",            target: 8,  metric: "spins_today",          reward: { coins: 100, free_spins: 1 } },
+  { id: "spin_wheel_3",  text: "Spin the wheel 3 times",            target: 3,  metric: "spins_today",          reward: { coins: 40 } },
+  { id: "spin_wheel_8",  text: "Spin the wheel 8 times",            target: 8,  metric: "spins_today",          reward: { coins: 120 } },
 
-  // Spending — gentle nudges to the store
-  { id: "buy_anything",  text: "Buy something from the store",      target: 1,  metric: "purchases_today",      reward: { coins: 50, free_spins: 1 } },
+  // Spending — nudges to the store. The buy-anything quest is the
+  // only daily that still rewards a spin since it directly engages
+  // the store path.
+  { id: "buy_anything",  text: "Buy something from the store",      target: 1,  metric: "purchases_today",      reward: { coins: 60, free_spins: 1 } },
   { id: "category_2",    text: "Play 2 different categories",       target: 2,  metric: "categories_today",     reward: { coins: 40 } },
   { id: "category_4",    text: "Play 4 different categories",       target: 4,  metric: "categories_today",     reward: { coins: 110, free_spins: 1 } },
 ];
@@ -273,36 +282,40 @@ function ensureQuests(userId) {
 // daily progress (which resets every midnight).
 const WEEKLY_QUEST_TEMPLATES = [
   // Volume — multi-day commitments
-  { id: "w_play_25",       text: "Play 25 rounds this week",         target: 25,  metric: "rounds_this_week",        reward: { coins: 250, free_spins: 5 } },
-  { id: "w_play_75",       text: "Play 75 rounds this week",         target: 75,  metric: "rounds_this_week",        reward: { coins: 750, free_spins: 10 } },
-  { id: "w_correct_150",   text: "Get 150 questions right this week",target: 150, metric: "correct_this_week",       reward: { coins: 400, free_spins: 5 } },
-  { id: "w_correct_500",   text: "Get 500 questions right this week",target: 500, metric: "correct_this_week",       reward: { coins: 1000, free_spins: 12 } },
-  { id: "w_earn_coins_2k", text: "Earn 2,000 coins from play",       target: 2000,metric: "coins_earned_this_week",  reward: { coins: 400, free_spins: 5 } },
-  { id: "w_earn_xp_3k",    text: "Earn 3,000 XP this week",          target: 3000,metric: "xp_earned_this_week",     reward: { coins: 500, free_spins: 5 } },
+  // Weekly free_spin rewards halved (and a few zeroed) so a player
+  // who hits 3 weekly quests + 7 daily quests doesn't accumulate
+  // 40+ free spins per week. Coin rewards stay generous since
+  // coins flow back to the store as purchases.
+  { id: "w_play_25",       text: "Play 25 rounds this week",         target: 25,  metric: "rounds_this_week",        reward: { coins: 300, free_spins: 2 } },
+  { id: "w_play_75",       text: "Play 75 rounds this week",         target: 75,  metric: "rounds_this_week",        reward: { coins: 850, free_spins: 5 } },
+  { id: "w_correct_150",   text: "Get 150 questions right this week",target: 150, metric: "correct_this_week",       reward: { coins: 450, free_spins: 2 } },
+  { id: "w_correct_500",   text: "Get 500 questions right this week",target: 500, metric: "correct_this_week",       reward: { coins: 1100, free_spins: 6 } },
+  { id: "w_earn_coins_2k", text: "Earn 2,000 coins from play",       target: 2000,metric: "coins_earned_this_week",  reward: { coins: 500 } },
+  { id: "w_earn_xp_3k",    text: "Earn 3,000 XP this week",          target: 3000,metric: "xp_earned_this_week",     reward: { coins: 600 } },
 
   // Skill / accuracy
-  { id: "w_streak_15",     text: "Hit a 15-correct streak",          target: 15,  metric: "best_streak_this_week",   reward: { coins: 500, free_spins: 5 } },
-  { id: "w_streak_25",     text: "Hit a 25-correct streak",          target: 25,  metric: "best_streak_this_week",   reward: { coins: 1000, free_spins: 10 } },
-  { id: "w_perfect_5",     text: "Get 5 perfect rounds this week",   target: 5,   metric: "perfect_rounds_this_week",reward: { coins: 800, free_spins: 8 } },
+  { id: "w_streak_15",     text: "Hit a 15-correct streak",          target: 15,  metric: "best_streak_this_week",   reward: { coins: 600, free_spins: 2 } },
+  { id: "w_streak_25",     text: "Hit a 25-correct streak",          target: 25,  metric: "best_streak_this_week",   reward: { coins: 1200, free_spins: 5 } },
+  { id: "w_perfect_5",     text: "Get 5 perfect rounds this week",   target: 5,   metric: "perfect_rounds_this_week",reward: { coins: 900, free_spins: 4 } },
 
   // Daily ritual
-  { id: "w_daily_3",       text: "Play the Daily Challenge 3 times", target: 3,   metric: "daily_played_this_week",  reward: { coins: 300, free_spins: 5 } },
-  { id: "w_daily_7",       text: "Complete the Daily every day",     target: 7,   metric: "daily_played_this_week",  reward: { coins: 1500, free_spins: 15 } },
+  { id: "w_daily_3",       text: "Play the Daily Challenge 3 times", target: 3,   metric: "daily_played_this_week",  reward: { coins: 350, free_spins: 2 } },
+  { id: "w_daily_7",       text: "Complete the Daily every day",     target: 7,   metric: "daily_played_this_week",  reward: { coins: 1700, free_spins: 7 } },
 
   // Online / social
-  { id: "w_online_play_5", text: "Play 5 online matches",            target: 5,   metric: "online_played_this_week", reward: { coins: 350, free_spins: 5 } },
-  { id: "w_online_win_5",  text: "Win 5 online matches",             target: 5,   metric: "online_wins_this_week",   reward: { coins: 700, free_spins: 8 } },
-  { id: "w_online_win_15", text: "Win 15 online matches",            target: 15,  metric: "online_wins_this_week",   reward: { coins: 1800, free_spins: 15 } },
+  { id: "w_online_play_5", text: "Play 5 online matches",            target: 5,   metric: "online_played_this_week", reward: { coins: 400, free_spins: 2 } },
+  { id: "w_online_win_5",  text: "Win 5 online matches",             target: 5,   metric: "online_wins_this_week",   reward: { coins: 800, free_spins: 4 } },
+  { id: "w_online_win_15", text: "Win 15 online matches",            target: 15,  metric: "online_wins_this_week",   reward: { coins: 2000, free_spins: 7 } },
 
   // Engagement
-  { id: "w_spin_30",       text: "Spin the wheel 30 times",          target: 30,  metric: "spins_this_week",         reward: { coins: 300, free_spins: 5 } },
-  { id: "w_watch_ads_10",  text: "Watch 10 reward ads",              target: 10,  metric: "ads_watched_this_week",   reward: { coins: 250, free_spins: 5 } },
+  { id: "w_spin_30",       text: "Spin the wheel 30 times",          target: 30,  metric: "spins_this_week",         reward: { coins: 350, free_spins: 2 } },
+  { id: "w_watch_ads_10",  text: "Watch 10 reward ads",              target: 10,  metric: "ads_watched_this_week",   reward: { coins: 280, free_spins: 3 } },
   // Power-ups: see daily templates — removed pending a server-side tracker.
 
   // Exploration / collection
-  { id: "w_categories_all",text: "Play all 10 categories this week", target: 10,  metric: "categories_this_week",    reward: { coins: 600, free_spins: 8 } },
-  { id: "w_buy_2",         text: "Buy 2 things from the store",      target: 2,   metric: "purchases_this_week",     reward: { coins: 400, free_spins: 5 } },
-  { id: "w_level_up_3",    text: "Level up 3 times this week",       target: 3,   metric: "level_ups_this_week",     reward: { coins: 700, free_spins: 8 } },
+  { id: "w_categories_all",text: "Play all 10 categories this week", target: 10,  metric: "categories_this_week",    reward: { coins: 700, free_spins: 4 } },
+  { id: "w_buy_2",         text: "Buy 2 things from the store",      target: 2,   metric: "purchases_this_week",     reward: { coins: 450, free_spins: 2 } },
+  { id: "w_level_up_3",    text: "Level up 3 times this week",       target: 3,   metric: "level_ups_this_week",     reward: { coins: 800, free_spins: 4 } },
 ];
 
 // ISO week key — same week for all timezones because we always use UTC.

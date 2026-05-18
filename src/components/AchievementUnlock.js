@@ -61,6 +61,12 @@ export default function AchievementUnlock() {
 
   return (
     <div
+      // key={currentId} forces React to unmount + remount the toast
+      // between queued items, which re-triggers the slide-in CSS
+      // animation. Without this, a second achievement firing while
+      // a previous one was still on-screen would just text-swap
+      // without any visual transition.
+      key={currentId}
       className={`tw-au-toast ${dismissing ? "leaving" : ""}`}
       onClick={() => setDismissing(true)}
       role="status"

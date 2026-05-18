@@ -82,25 +82,49 @@ export default function Daily() {
     dispatch(addCoins(coinsGained));
     dispatch(recordGame({ correct: game.correct, incorrect: game.incorrect, best_streak_run: game.bestStreakRun }));
 
+    // tryUnlock relies on markAchievement to (a) dedupe + (b) push
+    // onto the AchievementUnlock queue so the slide-in toast fires.
+    // Removed the old inline pushToast since it was double-toasting
+    // every daily-streak unlock (the queue already shows one).
     const tryUnlock = (id) => {
-      if (!stats.achievements.find((a) => a.achievement_id === id)) {
-        const def = ACHIEVEMENT_MAP[id];
-        dispatch(markAchievement(id));
-        if (user) dispatch(unlockAchievement(id));
-        if (def) dispatch(pushToast({ icon: def.icon, title: def.title, text: def.desc, duration: 3500 }));
-      }
+      dispatch(markAchievement(id));
+      if (user) dispatch(unlockAchievement(id));
     };
-    if (stats.current_daily_streak + 1 >= 3) tryUnlock("daily_3");
-    if (stats.current_daily_streak + 1 >= 7) tryUnlock("daily_7");
-    if (stats.current_daily_streak + 1 >= 30) tryUnlock("daily_30");
+
+    // Perfect round inside the Daily: 10/10 questions correct.
+    // Was missing — Play.js fired it for normal rounds but Daily
+    // had its own end-of-round path that skipped the check.
+    if (game.correct === game.questions.length && game.questions.length >= 10) {
+      tryUnlock("perfect_round");
+    }
 
     if (user) {
+      // Use the server-computed `streak` from the submitDaily
+      // response — was previously a `current_daily_streak + 1`
+      // estimate from stale local state, which fired wrong-day or
+      // skipped legitimate unlocks when the local cache lagged the
+      // server (e.g., user skipped a day between sessions).
       dispatch(submitDaily({ score: game.score, correct: game.correct, total: game.questions.length, time_ms: timeMs }))
-        .then(() => dispatch(fetchDailyLeaderboard()));
+        .then((r) => {
+          const newStreak = r?.payload?.streak;
+          if (typeof newStreak === "number") {
+            if (newStreak >= 3) tryUnlock("daily_3");
+            if (newStreak >= 7) tryUnlock("daily_7");
+            if (newStreak >= 30) tryUnlock("daily_30");
+          }
+          dispatch(fetchDailyLeaderboard());
+        });
       dispatch(submitGame({
         score: game.score, correct: game.correct, incorrect: game.incorrect,
         xp_gained: xpGained, coins_gained: coinsGained, best_streak_run: game.bestStreakRun,
       }));
+    } else {
+      // Guest fallback — use the +1 estimate since there's no
+      // server response to read from.
+      const projected = (stats.current_daily_streak || 0) + 1;
+      if (projected >= 3) tryUnlock("daily_3");
+      if (projected >= 7) tryUnlock("daily_7");
+      if (projected >= 30) tryUnlock("daily_30");
     }
     setPhase("result");
   }, [phase, isFinished, dispatch, store]);

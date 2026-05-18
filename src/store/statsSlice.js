@@ -59,12 +59,29 @@ function sanitize(s) {
 }
 
 function mergeStats(local, server) {
+  // UNION achievements (not replace). Players who earned a few
+  // achievements as a guest had them wiped the moment server stats
+  // arrived (e.g., on login or first /stats fetch) because the old
+  // logic was `server.achievements || local.achievements` — server
+  // returns [] for a newly-authed user with no server-side
+  // achievements yet, blowing away the locally-earned ones.
+  const localAch  = Array.isArray(local.achievements)  ? local.achievements  : [];
+  const serverAch = Array.isArray(server.achievements) ? server.achievements : [];
+  const byId = new Map();
+  for (const a of [...localAch, ...serverAch]) {
+    if (!a || !a.achievement_id) continue;
+    // Prefer the earlier unlocked_at when both sides have the row.
+    const existing = byId.get(a.achievement_id);
+    if (!existing || (a.unlocked_at || 0) < (existing.unlocked_at || 0)) {
+      byId.set(a.achievement_id, a);
+    }
+  }
   return sanitize({
     ...local,
     ...server,
     powerups: server.powerups || local.powerups,
     themes: server.themes || local.themes,
-    achievements: server.achievements || local.achievements,
+    achievements: Array.from(byId.values()),
   });
 }
 
@@ -127,7 +144,16 @@ export const fetchLeaderboard = createAsyncThunk("stats/leaderboard", async () =
 const SPIN_REGEN_FLOOR = 5;
 const SPIN_REGEN_MS = 30 * 60 * 1000;
 
-function persist(state) { save(STORAGE_KEY, state); }
+function persist(state) {
+  // achievementUnlockQueue is transient — celebrations should ONLY
+  // play in response to a live unlock during the current session.
+  // Persisting and replaying on reload would surface stale toasts
+  // (e.g., user unlocks something, closes the tab mid-animation,
+  // reopens hours later → toast slides in for no reason). Strip it
+  // before write.
+  const { achievementUnlockQueue, ...rest } = state;
+  save(STORAGE_KEY, rest);
+}
 
 const slice = createSlice({
   name: "stats",

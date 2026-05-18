@@ -7,7 +7,7 @@ import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
 import { setView, pushToast, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed } from "../store/statsSlice";
+import { markCategoryPlayed, markAchievement, unlockAchievement } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
 import LiveLeaderboard from "./LiveLeaderboard";
@@ -112,6 +112,16 @@ export default function Home() {
       }
     }
     dispatch(markCategoryPlayed(cat.id));
+    // all_categories achievement: fires when the player has now
+    // played every category in the CATEGORIES catalog. Compute
+    // against the post-mark set since markCategoryPlayed dedupes
+    // internally — count the union of the existing list + the cat
+    // we just appended to avoid waiting on the next render.
+    const playedSet = new Set([...(stats.categories_played || []), cat.id]);
+    if (playedSet.size >= CATEGORIES.length) {
+      dispatch(markAchievement("all_categories"));
+      dispatch(unlockAchievement("all_categories"));
+    }
     dispatch(startRound({ categoryId: cat.id, mode, isMystery }));
     dispatch(fetchRoundQuestions({ categoryId: cat.id, mode }));
     dispatch(setView("play"));

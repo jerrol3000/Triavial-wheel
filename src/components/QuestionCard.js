@@ -2,10 +2,10 @@ import React, { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { decode } from "html-entities";
 import {
-  tickTimer, answerSelected, nextQuestion, skipQuestion,
+  tickTimer, answerSelected, nextQuestion, skipQuestion, TIME_PER_QUESTION,
   usePowerupFifty, usePowerupFreeze, usePowerupDouble,
 } from "../store/gameSlice";
-import { usePowerup, addCoins } from "../store/statsSlice";
+import { usePowerup, addCoins, markAchievement, unlockAchievement } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { haptic } from "../utils/haptics";
 import { pushToast } from "../store/uiSlice";
@@ -88,8 +88,25 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
     const isCorrect = a === correct;
     sfx[isCorrect ? "correct" : "wrong"]();
     (isCorrect ? haptic.success : haptic.fail)();
+    // Snapshot timeLeft BEFORE dispatching answerSelected (which
+    // freezes the per-question timer). `timeLeft` is the remaining
+    // seconds, so seconds-used = TIME_PER_QUESTION - timeLeft.
+    const secondsToAnswer = Math.max(0, TIME_PER_QUESTION - game.timeLeft);
     dispatch(answerSelected(a));
     if (isCorrect) dispatch(addCoins(5));
+    // first_correct fires the moment you land your first right answer
+    // (was previously only fired at round end via Play.js' aggregate
+    // check — feels delayed). speed_demon fires when a correct
+    // answer comes in under 3 seconds. markAchievement de-dupes
+    // server-side AND client-side so re-firing is harmless.
+    if (isCorrect) {
+      dispatch(markAchievement("first_correct"));
+      dispatch(unlockAchievement("first_correct"));
+      if (secondsToAnswer < 3) {
+        dispatch(markAchievement("speed_demon"));
+        dispatch(unlockAchievement("speed_demon"));
+      }
+    }
     if (onAnswered) onAnswered(isCorrect, a);
   };
 
@@ -110,7 +127,15 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
     if ((powerups[id] || 0) <= 0) return;
     sfx.powerup();
     dispatch(usePowerup(id));
-    if (id === "fifty") dispatch(usePowerupFifty());
+    if (id === "fifty") {
+      dispatch(usePowerupFifty());
+      // The "fifty_used" achievement was never being dispatched
+      // before — it's now the canonical "I tried a power-up" hook.
+      // markAchievement de-dupes internally, so safe to call on every
+      // 50/50 use even after the first.
+      dispatch(markAchievement("fifty_used"));
+      dispatch(unlockAchievement("fifty_used"));
+    }
     if (id === "freeze") dispatch(usePowerupFreeze());
     if (id === "double") {
       dispatch(usePowerupDouble());

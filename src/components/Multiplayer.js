@@ -66,11 +66,16 @@ export default function Multiplayer() {
         sfx.win();
         setPhase("finished");
         const sorted = mp.players.slice().sort((a, b) => b.score - a.score);
-        if (user && sorted[0] && sorted[0].name === user.username) {
+        // Pass-and-play winner check. markAchievement queues the
+        // slide-in AchievementUnlock celebration so no extra toast
+        // is needed here. Trim + lowercase the comparison since
+        // the player can input any name during the pass-and-play
+        // round and the user.username casing might differ.
+        const winnerName = (sorted[0]?.name || "").trim().toLowerCase();
+        const me = (user?.username || "").trim().toLowerCase();
+        if (user && winnerName && winnerName === me) {
           dispatch(markAchievement("friend_winner"));
           dispatch(unlockAchievement("friend_winner"));
-          const def = ACHIEVEMENT_MAP["friend_winner"];
-          dispatch(pushToast({ icon: def.icon, title: def.title, text: def.desc }));
         }
       } else {
         dispatch(nextPlayerTurn());

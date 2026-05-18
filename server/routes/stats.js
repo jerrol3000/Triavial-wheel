@@ -724,16 +724,18 @@ router.post("/game", requireAuth, (req, res) => {
   res.json({ ...loadStats(req.user.id), leveled_up: leveledUp, new_badges: newBadges });
 });
 
-// Whitelist of valid achievement ids. Must stay in sync with the
-// frontend's src/data/achievements.js. Stops clients from polluting
-// the achievements table with arbitrary strings and prevents future
-// rewards (if achievements ever pay out) from being exploitable.
+// Whitelist of valid achievement ids. MUST mirror exactly
+// src/data/achievements.js — drift here causes /stats/achievement to
+// 400 with `unknown_achievement` and silently break cross-device
+// sync for any mismatched id. Earlier this set was a phantom list
+// of IDs that NEVER matched what the client dispatches, so 8 of the
+// 15 real achievements never persisted server-side.
 const VALID_ACHIEVEMENTS = new Set([
-  "first_round", "perfect_round", "ten_rounds", "fifty_rounds", "hundred_rounds",
-  "first_win_online", "ten_wins_online", "five_streak", "ten_streak", "twenty_streak",
+  "first_correct", "streak_5", "streak_10", "perfect_round",
   "daily_3", "daily_7", "daily_30",
-  "level_5", "level_10", "level_25", "level_50",
-  "first_friend", "pro_subscriber", "first_theme", "all_themes",
+  "level_5", "level_10", "level_25",
+  "fifty_used", "all_categories", "speed_demon",
+  "high_score_1000", "friend_winner",
 ]);
 
 router.post("/achievement", requireAuth, (req, res) => {

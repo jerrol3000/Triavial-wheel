@@ -7,7 +7,7 @@ import {
   setReveal, setOpponentAnswered, setChatNotice, pushChat, pushReaction, leftRoom,
 } from "../store/onlineSlice";
 import { setView, setModal, pushToast } from "../store/uiSlice";
-import { fetchStats } from "../store/statsSlice";
+import { fetchStats, markAchievement, unlockAchievement } from "../store/statsSlice";
 import ChatPanel from "./ChatPanel";
 import Icon from "./Icon";
 import { PlayerFlair } from "./PlayerFlair";
@@ -59,7 +59,19 @@ export default function Online() {
           reactionTimer = setTimeout(() => dispatch(pushReaction(null)), 1500);
           break;
         }
-        case "match_end":     sfx.win(); dispatch(setMatchEnd(msg)); dispatch(fetchStats()); break;
+        case "match_end": {
+          sfx.win();
+          dispatch(setMatchEnd(msg));
+          dispatch(fetchStats());
+          // friend_winner achievement: fires the first time you win
+          // any online VS match (quick or friendly). Achievement is
+          // idempotent server-side so a second win is a no-op.
+          if (user && msg.winnerId === user.id) {
+            dispatch(markAchievement("friend_winner"));
+            dispatch(unlockAchievement("friend_winner"));
+          }
+          break;
+        }
         case "session_ended": {
           // Continue-vote timed out, opponent declined, or room closed.
           // No penalty — just navigate the player home cleanly.

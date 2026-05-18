@@ -1686,7 +1686,28 @@ img.tw-avatar { background: none; }
 .tw-badge-card.tier-silver.earned    { border-color: rgba(192,192,192,0.6); }
 .tw-badge-card.tier-gold.earned      { border-color: rgba(255,215,0,0.7); box-shadow: 0 0 14px rgba(255,215,0,0.2); }
 .tw-badge-card.tier-legendary.earned { border-color: rgba(245,158,11,0.8); box-shadow: 0 0 18px rgba(245,158,11,0.35); }
-.tw-badge-icon { font-size: 32px; line-height: 1; }
+.tw-badge-icon {
+  font-size: 32px;
+  line-height: 1;
+  /* Isolation creates a new stacking context that breaks the
+     ancestor backdrop-filter chain. Without this, iOS Safari (and
+     a few Chromium versions before ~115) flatten the badge PNG's
+     alpha against the blurred parent — bronze + warm content reads
+     as "white background" because the blur+alpha math produces a
+     near-white frosted output. The img/span inside are then drawn
+     against a clean transparent surface. */
+  isolation: isolate;
+}
+/* Belt + suspenders: any <img> rendered as a badge gets an
+   explicit transparent background and resets any user-agent
+   defaults that could bleed through. */
+.tw-badge-icon img,
+.tw-mini-badge img,
+.tw-bu-face img {
+  background: transparent !important;
+  -webkit-backdrop-filter: none;
+          backdrop-filter: none;
+}
 .tw-badge-progress {
   width: 100%;
   height: 4px;

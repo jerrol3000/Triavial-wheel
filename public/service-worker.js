@@ -1,6 +1,11 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-const CACHE = "trivia-wheel-v2";
+// v3: bumped to force-evict stale clients holding the pre-fix
+// coin/spin sync bundle. Without this bump, browsers serving the
+// cached old main.<hash>.js would keep dropping coin/spin gains
+// on the floor and report the "balance keeps resetting" bug even
+// after the fix shipped.
+const CACHE = "trivia-wheel-v3";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

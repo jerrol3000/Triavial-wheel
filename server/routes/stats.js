@@ -250,6 +250,62 @@ router.post("/use-free-spin", requireAuth, (req, res) => {
   res.json({ ok: true, free_spins: row ? row.free_spins : 0 });
 });
 
+// Quit-mid-round penalty. Used by safeNavigate when the player leaves
+// an in-progress game via the Banner-back or BottomNav. Previously
+// the client did `dispatch(loseLife())` + `dispatch(addCoins(-5))`
+// LOCAL-ONLY — and the very next /stats fetch would clobber those
+// deductions with the server's stale pre-penalty values, producing
+// the user-visible "balance keeps resetting" bug. This endpoint
+// applies the penalty atomically server-side so the next loadStats
+// reflects the truth.
+//
+// Context decides the penalty matrix (must mirror safeNavigate):
+//   solo       : -1 free_spin (non-Pro), -5 coins
+//   daily      : -1 free_spin (non-Pro)
+//   online_mid : -1 free_spin (non-Pro)  (rating drop handled by realtime)
+//   multi      : -1 free_spin (non-Pro)
+router.post("/quit-penalty", requireAuth, (req, res) => {
+  const VALID = new Set(["solo", "daily", "online_mid", "multi"]);
+  const context = String(req.body && req.body.context || "");
+  if (!VALID.has(context)) return res.status(400).json({ error: "invalid_context" });
+  const now = Date.now();
+  let response;
+  try {
+    const tx = db.transaction(() => {
+      const row = db.prepare(
+        "SELECT free_spins, free_spins_updated_at, coins, pro_until FROM stats WHERE user_id = ?"
+      ).get(req.user.id);
+      if (!row) { response = { status: 404, body: { error: "no_stats_row" } }; return; }
+      const isPro = !!(row.pro_until && row.pro_until > now);
+      // Pro players don't lose a free spin (unlimited), but solo's
+      // 5-coin penalty still applies to everyone.
+      const spinDebit = isPro ? 0 : 1;
+      const coinDebit = context === "solo" ? 5 : 0;
+      const newFreeSpins = Math.max(0, (row.free_spins || 0) - spinDebit);
+      const newCoins     = Math.max(0, (row.coins      || 0) - coinDebit);
+      const newSpinsUpdatedAt =
+        (spinDebit > 0 && (row.free_spins || 0) === SPIN_REGEN_FLOOR)
+          ? now
+          : (row.free_spins_updated_at || now);
+      db.prepare(`
+        UPDATE stats SET
+          free_spins = ?,
+          free_spins_updated_at = ?,
+          coins = ?,
+          updated_at = ?
+        WHERE user_id = ?
+      `).run(newFreeSpins, newSpinsUpdatedAt, newCoins, now, req.user.id);
+      response = { status: 200, body: { ok: true, spin_debited: spinDebit, coin_debited: coinDebit } };
+    });
+    tx.immediate();
+  } catch (e) {
+    console.error("[quit-penalty] failed", e);
+    return res.status(500).json({ error: "penalty_failed" });
+  }
+  if (response.status !== 200) return res.status(response.status).json(response.body);
+  res.json({ ...response.body, stats: loadStats(req.user.id) });
+});
+
 // Manually claim accrued spin regen. Server is the single source of
 // truth for regen now — the old client-side `tickLives` ticker would
 // mint spins for users who never opened the app (worst-of-both:

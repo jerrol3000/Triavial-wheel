@@ -13,9 +13,29 @@
 // Pro users (unlimited lives) are exempt from the −1 life part — but Daily
 // streak loss / rating drop / coins-loss still apply.
 import { setView, pushToast } from "../store/uiSlice";
-import { loseLife, addCoins } from "../store/statsSlice";
+import { loseLife, addCoins, fetchStats } from "../store/statsSlice";
 import { resetRound } from "../store/gameSlice";
 import { rt } from "../realtime/client";
+import { api, getToken } from "../api/client";
+
+// Apply the server-side quit penalty AND keep the local UI snappy.
+// We dispatch the local decrement first (so the banner reflects the
+// loss instantly), then fire the server call which is the source of
+// truth — its loadStats response (merged via fetchStats) corrects any
+// drift between client + server values.
+//
+// Without the server call the local mutation would survive only until
+// the next fetchStats, then snap back to the server's stale numbers
+// — that's the "coins/spins reset on refresh" bug.
+function applyQuitPenalty(dispatch, context, opts = {}) {
+  const { isPro, localSpin = true, localCoinPenalty = 0 } = opts;
+  if (localSpin && !isPro) dispatch(loseLife());
+  if (localCoinPenalty) dispatch(addCoins(-localCoinPenalty));
+  if (!getToken()) return; // Guests have no server state to sync.
+  api.post("/stats/quit-penalty", { context })
+    .then(() => { dispatch(fetchStats()); })
+    .catch(() => { /* best-effort; local decrements stand until next sync */ });
+}
 
 export function safeNavigate(targetView) {
   return (dispatch, getState) => {
@@ -39,18 +59,17 @@ export function safeNavigate(targetView) {
 
     if (inSoloGame) {
       if (!confirm(`Quit this round?${lifeLost ? " You'll lose" + lifeLost + " and 5 coins." : " You'll lose 5 coins."}`)) return;
-      dispatch(loseLife());
-      dispatch(addCoins(-5));
+      applyQuitPenalty(dispatch, "solo", { isPro, localCoinPenalty: 5 });
       dispatch(pushToast({ icon: "💔", title: "Round abandoned", text: isPro ? "−5 coins" : "−1 life · −5 coins" }));
       dispatch(resetRound());
     } else if (inDaily) {
       if (!confirm(`Forfeit today's daily?${lifeLost ? " You'll lose" + lifeLost + " and no rewards." : " No rewards earned."}`)) return;
-      dispatch(loseLife());
+      applyQuitPenalty(dispatch, "daily", { isPro });
       dispatch(pushToast({ icon: "📅", title: "Daily forfeited", text: isPro ? "No rewards" : "−1 life · no rewards" }));
       dispatch(resetRound());
     } else if (inOnlineMidMatch) {
       if (!confirm(`Forfeit the match?${lifeLost ? " You'll lose" + lifeLost + " and rating drops sharply." : " Rating drops sharply."}`)) return;
-      dispatch(loseLife());
+      applyQuitPenalty(dispatch, "online_mid", { isPro });
       dispatch(pushToast({ icon: "💔", title: "Match forfeit", text: isPro ? "−30 rating" : "−1 life · −30 rating" }));
       try { rt.send({ type: "leave_room" }); } catch (e) {}
     } else if (inOnlinePreGame) {
@@ -68,7 +87,7 @@ export function safeNavigate(targetView) {
       // The Online view will surface the actual penalty via toast on left_room.
     } else if (inMulti) {
       if (!confirm(`Quit the pass-and-play match?${lifeLost ? " You'll lose" + lifeLost + " and scores are lost." : " Scores are lost."}`)) return;
-      dispatch(loseLife());
+      applyQuitPenalty(dispatch, "multi", { isPro });
       dispatch(pushToast({ icon: "💔", title: "Match abandoned", text: isPro ? "Scores lost" : "−1 life · scores lost" }));
       dispatch(resetRound());
     }

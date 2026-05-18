@@ -27,6 +27,13 @@ function healthUrl() {
   return apiBase + "/health";
 }
 
+// Terminal WS errors — the client should NOT keep reconnecting after
+// any of these because retrying won't help (token is bad, user is
+// banned). Without this guard the previous client looped forever:
+// open → server sends auth_required → server closes → onclose retries
+// → repeat. UI showed "Connecting to live server…" indefinitely.
+const TERMINAL_WS_ERRORS = new Set(["auth_required", "forbidden", "banned"]);
+
 class RealtimeClient {
   constructor() {
     this.ws = null;
@@ -38,6 +45,10 @@ class RealtimeClient {
     this.pingTimer = null;
     this.lastError = null;
     this.lastUrl = null;
+    // Sticky terminal-error flag. Stays set until forceReconnect()
+    // clears it (e.g., after the user signs back in). Prevents the
+    // retry loop on stale tokens.
+    this.terminalError = null;
   }
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(msg) { this.listeners.forEach((f) => { try { f(msg); } catch (e) {} }); }
@@ -59,7 +70,13 @@ class RealtimeClient {
 
   connect() {
     if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
+    if (this.terminalError) {
+      // Already gave up; don't quietly retry without a forceReconnect.
+      this.emit({ type: "error", error: this.terminalError });
+      return;
+    }
     if (!getToken()) {
+      this.terminalError = "auth_required";
       this.lastError = "auth_required";
       this.emit({ type: "error", error: "auth_required" });
       return;
@@ -89,19 +106,46 @@ class RealtimeClient {
       this.pingTimer = setInterval(() => this.send({ type: "ping" }), 20 * 1000);
     };
     ws.onmessage = (e) => {
-      try { this.emit(JSON.parse(e.data)); }
-      catch (err) { /* ignore malformed */ }
+      let msg;
+      try { msg = JSON.parse(e.data); }
+      catch (err) { return; /* ignore malformed */ }
+      // Server-sent terminal errors lock the client out of further
+      // reconnect attempts — retrying with the same bad token would
+      // just hit the same wall. Cleared only by forceReconnect()
+      // (typically after re-sign-in). Without this guard the client
+      // got stuck in an open→error→close→reconnect loop and the
+      // "Connecting to live server…" banner never went away.
+      if (msg && msg.type === "error" && TERMINAL_WS_ERRORS.has(msg.error)) {
+        this.terminalError = msg.error;
+        this.shouldReconnect = false;
+        this.lastError = msg.error;
+      }
+      this.emit(msg);
     };
     ws.onclose = (e) => {
       this.connecting = false;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
       this.lastError = e && e.code !== 1000 ? `close ${e.code}${e.reason ? ` ${e.reason}` : ""}` : null;
       this.emit({ type: "close", code: e && e.code, reason: e && e.reason });
-      if (this.shouldReconnect && this.reconnectAttempts < 10) {
-        const delay = Math.min(10000, 500 * Math.pow(2, this.reconnectAttempts));
+      // Don't retry on a terminal error (already set by onmessage)
+      // or when we've hit the give-up cap.
+      if (this.terminalError) {
+        // Emit an explicit "give up" signal so the UI can show a
+        // specific error state instead of staying on "Connecting…".
+        this.emit({ type: "error", error: this.terminalError });
+        return;
+      }
+      if (this.shouldReconnect && this.reconnectAttempts < 6) {
+        // Backoff capped lower (6 attempts, ~8 s max delay) so a
+        // genuine outage gives up faster and the UI can show the
+        // error state instead of a forever-spinner. 6 attempts of
+        // exponential backoff cover ~15 s total — enough to ride
+        // out a brief Fly cold-start, short enough not to mask a
+        // real problem.
+        const delay = Math.min(8000, 500 * Math.pow(2, this.reconnectAttempts));
         this.reconnectAttempts += 1;
         setTimeout(() => this.connect(), delay);
-      } else if (this.reconnectAttempts >= 10) {
+      } else if (this.reconnectAttempts >= 6) {
         // Give-up state — stop trying. Emits BOTH an error AND a
         // synthetic session_ended so any active match-screen tears down
         // and shows a clear message rather than freezing on stale state.
@@ -122,10 +166,14 @@ class RealtimeClient {
     this.ws = null;
   }
 
-  // For a manual user-triggered retry — resets backoff so it reconnects immediately.
+  // For a manual user-triggered retry — resets backoff AND clears any
+  // sticky terminal error so a fresh sign-in (or just a network blip)
+  // can re-attempt without surgery.
   forceReconnect() {
     this.reconnectAttempts = 0;
     this.lastError = null;
+    this.terminalError = null;
+    this.shouldReconnect = true;
     if (this.ws) try { this.ws.close(); } catch (e) {}
     this.ws = null;
     this.connect();

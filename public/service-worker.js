@@ -1,10 +1,9 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v8: server DB migration adds the missing free_spins_updated_at
-// column (which was silently 500-ing every /use-free-spin call →
-// no debits were ever happening server-side). Plus restored
-// realistic wheel speed (~3-4 s, not 1.8-2.4). Force-evict.
-const CACHE = "trivia-wheel-v8";
+// v9: WS client stops retry-looping on terminal errors (auth_required,
+// forbidden) so the "Connecting to live server…" banner can show
+// a specific error + actionable next step instead of spinning forever.
+const CACHE = "trivia-wheel-v9";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

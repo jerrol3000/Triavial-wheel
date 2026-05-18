@@ -687,10 +687,30 @@ function ReactionLayer() {
 }
 
 // ─── ConnectionStatus ───────────────────────────────────────────────────────
+// Drives the banner shown when the WS isn't connected. Auto-diagnoses
+// after 4 s of unresolved connecting so the user gets a specific error
+// + actionable next step instead of staring at an indefinite spinner.
+//
+// Error states (priority order):
+//   1. auth_required → session expired or never signed in
+//   2. give_up       → tried 6 times, network/server is genuinely down
+//   3. forbidden     → user is banned
+//   4. <none>        → just connecting; show neutral spinner
 function ConnectionStatus() {
   const dispatch = useDispatch();
+  const error = useSelector((s) => s.online.error);
   const [diag, setDiag] = useState(null);
   const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  // Tick once a second so we can swap the message after ~4 s of
+  // unresolved connecting. Cheap — 1 setState/s, doesn't trigger
+  // anything else heavy.
+  useEffect(() => {
+    const start = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const runDiagnose = async () => {
     setRunning(true);
@@ -700,16 +720,60 @@ function ConnectionStatus() {
     setRunning(false);
   };
 
+  // Auto-fire a diagnose after 4 s so users don't have to know to
+  // click the button. Once. Idempotent on subsequent re-renders.
+  useEffect(() => {
+    if (elapsed === 4 && !diag && !running) runDiagnose();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elapsed]);
+
+  // Categorize the failure so we can show targeted copy + actions.
+  const isAuth     = error === "auth_required";
+  const isForbidden = error === "forbidden" || error === "banned";
+  const isGaveUp   = error === "give_up";
+  const isFailing  = isAuth || isForbidden || isGaveUp;
+
+  const title = isAuth     ? "Your session expired"
+              : isForbidden ? "Account blocked"
+              : isGaveUp   ? "Can't reach the live server"
+              : elapsed > 8 ? "Still trying to connect…"
+              : "Connecting to live server…";
+
+  const body  = isAuth      ? "Sign in again to use live VS matches."
+              : isForbidden ? "Live play is disabled for this account. Contact support if this is a mistake."
+              : isGaveUp    ? "Check your network and tap Retry, or come back in a moment."
+              : elapsed > 4 ? "Taking longer than usual — running a quick diagnostic…"
+              : null;
+
+  // Accent color matches severity.
+  const bg = isFailing ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
+  const border = isFailing ? "rgba(239,68,68,0.4)" : "rgba(245,158,11,0.4)";
+
   return (
-    <div className="tw-card" style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)" }}>
-      <div className="tw-row" style={{ gap: 8 }}>
-        <div className="tw-spinner" style={{ width: 18, height: 18, margin: 0, borderWidth: 2 }} />
-        <span style={{ fontSize: 13, fontWeight: 600 }}>Connecting to live server…</span>
-        <div style={{ flex: 1 }} />
-        <button className="tw-pill" style={{ cursor: "pointer" }} onClick={() => rt.forceReconnect()}>Retry</button>
-        <button className="tw-pill" style={{ cursor: "pointer" }} onClick={runDiagnose} disabled={running}>
-          {running ? "..." : "Diagnose"}
-        </button>
+    <div className="tw-card" style={{ background: bg, border: `1px solid ${border}` }}>
+      <div className="tw-row" style={{ gap: 8, alignItems: "center" }}>
+        {!isFailing && <div className="tw-spinner" style={{ width: 18, height: 18, margin: 0, borderWidth: 2 }} />}
+        {isFailing && <span style={{ fontSize: 18 }} aria-hidden="true">⚠️</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{title}</div>
+          {body && <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{body}</div>}
+        </div>
+        {isAuth ? (
+          <button className="tw-btn" style={{ padding: "6px 14px" }}
+                  onClick={() => { rt.forceReconnect(); dispatch(setModal("auth")); }}>
+            Sign in
+          </button>
+        ) : (
+          <>
+            <button className="tw-pill" style={{ cursor: "pointer" }}
+                    onClick={() => { rt.forceReconnect(); dispatch(setError(null)); setElapsed(0); }}>
+              Retry
+            </button>
+            <button className="tw-pill" style={{ cursor: "pointer" }} onClick={runDiagnose} disabled={running}>
+              {running ? "…" : "Diagnose"}
+            </button>
+          </>
+        )}
       </div>
       {diag && (
         <div style={{ marginTop: 10, fontSize: 12, fontFamily: "monospace", background: "rgba(0,0,0,0.25)", padding: 10, borderRadius: 8 }}>
@@ -720,17 +784,12 @@ function ConnectionStatus() {
           {diag.error && <div style={{ color: "var(--bad)" }}>Last error: {diag.error}</div>}
           {!diag.reachable && (
             <div style={{ marginTop: 8, padding: 8, background: "rgba(239,68,68,0.15)", borderRadius: 6, color: "var(--text)" }}>
-              💡 Backend not running. In a terminal: <code>cd server && npm start</code>
+              💡 Server seems down. Try again in a moment.
             </div>
           )}
           {diag.reachable && !diag.token && (
             <div style={{ marginTop: 8, padding: 8, background: "rgba(245,158,11,0.15)", borderRadius: 6 }}>
               💡 Sign in first — online play needs an account.
-            </div>
-          )}
-          {diag.reachable && diag.token && diag.error && (
-            <div style={{ marginTop: 8, padding: 8, background: "rgba(245,158,11,0.15)", borderRadius: 6 }}>
-              💡 Backend is up but the /ws endpoint rejected the connection. The most common cause: backend was started before realtime support was added. Restart with <code>cd server && npm start</code>.
             </div>
           )}
         </div>

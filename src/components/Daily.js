@@ -11,7 +11,12 @@ import { sfx } from "../utils/sound";
 import { buildDailyShareText, shareText } from "../utils/share";
 import { ACHIEVEMENT_MAP } from "../data/achievements";
 
-const QPR = 10;
+// Unified daily length — matches the public share-link variant. Was
+// 10 questions until viral phase 2; the public 5-question card is
+// the shareable artifact, so we play the same game everywhere now.
+// A 5-question round takes ~90 s, which matches the player's mental
+// model of "quick daily" much better than the old 4-minute affair.
+const QPR = 5;
 
 export default function Daily() {
   const dispatch = useDispatch();
@@ -91,10 +96,13 @@ export default function Daily() {
       if (user) dispatch(unlockAchievement(id));
     };
 
-    // Perfect round inside the Daily: 10/10 questions correct.
-    // Was missing — Play.js fired it for normal rounds but Daily
-    // had its own end-of-round path that skipped the check.
-    if (game.correct === game.questions.length && game.questions.length >= 10) {
+    // Perfect round: every question correct, regardless of round
+    // length. Originally gated on >=10 questions so it couldn't fire
+    // on a 5-question round; now the daily IS 5 questions, so a
+    // perfect round IS getting 5/5. Gate now is just "got them all"
+    // with a min of 5 to stop a 1-question round from accidentally
+    // counting.
+    if (game.correct === game.questions.length && game.questions.length >= 5) {
       tryUnlock("perfect_round");
     }
 
@@ -158,7 +166,7 @@ export default function Daily() {
             <Icon name="daily" size={30} /> Daily Challenge
           </div>
           <div style={{ color: "var(--text-dim)", margin: "6px 0 14px" }}>
-            Same 10 questions for everyone, today only.<br />
+            Same 5 questions for everyone, today only. ~90 seconds.<br />
             Date: <strong>{daily.date}</strong> · Category teaser: <strong>{daily.category?.option || "—"}</strong>
           </div>
           <div className="tw-grid-2" style={{ marginBottom: 14 }}>

@@ -8,6 +8,7 @@ import Daily from "./Daily";
 import HigherLower from "./HigherLower";
 import SeasonPass from "./SeasonPass";
 import FriendChallenges from "./FriendChallenges";
+import WheelView from "./WheelView";
 import Multiplayer from "./Multiplayer";
 import Shop from "./Shop";
 import Profile from "./Profile";
@@ -34,7 +35,7 @@ import { setModal, pushToast } from "../store/uiSlice";
 import { logout } from "../store/authSlice";
 import { rt } from "../realtime/client";
 
-const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings, higherlower: HigherLower, season: SeasonPass, challenges: FriendChallenges };
+const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings, higherlower: HigherLower, season: SeasonPass, challenges: FriendChallenges, wheel: WheelView };
 
 export default function App() {
   const dispatch = useDispatch();

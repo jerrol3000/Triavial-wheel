@@ -1,11 +1,12 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v13: VIRAL PHASE 2 — Higher/Lower mini-mode (pop-culture
-// comparisons), Streak FOMO banner (visible decay timer + at-risk
-// warning), Season Pass (20 tiers, free + premium tracks),
-// Friend Challenges (5-q duels with coin wagers). The retention
-// layer on top of phase 1's viral hook.
-const CACHE = "trivia-wheel-v13";
+// v14: HOME RE-ARCH + CONTENT PIVOT — Home is now a 2x3 mode grid
+// (Daily, H/L, Friends, Wheel, VS, Season Pass); the wheel was
+// extracted to WheelView.js so it's one mode among many, not the
+// home page. Daily unified to 5 questions everywhere. Pop-culture
+// categories added (Music 2020s, Streaming TV, Internet & Memes,
+// Sports Culture, Anime, Streetwear) with 47 seed questions.
+const CACHE = "trivia-wheel-v14";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

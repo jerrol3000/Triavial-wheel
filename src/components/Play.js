@@ -65,7 +65,10 @@ export default function Play() {
     if (game.correct >= 1) tryUnlock("first_correct");
     if (game.bestStreakRun >= 5) tryUnlock("streak_5");
     if (game.bestStreakRun >= 10) tryUnlock("streak_10");
-    if (game.correct === game.questions.length && game.questions.length >= 10) tryUnlock("perfect_round");
+    // Perfect round = every question correct. Gate lowered 10 → 5
+    // to match the unified daily length; a 5/5 is now a legitimate
+    // perfect round in any mode.
+    if (game.correct === game.questions.length && game.questions.length >= 5) tryUnlock("perfect_round");
     if (game.score >= 1000) tryUnlock("high_score_1000");
     const nextLevel = levelForXp(stats.xp + xpGained);
     if (nextLevel >= 5) tryUnlock("level_5");

@@ -1,364 +1,181 @@
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { useDispatch, useSelector } from "react-redux";
-import Wheel3D from "./Wheel3D";
-import { WHEEL_DATA, CATEGORIES } from "../data/categories";
-import { THEMES } from "../data/themes";
-import { startRound, fetchRoundQuestions, setMode } from "../store/gameSlice";
-import { setView, pushToast, setModal } from "../store/uiSlice";
+import { setView, setModal } from "../store/uiSlice";
 import { sfx } from "../utils/sound";
 import { fetchDailyMeta } from "../store/dailySlice";
-import { markCategoryPlayed, markAchievement, unlockAchievement, useFreeSpin, consumeFreeSpin } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
 import StreakBanner from "./StreakBanner";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 import { useT } from "../i18n";
-import { translatedCategories } from "../data/categories";
-import { guestStatus, incrementGuestPlays, GUEST_HARD_LIMIT, GUEST_SOFT_LIMIT } from "../utils/guestLimit";
 
-// The wheel's actual duration is set by `spinDuration` below (a multiplier on
-// react-custom-roulette's internal default). The tick schedule is self-pacing,
-// so it stays in sync regardless of what spinDuration evaluates to.
+// Home — a clean 2×3 grid of game modes.
+//
+// 2026 re-architecture: the wheel used to live HERE as the visual
+// hero, with everything else relegated to small tiles. Worked when
+// the wheel was the only mode, but Spinlore now has 6+ distinct
+// ways to play, and treating one as "the home page" demotes all the
+// others. New shape:
+//
+//   ┌─────────────┬─────────────┬─────────────┐
+//   │   📅 Daily  │ 📈 H/L      │  ⚔️ Friends  │
+//   ├─────────────┼─────────────┼─────────────┤
+//   │   🎡 Wheel  │  🆚 VS      │  ⭐ Season   │
+//   └─────────────┴─────────────┴─────────────┘
+//
+// Each tile dispatches setView to its own dedicated screen. The wheel
+// lives at /views/wheel now (WheelView.js) — same logic, just no
+// longer hijacks the home page. Mobile collapses to 1 column; tablet+
+// keeps the 3-column grid.
 
 export default function Home() {
   const dispatch = useDispatch();
-  const stats = useSelector((s) => s.stats);
-  const daily = useSelector((s) => s.daily);
-  const mode = useSelector((s) => s.game.mode);
   const user = useSelector((s) => s.auth.user);
+  const stats = useSelector((s) => s.stats);
   const { t } = useT();
-  // Re-render when the local guest-plays counter changes (storage write
-  // happens inside startWithCategory). Cheap state bump; the actual count
-  // is read from localStorage via guestStatus() at render time.
-  const [, setGuestTick] = React.useState(0);
-  const bumpGuest = React.useCallback(() => setGuestTick((n) => n + 1), []);
-  const guest = !user ? guestStatus() : null;
-  // Wheel labels translate live with language switches.
-  const wheelData = React.useMemo(() => translatedCategories(t), [t]);
 
-  const [spinning, setSpinning] = React.useState(false);
-  const [flash, setFlash] = React.useState(false);
-  const wheelRef = useRef(null);
-  // Responsive wheel sizing — Wheel3D draws to a fixed-size canvas, so
-  // we measure the wrapping div on mount + resize and feed it the
-  // actual available width (capped at 460 for desktop). Before this,
-  // the canvas was forced to 460px on a 360px phone → label-rotation
-  // pushed text past the viewport and the tilt clipped.
-  const wheelWrapRef = useRef(null);
-  const [wheelSize, setWheelSize] = React.useState(460);
-  React.useLayoutEffect(() => {
-    if (!wheelWrapRef.current) return;
-    const el = wheelWrapRef.current;
-    const measure = () => {
-      const w = Math.max(220, Math.min(460, el.clientWidth));
-      setWheelSize(w);
-    };
-    measure();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    if (ro) ro.observe(el);
-    else window.addEventListener("resize", measure);
-    return () => {
-      if (ro) ro.disconnect();
-      else window.removeEventListener("resize", measure);
-    };
-  }, []);
-  // Track the two setTimeouts fired in onWheelStop so we can cancel them
-  // if the component unmounts (navigation away) before they fire. Without
-  // this, the wheel stop will force a view change after the user has
-  // already left the page.
-  const flashTimerRef = useRef(null);
-  const navTimerRef = useRef(null);
+  React.useEffect(() => { dispatch(fetchDailyMeta()); }, [dispatch]);
 
-  useEffect(() => { dispatch(fetchDailyMeta()); }, [dispatch]);
-
-  useEffect(() => {
-    return () => {
-      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-      if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    };
-  }, []);
-
-  const theme = THEMES[stats.active_theme] || THEMES.classic;
-
-  const startWithCategory = (idx) => {
-    const slot = WHEEL_DATA[idx];
-    let cat;
-    let isMystery = false;
-    if (slot.isMystery) {
-      isMystery = true;
-      // Premium-only categories are gated by Pro status. Previously
-      // also unlocked when stats.themes.length > 1 — but buying any
-      // theme bumps that, which let non-Pro users bypass the gate. Now
-      // strictly Pro-only.
-      const pool = CATEGORIES.filter((c) => !c.premium || stats.pro);
-      cat = pool[Math.floor(Math.random() * pool.length)];
-      dispatch(pushToast({ icon: "🎁", title: "MYSTERY!", text: `${cat.option} · 1.5× points`, duration: 2500 }));
-    } else {
-      cat = CATEGORIES.find((c) => c.id === slot.id) || CATEGORIES[0];
-    }
-    // Count guest rounds the moment the round actually starts (after the
-    // wheel stops). Soft prompt nags at the threshold, hard wall is
-    // enforced in onSpin before the wheel even spins.
-    if (!user) {
-      const n = incrementGuestPlays();
-      bumpGuest();
-      if (n === GUEST_SOFT_LIMIT) {
-        dispatch(pushToast({
-          icon: "👋",
-          title: "Enjoying it?",
-          text: `Sign up to keep playing past ${GUEST_HARD_LIMIT} rounds — saves your XP, coins & badges.`,
-          duration: 5500,
-        }));
-      }
-    }
-    dispatch(markCategoryPlayed(cat.id));
-    // all_categories achievement: fires when the player has now
-    // played every category in the CATEGORIES catalog. Compute
-    // against the post-mark set since markCategoryPlayed dedupes
-    // internally — count the union of the existing list + the cat
-    // we just appended to avoid waiting on the next render.
-    const playedSet = new Set([...(stats.categories_played || []), cat.id]);
-    if (playedSet.size >= CATEGORIES.length) {
-      dispatch(markAchievement("all_categories"));
-      dispatch(unlockAchievement("all_categories"));
-    }
-    dispatch(startRound({ categoryId: cat.id, mode, isMystery }));
-    dispatch(fetchRoundQuestions({ categoryId: cat.id, mode }));
-    dispatch(setView("play"));
-  };
-
-  const onSpin = () => {
-    if (spinning) return;
-    // Hard wall for guests at GUEST_HARD_LIMIT rounds. Opens the auth
-    // modal directly so the upgrade path is one click away.
-    if (!user && guestStatus().blocked) {
-      sfx.click();
-      dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }));
-      return;
-    }
-    // Pro skips the gate (unlimited spins). Everyone else needs at
-    // least one spin in the bank — out of spins routes through the
-    // Shop.
-    if (!stats.pro && (stats.free_spins || 0) <= 0) {
-      dispatch(setView("shop"));
-      return;
-    }
-    setSpinning(true);
-    // Optimistic local decrement so the banner reflects the spend
-    // immediately. The server call below is the authoritative debit
-    // — its .fulfilled reducer merges the post-debit stats so the
-    // count syncs even if local & server were briefly out of step.
-    // We DO NOT gate the wheel on the server response: the wheel
-    // always spins (great UX, no waiting), and the server catches
-    // up in the background. Worst case: a rare auth blip means the
-    // server didn't debit — the next fetchStats reconciles.
-    if (user && !stats.pro) dispatch(consumeFreeSpin());
-    if (wheelRef.current) wheelRef.current.spin();
-    try { window.dispatchEvent(new Event("triviaspin")); } catch (e) {}
-    if (user) dispatch(useFreeSpin());
-  };
-
-  const onWheelStop = (winningIdx) => {
-    setSpinning(false);
-    setFlash(true);
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    if (navTimerRef.current) clearTimeout(navTimerRef.current);
-    // Flash 280 ms (clearly visible), nav delay 380 ms (long enough
-    // for the player to register WHICH category was selected before
-    // the round screen takes over). Faster than the original 420 ms
-    // but not so snappy that the wheel-stop feels skipped.
-    flashTimerRef.current = setTimeout(() => setFlash(false), 280);
-    navTimerRef.current = setTimeout(() => startWithCategory(winningIdx), 380);
-  };
+  // The 6 tiles. Each is fully self-contained (icon, title, subtitle,
+  // gradient, target view) so adding a 7th mode later is one entry.
+  const tiles = [
+    {
+      id: "daily", icon: "📅",
+      title: "Daily Challenge",
+      subtitle: "5 questions. Everyone gets the same set. Streak-eligible.",
+      bg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))",
+      border: "rgba(245,158,11,0.4)",
+      action: () => dispatch(setView("daily")),
+      authedOnly: false,
+    },
+    {
+      id: "higherlower", icon: "📈",
+      title: "Higher or Lower",
+      subtitle: "Songs, movies, followers — which is bigger? 1-second decisions.",
+      bg: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(124,58,237,0.18))",
+      border: "rgba(34,211,238,0.4)",
+      action: () => dispatch(setView("higherlower")),
+      authedOnly: true,
+    },
+    {
+      id: "challenges", icon: "⚔️",
+      title: "Friend Challenges",
+      subtitle: "Send a 5-q duel. Wager coins. Winner takes the pot.",
+      bg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(236,72,153,0.18))",
+      border: "rgba(245,158,11,0.4)",
+      action: () => dispatch(setView("challenges")),
+      authedOnly: true,
+    },
+    {
+      id: "wheel", icon: "🎡",
+      title: "Spin the Wheel",
+      subtitle: "Classic trivia — wheel picks a category, 10 questions.",
+      bg: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
+      border: "rgba(124,58,237,0.4)",
+      action: () => dispatch(setView("wheel")),
+      authedOnly: false,
+      badge: !stats.pro && (stats.free_spins || 0) > 0 ? `${stats.free_spins} spins` : null,
+    },
+    {
+      id: "online", icon: "🆚",
+      title: "VS Online",
+      subtitle: "Real-time 1v1 against a stranger or a friend.",
+      bg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(34,211,238,0.18))",
+      border: "rgba(16,185,129,0.4)",
+      action: () => dispatch(setView("online")),
+      authedOnly: true,
+    },
+    {
+      id: "season", icon: "⭐",
+      title: "Season Pass",
+      subtitle: "20 tiers of rewards. Play to climb. Premium = the good stuff.",
+      bg: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
+      border: "rgba(236,72,153,0.4)",
+      action: () => dispatch(setView("season")),
+      authedOnly: true,
+    },
+  ];
 
   return (
     <div className="tw-home">
-      {/* LEFT — rewards + quests. Hides into the right column on tablet. */}
+      {/* LEFT — rewards strip + active quests. Hides into the right
+          column on tablet via existing tw-home-left styles. */}
       <aside className="tw-home-left">
         <EarnMoreStrip />
         <QuestsHub />
       </aside>
 
-      {/* CENTER — the focal point: title, mode pills, wheel, SPIN.
-          Guests see an interactive welcome carousel above the hero so
-          the registration value-prop is visible on every screen size
-          (the left aside collapses below the wheel on mobile). */}
+      {/* CENTER — the mode grid. */}
       <section className="tw-home-center">
         {!user && <GuestWelcome />}
-        {/* Streak FOMO banner — only renders when the player has an
-            existing streak AND hasn't played today's daily AND the
-            UTC clock is in the last 6 hours of the day. Self-gating
-            via internal logic so it's safe to mount unconditionally. */}
         <StreakBanner />
-        {/* Mode-pivot tile strip — Higher/Lower + Season Pass +
-            Friend Challenges. Sits above the wheel so the young-demo
-            features are the first thing a player sees, not buried
-            under the trivia wheel. The wheel stays as the "default"
-            mode below; everything here is the "newer hotness". */}
-        {user && (
-          <div className="tw-col" style={{ gap: 8 }}>
-            <button
-              className="tw-card"
-              onClick={() => { sfx.click(); dispatch(setView("higherlower")); }}
-              style={{
-                cursor: "pointer",
-                background: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(124,58,237,0.18))",
-                border: "1px solid rgba(34,211,238,0.4)",
-                textAlign: "left",
-                padding: "12px 14px",
-              }}
-            >
-              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 28 }} aria-hidden="true">📈</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Higher or Lower</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    Songs, movies, followers, subs — which is bigger?
-                  </div>
-                </div>
-                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
-                  Play →
-                </div>
-              </div>
-            </button>
 
-            <button
-              className="tw-card"
-              onClick={() => { sfx.click(); dispatch(setView("challenges")); }}
-              style={{
-                cursor: "pointer",
-                background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))",
-                border: "1px solid rgba(245,158,11,0.4)",
-                textAlign: "left",
-                padding: "12px 14px",
-              }}
-            >
-              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 28 }} aria-hidden="true">⚔️</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Friend Challenges</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    Send a 5-q duel. Wager coins. Winner takes the pot.
-                  </div>
-                </div>
-                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
-                  Open →
-                </div>
-              </div>
-            </button>
-
-            <button
-              className="tw-card"
-              onClick={() => { sfx.click(); dispatch(setView("season")); }}
-              style={{
-                cursor: "pointer",
-                background: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
-                border: "1px solid rgba(236,72,153,0.4)",
-                textAlign: "left",
-                padding: "12px 14px",
-              }}
-            >
-              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 28 }} aria-hidden="true">⭐</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Season Pass</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    20 tiers of rewards. Play to climb. Premium = the good stuff.
-                  </div>
-                </div>
-                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
-                  View →
-                </div>
-              </div>
-            </button>
-          </div>
-        )}
-        <div className="tw-home-hero">
-          <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>{t("home.title")}</h1>
-          <p style={{ color: "var(--text-dim)", margin: "4px 0 0", textAlign: "center", fontSize: 13 }}>
-            {t("home.subtitle")}
+        <div style={{ textAlign: "center", margin: "8px 0 4px" }}>
+          <h1 style={{ margin: 0, fontSize: 26 }}>{t("home.title") || "Spin. Answer. Get roasted."}</h1>
+          <p style={{ color: "var(--text-dim)", margin: "6px 0 0", fontSize: 13 }}>
+            {t("home.subtitle") || "Pick how you want to play."}
           </p>
+        </div>
 
-          <div className="tw-row" style={{ gap: 6, justifyContent: "center" }}>
-            {["easy", "medium", "hard"].map((m) => (
+        <div className="tw-mode-grid">
+          {tiles.map((tile) => {
+            const locked = tile.authedOnly && !user;
+            return (
               <button
-                key={m}
-                className="tw-pill"
-                onClick={() => { sfx.click(); dispatch(setMode(m)); }}
-                title={t(`home.difficulty.${m}`)}
+                key={tile.id}
+                className={`tw-card tw-mode-tile ${locked ? "locked" : ""}`}
+                onClick={() => {
+                  sfx.click();
+                  if (locked) {
+                    dispatch(setModal({ name: "auth", data: { tab: "register", reason: tile.id } }));
+                  } else {
+                    tile.action();
+                  }
+                }}
                 style={{
                   cursor: "pointer",
-                  background: mode === m ? "linear-gradient(135deg, var(--primary), var(--primary-2))" : undefined,
-                  border: mode === m ? "none" : undefined,
-                  color: "#fff",
-                  textTransform: "capitalize",
+                  background: locked ? "rgba(255,255,255,0.04)" : tile.bg,
+                  border: `1px solid ${locked ? "rgba(255,255,255,0.1)" : tile.border}`,
+                  textAlign: "center",
+                  padding: "20px 14px",
+                  minHeight: 140,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  position: "relative",
+                  opacity: locked ? 0.7 : 1,
+                  transition: "transform 0.12s ease, filter 0.12s ease",
                 }}
-              >{t(`home.difficulty.${m}`)}</button>
-            ))}
-          </div>
-
-          <div ref={wheelWrapRef} className="tw-wheel-wrap" style={{ position: "relative", maxWidth: 480, width: "100%", margin: "0 auto" }}>
-            {flash && <div className="tw-wheel-flash" />}
-            <Wheel3D
-              ref={wheelRef}
-              data={wheelData}
-              theme={theme}
-              onStop={onWheelStop}
-              size={wheelSize}
-              fontSize={Math.max(11, Math.round(wheelSize * 0.030))}
-            />
-          </div>
-
-          {/* Spin gate. Three states, in priority order:
-                1) Guest hit the round cap → register/login card.
-                2) Out of spins (non-Pro) → buy/ad card.
-                3) Otherwise → SPIN button (free; cost is paid on loss).
-              Pro skips both gates entirely. */}
-          {(() => {
-            if (!user && guest && guest.blocked) return <GuestLimitCard />;
-            const spins = stats.free_spins || 0;
-            if (!stats.pro && spins <= 0) return <OutOfSpinsCard />;
-            return (
-              <>
-                <button
-                  className="tw-btn tw-btn-spin block"
-                  disabled={spinning}
-                  onClick={onSpin}
-                  title={spinning ? "Wheel is spinning" : "Spin is free — you only lose a spin on a failed round"}
-                >
-                  {/* Wheel icon removed — the button IS the spin
-                      action, so the wheel image was redundant. Just
-                      shows SPIN with the remaining count for non-Pro
-                      players. */}
-                  {spinning
-                    ? "Spinning..."
-                    : stats.pro
-                      ? "SPIN"
-                      : `SPIN · ${spins}`}
-                </button>
-                {!user && guest && guest.nearLimit && (
-                  <div className="tw-guest-nudge" style={{
-                    marginTop: 8, padding: "8px 12px",
-                    background: "rgba(255,180,80,0.12)",
-                    border: "1px solid rgba(255,180,80,0.35)",
-                    borderRadius: 10, fontSize: 12, color: "var(--text-dim)",
-                    textAlign: "center",
-                  }}>
-                    👋 {guest.remaining} round{guest.remaining === 1 ? "" : "s"} left as guest.{" "}
-                    <button className="tw-link"
-                      onClick={() => dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }))}>
-                      Sign up free
-                    </button> to keep playing.
-                  </div>
+              >
+                {tile.badge && (
+                  <span style={{
+                    position: "absolute", top: 8, right: 8,
+                    fontSize: 10, fontWeight: 700,
+                    padding: "2px 8px", borderRadius: 999,
+                    background: "rgba(0,0,0,0.35)", color: "#fff", letterSpacing: 0.5,
+                  }}>{tile.badge}</span>
                 )}
-              </>
+                {locked && (
+                  <span style={{
+                    position: "absolute", top: 8, right: 8,
+                    fontSize: 11, color: "var(--text-dim)",
+                  }}>🔒</span>
+                )}
+                <div style={{ fontSize: 36, lineHeight: 1 }} aria-hidden="true">{tile.icon}</div>
+                <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 16 }}>{tile.title}</div>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.35, maxWidth: 240 }}>
+                  {tile.subtitle}
+                </div>
+              </button>
             );
-          })()}
+          })}
         </div>
       </section>
 
-      {/* RIGHT — live leaderboard with score-position animations. */}
+      {/* RIGHT — live leaderboard. */}
       <aside className="tw-home-right">
         <LiveLeaderboard limit={8} />
       </aside>
@@ -366,46 +183,30 @@ export default function Home() {
   );
 }
 
-// ─── Contextual rewards strip ────────────────────────────────────────────────
+// ─── Earn-rewards row (kept from old Home, scoped down) ─────────────
 // Only renders pills that are actually claimable right now — no clutter.
 function EarnMoreStrip() {
   const dispatch = useDispatch();
   const stats = useSelector((s) => s.stats);
-  const user = useSelector((s) => s.auth.user);
-  if (stats.pro) return null; // Pro users don't need this row.
+  if (stats.pro) return null;
 
-  const items = [];
-  items.push({
-    key: "spin",
-    icon: <Icon name="free_spin" size={26} />,
-    text: "Free spin",
-    sub: "Watch ad",
-    onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } }),
-    tooltip: "Watch a short ad to earn one free spin",
-  });
-  // Lives are gone — refill is just another way to get spins. The free-
-  // spin pill above already covers this entry path, so the duplicate
-  // refill pill is removed.
-  items.push({
-    key: "coins",
-    icon: <Icon name="coins" size={26} />,
-    text: "+30 coins",
-    sub: "Watch ad",
-    onClick: () => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "coins" } } }),
-    tooltip: "Watch a short ad to earn 30 coins",
-  });
-  // Shop intentionally omitted here — the bottom nav has a persistent Shop
-  // tab, and duplicating it on the home rail clutters the rewards row.
+  const items = [
+    {
+      key: "spin", icon: <Icon name="free_spin" size={26} />, text: "Free spin", sub: "Watch ad",
+      onClick: () => dispatch(setModal({ name: "adReward", data: { reward: "free_spin" } })),
+    },
+    {
+      key: "coins", icon: <Icon name="coins" size={26} />, text: "+30 coins", sub: "Watch ad",
+      onClick: () => dispatch(setModal({ name: "adReward", data: { reward: "coins" } })),
+    },
+  ];
 
   return (
     <div className="tw-earn-strip">
       <div className="tw-earn-strip-label">Earn rewards</div>
       <div className="tw-earn-strip-row">
         {items.map((it) => (
-          <button key={it.key}
-            className={`tw-earn-pill ${it.accent ? "accent" : ""}`}
-            onClick={it.onClick}
-            title={it.tooltip}>
+          <button key={it.key} className="tw-earn-pill" onClick={it.onClick}>
             <span className="tw-earn-icon">{it.icon}</span>
             <span className="tw-earn-text">
               <strong>{it.text}</strong>
@@ -417,77 +218,3 @@ function EarnMoreStrip() {
     </div>
   );
 }
-
-// Hard-wall card shown to guests once they hit GUEST_HARD_LIMIT rounds.
-// The free way forward is registering — we keep the ask simple and
-// front-load the value (XP, badges, leaderboard, cross-device sync).
-function GuestLimitCard() {
-  const dispatch = useDispatch();
-  return (
-    <div className="tw-out-of-spins">
-      <div className="tw-out-of-spins-title">🎟️ Guest limit reached</div>
-      <div className="tw-out-of-spins-sub">
-        Create a free account to keep playing — your XP, coins, streaks
-        and badges save across devices.
-      </div>
-      <div className="tw-out-of-spins-actions">
-        <button
-          className="tw-btn"
-          onClick={() => dispatch(setModal({ name: "auth", data: { tab: "register", reason: "guest_limit" } }))}
-          title="Free, takes 10 seconds">
-          ✨ Sign up free
-        </button>
-        <button
-          className="tw-btn ghost"
-          onClick={() => dispatch(setModal({ name: "auth", data: { tab: "login", reason: "guest_limit" } }))}
-          title="Already have an account?">
-          🔑 Log in
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// When the player has used every spin (free_spins + lives both 0 and
-// not Pro) the SPIN button is replaced with this card — three clear
-// paths back into play: watch an ad, hop to the spin packs in the
-// Store, or upgrade to Pro for unlimited. Also shows a live-ticking
-// "next spin in m:ss" so users know when free regen will give them
-// one back without refreshing.
-function OutOfSpinsCard() {
-  const dispatch = useDispatch();
-  return (
-    <div className="tw-out-of-spins">
-      <div className="tw-out-of-spins-title" style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
-        <Icon name="free_spin" size={22} /> Out of spins
-      </div>
-      <div className="tw-out-of-spins-sub">Pick how you want to keep playing:</div>
-      {/* The "next free spin in m:ss" countdown was removed — it
-          telegraphed exactly how long until the player could spin
-          for free, undercutting the Store + ad-watch paths. Now the
-          out-of-spins card surfaces the spending paths instead. */}
-      <div className="tw-out-of-spins-actions">
-        {/* Free path is the PRIMARY CTA — no reason to push spending. */}
-        <button
-          className="tw-btn"
-          onClick={() => dispatch({ type: "ui/setModal", payload: { name: "adReward", data: { reward: "free_spin" } } })}
-          title="Watch a short ad for a free spin">
-          <Icon name="free_spin" size={22} /> Watch ad — 1 spin
-        </button>
-        <button
-          className="tw-btn ghost"
-          onClick={() => dispatch(setView("shop"))}
-          title="Buy a spin pack with your coins">
-          🛒 Buy spin pack
-        </button>
-      </div>
-      <div className="tw-out-of-spins-pro">
-        Or <button className="tw-link" onClick={() => dispatch(setView("shop"))}>upgrade to Pro</button> for unlimited.
-      </div>
-    </div>
-  );
-}
-
-// NextSpinTicker removed — see OutOfSpinsCard. Revealing the exact
-// regen countdown nudged players to wait instead of spending or
-// watching an ad; gone in favor of the Store + ad-reward CTAs.

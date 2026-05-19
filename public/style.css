@@ -741,6 +741,38 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   align-items: center;
 }
 
+/* Mode grid — the new Home layout. 2 columns by default (mobile-
+   first), 3 columns at desktop widths. Each tile is a clickable
+   card with an icon + title + subtitle. Hover lifts slightly to
+   telegraph the tile-press affordance. The wheel is now one tile
+   among six — not the hero. */
+.tw-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 4px;
+}
+@media (min-width: 720px) {
+  .tw-mode-grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+}
+.tw-mode-tile {
+  appearance: none;
+  font: inherit;
+  color: var(--text);
+}
+.tw-mode-tile:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+}
+.tw-mode-tile:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+.tw-mode-tile.locked:hover {
+  transform: none;
+  filter: none;
+}
+
 /* Hero SPIN button — 2.5D treatment so it feels like a chunky
    physical button you can press. Stacked elements:
    - Two-stop gradient with a lighter top + darker bottom (the

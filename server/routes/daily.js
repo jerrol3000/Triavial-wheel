@@ -23,9 +23,14 @@ router.get("/today", optionalAuth, (req, res) => {
   res.json({ date, seed: date, alreadyPlayed });
 });
 
+// Authed daily endpoint — now matches the public 5-question count so
+// the share-link version and the in-app version play the same game.
+// Previously this was 10 questions, but the analytics signal was
+// clear: the public 5-question version was the share-able artifact,
+// so we unify on that snappier format.
 router.get("/questions", (req, res) => {
   const date = todayKey();
-  const questions = pickDailyQuestions(date, 10);
+  const questions = pickDailyQuestions(date, 5);
   res.json({ date, questions });
 });
 

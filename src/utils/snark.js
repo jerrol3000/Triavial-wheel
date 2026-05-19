@@ -1,5 +1,24 @@
 // Spinlore's voice. This is the brand.
 //
+// LOCALIZATION POLICY — read before adding `useT()` to this file:
+//   Snark is intentionally English-only across all locales. Three
+//   reasons:
+//     1. Brand voice. The roast cadence ("Plausible. Wrong.") is
+//        load-bearing English humor; translating it dilutes the
+//        joke into mush. Wordle made the same call with its
+//        English-only word list and it didn't hurt adoption.
+//     2. Translation cost. Each tier has 5-12 lines, 13 tiers
+//        total → ~100 lines × 5 locales = 500 translations to
+//        commission + maintain. Disproportionate ROI before we
+//        know the snark is the right brand voice at all.
+//     3. Snark in English IS the Gen-Z internet-English vibe we're
+//        leaning into — like how K-pop fans speak "stan English"
+//        regardless of native language. The English roast feels
+//        intentional, not a localization gap.
+//   Revisit if a target market complains specifically OR if we
+//   commit to a non-English-speaking territory. Until then: ship
+//   English, comment about it once, move on.
+//
 // Snark Mode fires a witty one-liner after every question + at the end
 // of the round. The intent is "screenshot worthy" — players send the
 // snark to their friends and the friend asks "wait what app is this"

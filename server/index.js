@@ -149,7 +149,30 @@ app.use("/api/challenges", challengesRoutes);
 app.use("/api/hl", hlRoutes);
 app.use("/api/vs", vsRoutes);
 
+// Centralized error handler. Distinguishes CLIENT errors (oversized
+// body, malformed JSON, invalid charset) from genuine SERVER errors so
+// a malicious client probing edge cases doesn't get a 500 for every
+// dumb input — 500s are CPU-cheap for them to spray, are noise in
+// our error logs, and (worst) imply server instability when there's
+// none. Body-parser sets `err.type` to specific strings we can map
+// to the right 4xx status. Everything else (including unexpected
+// thrown errors from route handlers) still falls through to 500.
 app.use((err, req, res, next) => {
+  // entity.too.large — body exceeded express.json({limit}) → 413
+  if (err && err.type === "entity.too.large") {
+    return res.status(413).json({ error: "payload_too_large" });
+  }
+  // entity.parse.failed / entity.verify.failed — malformed JSON or
+  // bad signature in raw-body parsers → 400
+  if (err && (err.type === "entity.parse.failed" || err.type === "entity.verify.failed" || err instanceof SyntaxError)) {
+    return res.status(400).json({ error: "invalid_json" });
+  }
+  // charset.unsupported / encoding.unsupported — same family of
+  // client-input mistakes
+  if (err && (err.type === "charset.unsupported" || err.type === "encoding.unsupported")) {
+    return res.status(415).json({ error: "unsupported_encoding" });
+  }
+  // Real server-side error — log + 500.
   console.error(err);
   res.status(500).json({ error: "internal" });
 });

@@ -18,16 +18,20 @@ import OtherAvatar from "./OtherAvatar";
 // Tab icons. Strings render as emoji; objects with `iconName` render
 // through <Icon name=...> so the same wheel.png art used everywhere
 // else also appears in the Spins tab pill (and coins in Currency).
+// All tabs now resolve to illustrated PNGs via the Icon component
+// (with emoji fallback inside Icon.js for any 404). Style matches the
+// existing wheel.png / gift.png / coins.png set so the strip reads as
+// one coherent navigation row instead of "3 illustrated + 6 emoji".
 const TAB_DEFS = [
-  { id: "featured",    label: "Featured",      icon: "✨", description: "Today's picks — rotating selection of hot items." },
-  { id: "spins",       label: "Spins",         iconName: "free_spin", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
-  { id: "bundle",      label: "Bundles",       iconName: "gift", description: "Save by buying multiple items together. Most include bonus spins." },
-  { id: "frame",       label: "Frames",        icon: "🖼️", description: "Decorate your avatar with rings and glows." },
-  { id: "pointer",     label: "Pointers",      icon: "🎯", description: "Replace the wheel's default pointer with your own style." },
-  { id: "celebration", label: "Celebrations",  icon: "🎉", description: "Effects that play when you win a round." },
-  { id: "title",       label: "Titles",        icon: "🏷️", description: "Badges shown next to your username." },
-  { id: "boost",       label: "Boosts",        icon: "⚡", description: "Limited-time multipliers and one-shot perks." },
-  { id: "currency",    label: "Coins & Pro",   iconName: "coins", description: "Top up coins with real money or upgrade to Pro." },
+  { id: "featured",    label: "Featured",      iconName: "featured",    description: "Today's picks — rotating selection of hot items." },
+  { id: "spins",       label: "Spins",         iconName: "free_spin",   description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
+  { id: "bundle",      label: "Bundles",       iconName: "gift",        description: "Save by buying multiple items together. Most include bonus spins." },
+  { id: "frame",       label: "Frames",        iconName: "frame",       description: "Decorate your avatar with rings and glows." },
+  { id: "pointer",     label: "Pointers",      iconName: "pointer",     description: "Replace the wheel's default pointer with your own style." },
+  { id: "celebration", label: "Celebrations",  iconName: "celebration", description: "Effects that play when you win a round." },
+  { id: "title",       label: "Titles",        iconName: "title",       description: "Badges shown next to your username." },
+  { id: "boost",       label: "Boosts",        iconName: "boost",       description: "Limited-time multipliers and one-shot perks." },
+  { id: "currency",    label: "Coins & Pro",   iconName: "coins",       description: "Top up coins with real money or upgrade to Pro." },
 ];
 
 // Categories hidden from the store tabs but still present in the catalog

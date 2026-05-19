@@ -38,6 +38,16 @@ export const ICONS = {
   notification:   { emoji: "🔔", file: "notification.png",    label: "Notifications" },
   bell:           { emoji: "🔔", file: "notification.png",    label: "Notifications" },
 
+  // Store tab strip — 2.5D illustrated glyphs sized to read clearly at
+  // ~22 px in a pill. Spins/Bundles/Currency reuse `free_spin`, `gift`,
+  // `coins` above; the six below are the previously emoji-only tabs.
+  featured:       { emoji: "✨", file: "featured.png",        label: "Featured" },
+  frame:          { emoji: "🖼️", file: "frame.png",           label: "Frames" },
+  pointer:        { emoji: "🎯", file: "pointer.png",         label: "Pointers" },
+  celebration:    { emoji: "🎉", file: "celebration.png",     label: "Celebrations" },
+  title:          { emoji: "🏷️", file: "title.png",           label: "Titles" },
+  boost:          { emoji: "⚡", file: "boost.png",           label: "Boosts" },
+
   // Still emoji-only — drop a matching PNG into public/icons/ and set
   // `file` here to upgrade.
   play:           { emoji: "🎡", file: null, label: "Play" },

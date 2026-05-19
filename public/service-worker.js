@@ -1,11 +1,9 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v10: VS Online ConnectionStatus now ships a live debug panel
-// (WS readyState, URL, token presence, close codes, terminal errors)
-// + a Hard reload button that unregisters SWs and clears caches.
-// Self-diagnosing the connection issues that took rounds of guessing
-// to isolate.
-const CACHE = "trivia-wheel-v10";
+// v11: store tab strip uses illustrated PNGs (featured/frame/pointer/
+// celebration/title/boost) instead of emoji. Bump to make sure the
+// new icon paths are fetched cleanly.
+const CACHE = "trivia-wheel-v11";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

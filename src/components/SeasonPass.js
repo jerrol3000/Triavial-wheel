@@ -5,6 +5,7 @@ import { setView, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { confirmDialog } from "../utils/confirm";
+import StripeCheckoutButton from "./StripeCheckoutButton";
 
 // Season Pass UI.
 //
@@ -179,9 +180,8 @@ export default function SeasonPass() {
       </div>
 
       {!prog.premium && (
-        <button className="tw-card" onClick={onBuyPremium} disabled={busy}
-                style={{ cursor: "pointer", textAlign: "left", background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))", border: "1px solid rgba(245,158,11,0.45)" }}>
-          <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
+        <div className="tw-card" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))", border: "1px solid rgba(245,158,11,0.45)" }}>
+          <div className="tw-row" style={{ gap: 10, alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 28 }}>⭐</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Unlock Premium Track</div>
@@ -189,11 +189,32 @@ export default function SeasonPass() {
                 {season.tiers.filter((t) => t.premium).length} extra rewards · retroactive for tiers you've passed
               </div>
             </div>
-            <div className="tw-pill" style={{ fontWeight: 700, background: "rgba(255,255,255,0.18)", border: "none", color: "#fff" }}>
-              🪙 {season.premium_price_coins}
+          </div>
+          {/* Two paths to unlock: coins (in-game) and USD (real money).
+              The coin path is the "I'm grinding" entry; the USD path
+              is the "I'm in, just take my money" entry. Real-money
+              unlocks via the same Stripe checkout the coin packs use
+              — the season_premium SKU was added in /server/routes/
+              payments.js's CATALOG. Webhook grants the premium flag
+              against whichever season is active when it fires. */}
+          <div className="tw-row" style={{ gap: 8 }}>
+            <button
+              className="tw-btn"
+              style={{ flex: 1, background: "linear-gradient(135deg, #7c3aed, #ec4899)" }}
+              onClick={onBuyPremium}
+              disabled={busy}
+              title="Pay with in-game coins"
+            >
+              🪙 {season.premium_price_coins} coins
+            </button>
+            <div style={{ flex: 1 }}>
+              <StripeCheckoutButton productId="season_premium" />
             </div>
           </div>
-        </button>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 8, textAlign: "center" }}>
+            Pay with coins OR $4.99 — same unlock either way.
+          </div>
+        </div>
       )}
 
       {/* Tier ladder. Each row is one tier with both tracks side-by-side

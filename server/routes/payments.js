@@ -47,6 +47,12 @@ const CATALOG = {
   powerups_mega:    { kind: "powerups", label: "Mega pack",     amount: 2.99, grant: { powerups: { fifty: 20, skip: 20, freeze: 20, double: 20 } } },
   freespins_10:     { kind: "spins",    label: "10 Free Spins",  amount: 1.99, grant: { free_spins: 10 } },
   freespins_30:     { kind: "spins",    label: "30 Free Spins",  amount: 4.99, grant: { free_spins: 30 } },
+  // Season Pass premium unlock — single one-shot SKU per active
+  // season. Grant handled specially via `grant.season_premium: true`
+  // so the unlock targets whichever season is currently active when
+  // the webhook fires (not the season at purchase-initiation time —
+  // tiny edge case but matters if a season rolls over mid-checkout).
+  season_premium:  { kind: "season", label: "Season Pass — Premium Track", amount: 4.99, grant: { season_premium: true } },
 };
 
 router.get("/config", (req, res) => {
@@ -243,6 +249,25 @@ function grantProduct(userId, product) {
     }
     for (const [k, v] of Object.entries(g.powerups)) powerups[k] = (powerups[k] || 0) + v;
     db.prepare("UPDATE stats SET powerups_json = ?, updated_at = ? WHERE user_id = ?").run(JSON.stringify(powerups), Date.now(), userId);
+  }
+  // Season Pass premium — resolve the currently-active season at
+  // grant time (not at checkout-init) so a season rollover mid-
+  // purchase still credits the right pass. Upserts the user_season
+  // row idempotently — re-firing the webhook is a safe no-op.
+  if (g.season_premium) {
+    try {
+      const { currentSeason } = require("../seasons");
+      const season = currentSeason();
+      if (season) {
+        const now = Date.now();
+        db.prepare(`
+          INSERT INTO user_season(user_id, season_id, xp, premium, claimed_mask, updated_at)
+          VALUES (?, ?, 0, 1, 0, ?)
+          ON CONFLICT(user_id, season_id) DO UPDATE SET
+            premium = 1, updated_at = excluded.updated_at
+        `).run(userId, season.id, now);
+      }
+    } catch (e) { console.error("[payments] season grant failed:", e.message); }
   }
 }
 

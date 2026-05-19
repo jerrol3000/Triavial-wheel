@@ -127,6 +127,37 @@ db.exec(`
     PRIMARY KEY (user_id, season_id)
   );
 
+  -- Higher/Lower best-streak per dataset. Each row = the player's
+  -- personal best in that dataset. UNIQUE on (user_id, dataset) so
+  -- the row is in-place updated when a higher streak is recorded.
+  -- Drives the H/L global leaderboard + the per-user personal best
+  -- display in the picker.
+  CREATE TABLE IF NOT EXISTS hl_scores (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    dataset TEXT NOT NULL,
+    best_streak INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, dataset)
+  );
+  CREATE INDEX IF NOT EXISTS idx_hl_dataset_score ON hl_scores(dataset, best_streak DESC);
+
+  -- VS rivalry tracker. Persistent head-to-head record between any
+  -- two players who have ever played each other online. Drives the
+  -- "You're 5-3 against MrAlex" callouts in the VS lobby + match-end
+  -- screens. Ordered tuple (user_a < user_b) keeps the row unique
+  -- regardless of which side initiated.
+  CREATE TABLE IF NOT EXISTS vs_rivalries (
+    user_a INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_b INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- "wins" counters are from each side's POV. a_wins = # times A won.
+    a_wins INTEGER NOT NULL DEFAULT 0,
+    b_wins INTEGER NOT NULL DEFAULT 0,
+    ties   INTEGER NOT NULL DEFAULT 0,
+    last_played_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_a, user_b),
+    CHECK (user_a < user_b)
+  );
+
   -- Friend Challenge: one player sends a 5-question challenge to
   -- another. Receiver has 24h to play the SAME 5 questions. The
   -- challenge resolves automatically once both have played (or the

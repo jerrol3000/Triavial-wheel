@@ -9,6 +9,7 @@ import {
 import { setView, setModal, pushToast } from "../store/uiSlice";
 import { fetchStats, markAchievement, unlockAchievement } from "../store/statsSlice";
 import { confirmDialog } from "../utils/confirm";
+import { api } from "../api/client";
 import ChatPanel from "./ChatPanel";
 import Icon from "./Icon";
 import { PlayerFlair } from "./PlayerFlair";
@@ -116,6 +117,48 @@ export default function Online() {
         }
         case "kicked":        dispatch(pushToast({ icon: "⚠️", title: "Signed in elsewhere", text: "This tab was disconnected." })); dispatch(leftRoom()); break;
         case "error":         dispatch(setError(msg.error)); break;
+        // Power Cards — published events that drive UI feedback.
+        // Inventory updates flow through room_state's powerCards
+        // field; these case branches are just for the celebratory
+        // toasts + sound effects + sniper-reveal storage.
+        case "card_used": {
+          const who = msg.userId === user.id ? "You" : "Opponent";
+          const labels = { sniper: "🎯 Sniper", cut: "⏱️ Time Cut", double: "✖️2 Double" };
+          dispatch(pushToast({
+            icon: "🃏",
+            title: `${who} played ${labels[msg.card] || msg.card}`,
+            duration: 2200,
+          }));
+          if (msg.userId !== user.id) sfx.click?.();
+          break;
+        }
+        case "card_resolved": {
+          // Fires when a "double" actually lands on a correct answer.
+          // Triggers a celebration for the user; opponent sees the
+          // burned points via the room_state score update.
+          if (msg.userId === user.id) {
+            dispatch(pushToast({ icon: "✖️2", title: `+${msg.payload?.points || 0}`, text: "Double points cashed in!" }));
+            sfx.coin?.();
+          }
+          break;
+        }
+        case "card_rejected": {
+          dispatch(pushToast({ icon: "⚠️", title: "Card unavailable", text: "You already used that this match." }));
+          break;
+        }
+        case "sniper_reveal": {
+          // We're the sniper — opponent just answered, we see what
+          // they picked + whether it was correct. Stored in component
+          // state via custom event so LiveMatch can render an
+          // overlay; toast for immediate awareness.
+          dispatch(pushToast({
+            icon: msg.correct ? "🎯" : "🎯",
+            title: "Sniped!",
+            text: msg.correct ? `Opponent: "${msg.answer}" ✓` : `Opponent: "${msg.answer}" ✗`,
+            duration: 3500,
+          }));
+          break;
+        }
       }
     });
     return () => {
@@ -387,6 +430,12 @@ function LiveMatch() {
             <div style={{ fontFamily: "Fredoka", fontSize: 28 }}>VS</div>
             <PlayerSlot player={room.players[1]} you={meSlot && meSlot.id === room.players[1]?.id} />
           </div>
+          {/* Rivalry tracker — if these two players have history, show
+              the head-to-head. "You're 5-3 against MrAlex" is one of
+              the strongest re-engagement hooks in any 1v1 game. */}
+          {opponent && opponent.id && (
+            <RivalryStrip opponentId={opponent.id} opponentName={opponent.username} />
+          )}
         </div>
         <ChatPanel />
       </div>
@@ -461,6 +510,11 @@ function LiveMatch() {
           <ScoreCard player={opponent} answered={!!opponentAnswered} />
         </div>
 
+        {/* Live race-bar — visualizes the score gap between players
+            as a horizontal bar. Updates the moment a player scores.
+            Tension peaks when the marker crosses the midpoint. */}
+        <RaceBar me={meSlot} opponent={opponent} />
+
         {/* Live "whose answer is in" banner. Tells the player exactly
             what to do or wait on without having to interpret icons. */}
         {!reveal && (
@@ -470,6 +524,16 @@ function LiveMatch() {
             opponentName={opponent?.username || "Opponent"}
           />
         )}
+
+        {/* Power Cards tray — 3 strategic cards per match. Drives
+            re-engagement (every match plays differently) AND creates
+            a monetization vector once we add purchasable extra
+            charges in a future season. */}
+        <PowerCardTray
+          inventory={room.powerCards?.[me?.id]}
+          oppInventory={room.powerCards?.[opponent?.id]}
+          disabled={!!picked || !!reveal}
+        />
 
         {room.question && (
           <>
@@ -851,6 +915,163 @@ function PlayerSlot({ player, you }) {
         <PlayerFlair username={`${player.username}${you ? " (you)" : ""}`} cosmetics={player.public_cosmetics} badges={player.badges} compact />
       </div>
       {player.ready && <div style={{ fontSize: 11, color: "var(--good)", marginTop: 4 }}>✓ Ready</div>}
+    </div>
+  );
+}
+
+// Rivalry strip — persistent head-to-head record between THIS user
+// and the given opponent. Renders nothing if they've never played
+// before (no need to show "0 - 0" — looks broken). Lazy-loads on
+// mount; the lookup is cheap (single indexed row).
+function RivalryStrip({ opponentId, opponentName }) {
+  const [rivalry, setRivalry] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/vs/rivalry/${opponentId}`).then((r) => {
+      if (!cancelled) setRivalry(r.data || null);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [opponentId]);
+  if (!rivalry || rivalry.total === 0) return null;
+  const { my_wins, opp_wins, ties, total } = rivalry;
+  const heat = my_wins > opp_wins ? "winning" : opp_wins > my_wins ? "losing" : "tied";
+  const emoji = heat === "winning" ? "🔥" : heat === "losing" ? "💢" : "🤝";
+  const color = heat === "winning" ? "var(--good)" : heat === "losing" ? "var(--bad)" : "var(--text-dim)";
+  return (
+    <div className="tw-row" style={{
+      marginTop: 16, padding: "10px 14px", borderRadius: 12,
+      background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      justifyContent: "space-between", alignItems: "center",
+    }}>
+      <div>
+        <div style={{ fontSize: 12, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: 0.6 }}>
+          {emoji} Rivalry
+        </div>
+        <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 14, marginTop: 2 }}>
+          You vs {opponentName} · {total} match{total === 1 ? "" : "es"}
+        </div>
+      </div>
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 800, color }}>
+          {my_wins}<span style={{ color: "var(--text-dim)", fontSize: 14, fontWeight: 600 }}> – </span>{opp_wins}
+        </div>
+        {ties > 0 && <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{ties} tie{ties === 1 ? "" : "s"}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Live race-bar — horizontal score visualization. Marker position
+// shifts toward whichever side is winning by score, with a marker
+// at exact midpoint when tied. Pure CSS animation handles the
+// smooth transition between updates. Renders nothing if either
+// player slot is missing (shouldn't happen mid-match).
+function RaceBar({ me, opponent }) {
+  if (!me || !opponent) return null;
+  const myScore = me.score || 0;
+  const oppScore = opponent.score || 0;
+  const total = myScore + oppScore;
+  // 50% when tied; slides toward the leader proportionally.
+  const myPct = total > 0 ? (myScore / total) * 100 : 50;
+  return (
+    <div className="tw-row" style={{ alignItems: "center", gap: 8, marginTop: 10, padding: "8px 4px" }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)", minWidth: 40, textAlign: "right" }}>
+        {myScore}
+      </span>
+      <div style={{
+        flex: 1, height: 12, borderRadius: 999, position: "relative",
+        background: "linear-gradient(90deg, rgba(34,211,238,0.15), rgba(124,58,237,0.15), rgba(236,72,153,0.15))",
+        border: "1px solid rgba(255,255,255,0.08)",
+        overflow: "hidden",
+      }}>
+        {/* Filled portion = my share of total score. Transitions
+            smoothly so the bar visibly "slides" on each score update. */}
+        <div style={{
+          position: "absolute", left: 0, top: 0, bottom: 0,
+          width: `${myPct}%`,
+          background: "linear-gradient(90deg, #22d3ee, #7c3aed)",
+          transition: "width 0.6s cubic-bezier(0.25, 1, 0.5, 1)",
+        }} />
+        {/* Center divider — visual reference for "tied". */}
+        <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.2)" }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)", minWidth: 40 }}>
+        {oppScore}
+      </span>
+    </div>
+  );
+}
+
+// Power Cards tray — three cards, each useable once per match.
+// Player taps a card to play it; server validates inventory and
+// applies the effect. Cards bank zero — use it or lose the match.
+//
+// Why 3 cards (not 5 or 10): keeps each decision meaningful. Too
+// many cards = analysis paralysis + dilutes the strategy. Three
+// useable-once cards force the player to GUESS which questions
+// matter most — and that's the dopamine.
+function PowerCardTray({ inventory, oppInventory, disabled }) {
+  if (!inventory) return null;
+  const cards = [
+    { id: "sniper", icon: "🎯", label: "Sniper", desc: "See opponent's next pick the moment they lock in." },
+    { id: "cut",    icon: "⏱️", label: "Time Cut", desc: "Opponent's next question caps at 8 seconds." },
+    { id: "double", icon: "✖️2", label: "Double", desc: "Your next correct answer is worth 2× points." },
+  ];
+  const play = (card) => {
+    if (disabled) return;
+    if ((inventory[card] || 0) <= 0) return;
+    sfx.click?.();
+    rt.send({ type: "use_card", card });
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: "var(--text-dim)", letterSpacing: 0.6, textTransform: "uppercase" }}>
+          🃏 Your Power Cards
+        </span>
+        {oppInventory && (
+          <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+            Opp: {Object.values(oppInventory).reduce((a, b) => a + b, 0)} left
+          </span>
+        )}
+      </div>
+      <div className="tw-row" style={{ gap: 6 }}>
+        {cards.map((c) => {
+          const remaining = inventory[c.id] || 0;
+          const used = remaining <= 0;
+          return (
+            <button
+              key={c.id}
+              disabled={used || disabled}
+              onClick={() => play(c.id)}
+              title={used ? "Already used this match" : c.desc}
+              style={{
+                flex: 1,
+                padding: "10px 6px",
+                borderRadius: 12,
+                border: `1px solid ${used ? "rgba(255,255,255,0.05)" : "rgba(124,58,237,0.4)"}`,
+                background: used ? "rgba(255,255,255,0.02)"
+                              : "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
+                color: used ? "var(--text-dim)" : "var(--text)",
+                cursor: used || disabled ? "not-allowed" : "pointer",
+                opacity: used ? 0.5 : 1,
+                fontFamily: "Fredoka",
+                fontWeight: 700,
+                fontSize: 12,
+                lineHeight: 1.2,
+                transition: "transform 0.12s ease",
+              }}
+            >
+              <div style={{ fontSize: 20, marginBottom: 2 }}>{c.icon}</div>
+              <div>{c.label}</div>
+              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2, fontWeight: 600 }}>
+                {used ? "USED" : "ready"}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

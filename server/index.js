@@ -53,6 +53,8 @@ const badgeRoutes = require("./routes/badges");
 const notificationsRoutes = require("./routes/notifications");
 const seasonRoutes = require("./routes/season");
 const challengesRoutes = require("./routes/challenges");
+const hlRoutes = require("./routes/hl");
+const vsRoutes = require("./routes/vs");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
 const { seedCatalog } = require("./cosmetics");
@@ -144,6 +146,8 @@ app.use("/api/badges", badgeRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/season", seasonRoutes);
 app.use("/api/challenges", challengesRoutes);
+app.use("/api/hl", hlRoutes);
+app.use("/api/vs", vsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

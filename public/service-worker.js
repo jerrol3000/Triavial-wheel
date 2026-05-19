@@ -1,12 +1,11 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v14: HOME RE-ARCH + CONTENT PIVOT — Home is now a 2x3 mode grid
-// (Daily, H/L, Friends, Wheel, VS, Season Pass); the wheel was
-// extracted to WheelView.js so it's one mode among many, not the
-// home page. Daily unified to 5 questions everywhere. Pop-culture
-// categories added (Music 2020s, Streaming TV, Internet & Memes,
-// Sports Culture, Anime, Streetwear) with 47 seed questions.
-const CACHE = "trivia-wheel-v14";
+// v15: VS REDESIGN — Power Cards (Sniper / Cut / Double), live
+// race-bar score visualization, persistent Rivalry tracker. Plus:
+// Shop tabs consolidated 9→6, Friend-Challenge Rematch button,
+// Streak FOMO uses local timezone, Higher/Lower has global
+// leaderboards, Season Pass premium has a $4.99 USD path.
+const CACHE = "trivia-wheel-v15";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

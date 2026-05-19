@@ -5,6 +5,7 @@ import { setView, pushToast } from "../store/uiSlice";
 import { addCoins, addXp } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { snarkForAnswer, snarkForRound } from "../utils/snark";
+import { api } from "../api/client";
 
 // Higher/Lower — pop-culture comparison mini-mode.
 //
@@ -48,6 +49,60 @@ function indexOf(dsKey, item) {
   return items.findIndex((x) => x.label === item.label);
 }
 
+// Global leaderboard view for one dataset. Public endpoint, so guests
+// can see who's at the top + feel the aspirational pull. Highlights
+// the player's own row if they appear in the top 25.
+function HLLeaderboardView({ dsKey, onBack, me }) {
+  const [rows, setRows] = useState(null);
+  const ds = HL_DATASETS[dsKey];
+  useEffect(() => {
+    let cancelled = false;
+    api.get(`/hl/leaderboard/${dsKey}`).then((r) => {
+      if (!cancelled) setRows(r.data?.leaderboard || []);
+    }).catch(() => { if (!cancelled) setRows([]); });
+    return () => { cancelled = true; };
+  }, [dsKey]);
+  return (
+    <div className="tw-col">
+      <button className="tw-pill" style={{ alignSelf: "flex-start", cursor: "pointer" }} onClick={onBack}>← Back</button>
+      <div className="tw-card" style={{ textAlign: "center" }}>
+        <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700 }}>🌍 Top 25 · {ds.label}</div>
+        <div style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 4 }}>Best streaks on this dataset, all-time.</div>
+      </div>
+      {rows === null ? (
+        <div className="tw-card" style={{ textAlign: "center", padding: 30 }}><div className="tw-spinner" style={{ margin: "0 auto" }} /></div>
+      ) : rows.length === 0 ? (
+        <div className="tw-card" style={{ textAlign: "center", color: "var(--text-dim)" }}>
+          No streaks recorded yet. Be the first.
+        </div>
+      ) : (
+        <div className="tw-card" style={{ padding: 8 }}>
+          {rows.map((r, i) => {
+            const isMe = me && r.username === me.username;
+            return (
+              <div key={r.username + i} className="tw-row" style={{
+                justifyContent: "space-between", padding: "8px 12px",
+                borderBottom: i < rows.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                background: isMe ? "rgba(124,58,237,0.18)" : "transparent",
+                borderRadius: isMe ? 8 : 0,
+                fontWeight: isMe ? 700 : 500,
+              }}>
+                <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
+                  <span style={{ fontFamily: "Fredoka", color: i < 3 ? "#fbbf24" : "var(--text-dim)", minWidth: 24, fontWeight: 700 }}>
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                  </span>
+                  <span>{r.username}{isMe ? " (you)" : ""}</span>
+                </div>
+                <span style={{ fontFamily: "Fredoka", fontWeight: 700 }}>🔥 {r.best_streak}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function pickRandomNew(dsKey, exclude) {
   const items = HL_DATASETS[dsKey]?.items || [];
   const candidates = items
@@ -61,6 +116,8 @@ export default function HigherLower() {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
   const [dsKey, setDsKey] = useState(null);          // null = picker screen
+  const [showLeaderboard, setShowLeaderboard] = useState(null); // dataset key or null
+  const [serverBests, setServerBests] = useState({});           // dataset → best
   const [left, setLeft] = useState(null);
   const [right, setRight] = useState(null);
   const [revealed, setRevealed] = useState(false);   // is right.value showing?
@@ -71,6 +128,14 @@ export default function HigherLower() {
   const [done, setDone] = useState(false);
   const [snark, setSnark] = useState("");
   const [usedIdx, setUsedIdx] = useState(new Set());
+
+  // Pull per-dataset server bests once on mount so the picker can
+  // surface "🏆 12" next to each category for authed players. No-op
+  // for guests (the localStorage best still drives their UI).
+  useEffect(() => {
+    if (!user) return;
+    api.get("/hl/best").then((r) => setServerBests(r.data || {})).catch(() => {});
+  }, [user]);
 
   // Start a new round in the given dataset.
   const start = (key) => {
@@ -133,14 +198,26 @@ export default function HigherLower() {
       }, 1400);
     } else {
       setSnark(snarkForRound({ correct: streak, total: streak + 1 }));
-      // Persist best streak across sessions for the leaderboard flex.
+      // Persist best streak across sessions. Local store for the
+      // guest flex, server-side for authed players so they can
+      // appear on the global per-dataset leaderboard.
       if (streak > bestStreak) {
         try { localStorage.setItem("spinlore_hl_best", String(streak)); } catch (e) {}
         setBestStreak(streak);
       }
+      if (user && streak > 0) {
+        // Fire-and-forget — server takes MAX so an out-of-order
+        // arrival with a worse streak is a safe no-op.
+        api.post("/hl/score", { dataset: dsKey, streak }).catch(() => {});
+      }
       setTimeout(() => setDone(true), 1800);
     }
   };
+
+  // Leaderboard sub-view (overlay-style — picker is the natural back).
+  if (showLeaderboard) {
+    return <HLLeaderboardView dsKey={showLeaderboard} onBack={() => setShowLeaderboard(null)} me={user} />;
+  }
 
   // Picker screen — choose a dataset.
   if (!dsKey) {
@@ -154,21 +231,40 @@ export default function HigherLower() {
             Which is bigger? You have one second to decide. Pick a category.
           </div>
         </div>
-        {Object.entries(HL_DATASETS).map(([key, ds]) => (
-          <button key={key} className="tw-card" style={{ textAlign: "left", cursor: "pointer", border: "1px solid rgba(255,255,255,0.1)" }}
-                  onClick={() => start(key)}>
-            <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700 }}>{ds.label}</div>
-            <div style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 4 }}>{ds.blurb}</div>
-          </button>
-        ))}
+        {Object.entries(HL_DATASETS).map(([key, ds]) => {
+          // Show server best (authed) or local best (guest fallback).
+          const personalBest = (user && serverBests[key]) || (key === dsKey ? bestStreak : 0);
+          return (
+            <div key={key} className="tw-card" style={{ padding: 0, border: "1px solid rgba(255,255,255,0.1)" }}>
+              <button style={{ textAlign: "left", cursor: "pointer", background: "transparent", border: "none", color: "var(--text)", width: "100%", padding: "14px 16px" }}
+                      onClick={() => start(key)}>
+                <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700 }}>{ds.label}</div>
+                    <div style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 4 }}>{ds.blurb}</div>
+                  </div>
+                  {personalBest > 0 && (
+                    <span className="tw-pill" style={{ fontSize: 12, fontWeight: 700 }}>🏆 {personalBest}</span>
+                  )}
+                </div>
+              </button>
+              <button className="tw-pill"
+                style={{ margin: "0 16px 12px", cursor: "pointer", fontSize: 11 }}
+                onClick={() => setShowLeaderboard(key)}>
+                🌍 See top 25
+              </button>
+            </div>
+          );
+        })}
         <button className="tw-pill" style={{ alignSelf: "flex-start", cursor: "pointer" }} onClick={stopAndReturn}>← Back</button>
       </div>
     );
   }
 
-  // Done screen — share + retry.
+  // Done screen — share + retry + leaderboard CTA.
   if (done) {
     const ds = HL_DATASETS[dsKey];
+    const personalBest = Math.max(streak, bestStreak, (user && serverBests[dsKey]) || 0);
     return (
       <div className="tw-col">
         <div className="tw-card" style={{ textAlign: "center" }}>
@@ -176,7 +272,7 @@ export default function HigherLower() {
             {streak} in a row
           </div>
           <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 12 }}>
-            {ds.label} · best: {Math.max(streak, bestStreak)}
+            {ds.label} · best: {personalBest}
           </div>
           {snark && (
             <div style={{ padding: "10px 12px", borderRadius: 10, background: "rgba(124,58,237,0.18)", border: "1px solid rgba(124,58,237,0.4)", fontFamily: "Fredoka", fontWeight: 600, fontStyle: "italic", marginBottom: 12 }}>
@@ -184,7 +280,8 @@ export default function HigherLower() {
             </div>
           )}
           <button className="tw-btn block" onClick={() => start(dsKey)}>🔁 Play again</button>
-          <button className="tw-pill" style={{ marginTop: 10, cursor: "pointer" }} onClick={() => setDsKey(null)}>← Pick a different category</button>
+          <button className="tw-pill" style={{ marginTop: 10, cursor: "pointer" }} onClick={() => setShowLeaderboard(dsKey)}>🌍 See where you rank</button>
+          <button className="tw-pill" style={{ marginTop: 6, cursor: "pointer" }} onClick={() => setDsKey(null)}>← Pick a different category</button>
         </div>
       </div>
     );

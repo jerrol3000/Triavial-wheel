@@ -103,7 +103,7 @@ function Question({ q, index, total, onAnswer }) {
 
 // ── Per-screen logic ─────────────────────────────────────────────
 
-function ListView({ challenges, me, onOpen, onSend, friends }) {
+function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
   const dispatch = useDispatch();
 
   const incoming = challenges.filter((c) => c.receiver_id === me.id && c.status === "pending" && c.receiver_correct === null);
@@ -181,17 +181,31 @@ function ListView({ challenges, me, onOpen, onSend, friends }) {
                        : outcome === "lost" ? "💔"
                        : outcome === "tied" ? "🤝"
                        : "⏰";
+            const oppId = youSent ? c.receiver_id : c.sender_id;
             return (
-              <div key={c.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <div>
+              <div key={c.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", gap: 8 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 600 }}>{icon} vs {oppName}</div>
                   <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
                     {yourScore ?? "—"} – {oppScore ?? "—"}
                   </div>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color }}>
-                  {outcome.toUpperCase()}
-                </span>
+                <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color }}>{outcome.toUpperCase()}</span>
+                  {/* Rematch button — one-tap "challenge them back".
+                      Most natural follow-up to a resolved match, vs
+                      forcing the player to navigate New Challenge →
+                      pick the same friend → pick wager. Re-uses the
+                      previous wager amount as a sensible default. */}
+                  <button
+                    className="tw-pill"
+                    style={{ cursor: "pointer", fontSize: 11, background: "linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.3))", border: "1px solid rgba(245,158,11,0.5)", color: "#fff", fontWeight: 700 }}
+                    onClick={() => onRematch && onRematch(oppId, c.wager)}
+                    title="Rematch with same wager"
+                  >
+                    ⚔️ Rematch
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -403,6 +417,28 @@ export default function FriendChallenges() {
     );
   }
 
+  // One-tap rematch — fire the same send-challenge call directly,
+  // bypassing the picker. Falls back to opening the picker UI if
+  // the API call fails (so the player still has a path forward).
+  const rematch = async (oppId, wager) => {
+    try {
+      const r = await api.post("/challenges/send", { friend_id: oppId, wager: wager || 0 });
+      if (r.data.ok) {
+        dispatch(pushToast({ icon: "⚔️", title: "Rematch sent", text: "They have 24h." }));
+        dispatch(fetchStats());
+        loadAll();
+      }
+    } catch (e) {
+      const err = e?.response?.data?.error;
+      if (err === "challenge_already_open") {
+        dispatch(pushToast({ icon: "⏳", title: "Pending challenge", text: "You already have one open with them." }));
+      } else {
+        // Fall back to the explicit picker so the player can adjust wager.
+        setMode("send");
+      }
+    }
+  };
+
   if (mode === "send") {
     return <SendView friends={friends} onSent={() => { setMode("list"); loadAll(); }} onCancel={() => setMode("list")} />;
   }
@@ -416,6 +452,7 @@ export default function FriendChallenges() {
       friends={friends}
       onOpen={(id) => { setPlayId(id); setMode("play"); }}
       onSend={() => setMode("send")}
+      onRematch={rematch}
     />
   );
 }

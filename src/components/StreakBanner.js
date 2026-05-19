@@ -6,28 +6,37 @@ import { sfx } from "../utils/sound";
 // Streak FOMO banner. Shows ONLY when:
 //   - the player has an existing streak (current_daily_streak > 0)
 //   - they have NOT played today's daily yet
-//   - the local clock is past the FOMO threshold (default: when their
-//     streak has under ~6 hours to live before UTC rolls over)
+//   - the LOCAL clock is past the FOMO threshold (default: under ~6h
+//     until the streak day rolls over in the player's timezone)
 //
-// Without these gates the banner becomes noise. The whole point is
-// that it appears LATE in the day when the player is most likely to
-// be looking at their phone, knows they "owe" the daily, and the
-// clock is ticking. That's the Duolingo loop.
+// Timezone fix: this was UTC-based originally. For a player on US
+// Pacific time, UTC midnight is 5 PM local — the nag fired from
+// noon-5 PM, completely missing the prime evening window. Now we
+// compute the deadline in the player's LOCAL timezone, so the nag
+// reliably fires when they're actually checking their phone after
+// work / school.
 //
-// The math: a "streak day" runs midnight-to-midnight UTC. We compute
-// the ms until UTC midnight; show the banner when that's under
-// FOMO_WINDOW_MS (default 6h). Updates every 30s so the countdown
-// stays roughly accurate without burning CPU.
+// Server still keys daily streaks by UTC date (single global truth)
+// — but the BANNER is local-clock so it lands in the right evening
+// for each player. Worst case: a player who plays right before
+// LOCAL midnight but after UTC midnight gets credit for "yesterday"
+// from the server's POV; they still see the streak go up the next
+// day, just on a slightly different counter. Acceptable trade for
+// the engagement lift.
 
-const FOMO_WINDOW_MS = 6 * 60 * 60 * 1000; // last 6 hours before UTC midnight
+const FOMO_WINDOW_MS = 6 * 60 * 60 * 1000; // last 6 hours before local midnight
 
-function msToUtcMidnight() {
+function msToLocalMidnight() {
   const now = new Date();
-  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   return tomorrow.getTime() - now.getTime();
 }
 
-function todayKey() {
+// Server keys daily streaks by UTC date, so the "did I play today"
+// check must match the server's view — not local. Mismatch here
+// would show the banner to a player who DID play today (just in a
+// different UTC day from local).
+function utcTodayKey() {
   const d = new Date();
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -61,10 +70,10 @@ export default function StreakBanner() {
   if (!user) return null;
   const streak = stats.current_daily_streak || 0;
   if (streak <= 0) return null;
-  const playedToday = stats.last_daily_date === todayKey();
+  const playedToday = stats.last_daily_date === utcTodayKey();
   if (playedToday) return null;
 
-  const remaining = msToUtcMidnight();
+  const remaining = msToLocalMidnight();
   if (remaining > FOMO_WINDOW_MS) return null; // too early to nag
 
   const onPlay = () => {

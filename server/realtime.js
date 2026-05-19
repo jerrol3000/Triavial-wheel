@@ -83,6 +83,10 @@ function publicRoom(room) {
     pendingDifficulty: room.pendingDifficulty,
     difficultyVotes: room.difficultyVotes,
     sessionScores: room.sessionScores,
+    // Power Cards inventory snapshot. Both players see both
+    // inventories so they can read the opponent's threat surface
+    // ("they still have a Sniper, watch the next pick").
+    powerCards: room.powerCards || {},
   };
 }
 
@@ -145,6 +149,18 @@ function makeRoom({ kind, code, difficulty = "medium", hostId = null }) {
     startedAt: 0,
     timeoutId: null,
     emptyAt: 0,
+    // Power Cards — per-player inventory for THIS match. Reset on
+    // each rematch so cards don't bank across rounds. 3 cards total,
+    // each useable once per match. Tradeoffs add strategic depth
+    // and create natural pacing for trash-talk reactions.
+    //   🎯 sniper   : peek opponent's pick the moment they lock in
+    //   ⏱️  cut      : opponent's next question caps at 8s (vs 15s)
+    //   ✖️ double    : next correct answer is worth 2× points
+    powerCards: {},                    // userId → { sniper, cut, double }
+    // Per-question effects applied by Power Cards. Cleared when the
+    // question advances. `cutFor` lists userIds whose timer is
+    // shortened; `doubleFor` lists userIds whose next-correct doubles.
+    questionEffects: { cutFor: new Set(), doubleFor: new Set() },
     // Continue-rematch state: both players must vote "yes" within the
     // window to start round 2. Pending difficulty-change requests live
     // alongside so the next round can pick the new value.
@@ -211,14 +227,53 @@ function startMatch(room) {
   room.continueVotes = {};
   room.continueDeadline = 0;
   room.rounds += 1;
+  // Reset Power Cards inventory for this match. Each player gets one
+  // of each card. Bank doesn't carry over between rematches —
+  // strategic decision: keeps every match feeling fresh + means
+  // rematches don't snowball for whoever hoarded.
+  room.powerCards = {};
+  for (const p of room.players) {
+    if (p) room.powerCards[p.id] = { sniper: 1, cut: 1, double: 1 };
+  }
+  room.questionEffects = { cutFor: new Set(), doubleFor: new Set() };
   advanceQuestion(room, /* first */ true);
 }
 
 function advanceQuestion(room, first = false) {
   if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
   if (room.index >= room.questions.length) return endMatch(room);
-  room.questionEndsAt = Date.now() + QUESTION_TIME_MS;
-  broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
+  // Carry over the "double" effect (applies until the player gets a
+  // correct answer); reset the "cut" effect each question since the
+  // cut card stipulates "next question" only. cutFor stays around
+  // through this advanceQuestion call so the duration can use it,
+  // then we clear it after the broadcast.
+  const effects = room.questionEffects || { cutFor: new Set(), doubleFor: new Set() };
+  // Per-player question duration. Players in cutFor get 8s instead
+  // of the standard 15s. Stored as a map so the client knows which
+  // side's timer to render shorter without leaking other state.
+  const cutDuration = 8000;
+  const perPlayerDuration = {};
+  let maxDuration = QUESTION_TIME_MS;
+  for (const p of room.players) {
+    if (!p) continue;
+    const dur = effects.cutFor.has(p.id) ? cutDuration : QUESTION_TIME_MS;
+    perPlayerDuration[p.id] = dur;
+    if (dur > maxDuration) maxDuration = dur;
+  }
+  room.questionEndsAt = Date.now() + maxDuration;
+  room.perPlayerDuration = perPlayerDuration;
+  broadcastRoom(room, {
+    type: "room_state",
+    room: publicRoom(room),
+    perPlayerDuration,
+    activeEffects: {
+      cutFor: Array.from(effects.cutFor || []),
+      doubleFor: Array.from(effects.doubleFor || []),
+    },
+  });
+  // Clear cut for next round (single-use, this-question-only effect).
+  // Double stays because it's "next CORRECT answer", not "next question".
+  effects.cutFor = new Set();
   room.timeoutId = setTimeout(() => {
     // Anyone who didn't answer gets recorded as wrong.
     const idxAns = room.answers[room.index] || {};
@@ -229,7 +284,7 @@ function advanceQuestion(room, first = false) {
     }
     room.answers[room.index] = idxAns;
     revealAndAdvance(room);
-  }, QUESTION_TIME_MS + 50);
+  }, maxDuration + 50);
 }
 
 function revealAndAdvance(room) {
@@ -268,9 +323,37 @@ function recordAnswer(room, userId, answer) {
     const player = room.players.find((p) => p && p.id === userId);
     if (player) {
       const speedBonus = Math.max(0, Math.round(((QUESTION_TIME_MS - timeUsed) / QUESTION_TIME_MS) * 50));
-      player.score += 100 + speedBonus;
+      let points = 100 + speedBonus;
+      // Power Card: double — next correct answer is worth 2x.
+      // Burns the flag as soon as it lands on a correct answer
+      // (correct=false answers don't consume the buff).
+      const effects = room.questionEffects || (room.questionEffects = { cutFor: new Set(), doubleFor: new Set() });
+      if (effects.doubleFor && effects.doubleFor.has(userId)) {
+        points *= 2;
+        effects.doubleFor.delete(userId);
+        // Tell both players the double actually triggered so the UI
+        // can fire a celebration on the user's side + a "burned"
+        // marker on the opponent's side.
+        broadcastRoom(room, { type: "card_resolved", userId, card: "double", payload: { points } });
+      }
+      player.score += points;
       player.correct += 1;
     }
+  }
+  // Power Card: sniper — if the OPPONENT armed sniper this question,
+  // they get to peek at this user's pick the moment it's submitted.
+  // We DM the sniped reveal to whichever opponent has the sniper
+  // flag active, not the broadcaster, so the sniped user doesn't
+  // know they were sniped until match-end recap.
+  const effects = room.questionEffects;
+  if (effects && effects.sniperFor && effects.sniperFor.size > 0) {
+    for (const sniperUserId of effects.sniperFor) {
+      if (sniperUserId === userId) continue; // can't snipe yourself
+      sendToUser(sniperUserId, { type: "sniper_reveal", userId, answer, correct: isRight });
+    }
+    // Sniper is single-use per arm; clear after the first opponent
+    // answer lands.
+    effects.sniperFor = new Set();
   }
   // If both players answered, advance early.
   const playerIds = room.players.filter(Boolean).map((p) => p.id);
@@ -322,6 +405,27 @@ function endMatch(room, opts = {}) {
       streak = 0;
     }
     room.sessionScores[p.id] = { wins, losses, ties, streak, bestStreak };
+  }
+
+  // Update the persistent rivalry record between these two players.
+  // Ordered tuple (lower id, higher id) keeps the row unique
+  // regardless of which side initiated. Skips if either is missing
+  // (e.g., one-sided forfeit from a torn-down match).
+  if (p1 && p2 && p1.id && p2.id && p1.id !== p2.id) {
+    const lo = Math.min(p1.id, p2.id);
+    const hi = Math.max(p1.id, p2.id);
+    const winnerIsLo = winner && winner.id === lo;
+    const winnerIsHi = winner && winner.id === hi;
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO vs_rivalries (user_a, user_b, a_wins, b_wins, ties, last_played_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_a, user_b) DO UPDATE SET
+        a_wins = vs_rivalries.a_wins + excluded.a_wins,
+        b_wins = vs_rivalries.b_wins + excluded.b_wins,
+        ties   = vs_rivalries.ties   + excluded.ties,
+        last_played_at = excluded.last_played_at
+    `).run(lo, hi, winnerIsLo ? 1 : 0, winnerIsHi ? 1 : 0, !winner ? 1 : 0, now);
   }
 
   // Reset continue-vote state for the rematch decision window.
@@ -760,6 +864,50 @@ function handleMessage(ws, user, msg) {
       const room = findRoomForUser(user.id);
       if (!room || !room.started || room.finished) return;
       recordAnswer(room, user.id, String(msg.answer || ""));
+      return;
+    }
+
+    case "use_card": {
+      // Power Cards mid-match. The card kind drives:
+      //   - sniper: arms a one-shot "peek opponent's next pick" for
+      //     the rest of this question
+      //   - cut:    shortens opponent's NEXT question's timer
+      //   - double: doubles THIS user's next correct answer score
+      // Server validates the card hasn't been used by this player
+      // yet this match (one-per-card-per-match cap). Broadcasts so
+      // the opponent sees the burn icon + the user sees their card
+      // visibly decrement.
+      const room = findRoomForUser(user.id);
+      if (!room || !room.started || room.finished) return;
+      const card = String(msg.card || "");
+      if (!["sniper", "cut", "double"].includes(card)) return;
+      const inv = room.powerCards[user.id];
+      if (!inv || (inv[card] || 0) <= 0) {
+        send(ws, { type: "card_rejected", card, reason: "no_inventory" });
+        return;
+      }
+      // Burn one card from inventory.
+      inv[card] -= 1;
+      const effects = room.questionEffects || (room.questionEffects = { cutFor: new Set(), doubleFor: new Set(), sniperFor: new Set() });
+      effects.sniperFor = effects.sniperFor || new Set();
+      const opponent = room.players.find((p) => p && p.id !== user.id);
+      if (card === "sniper") {
+        // Arm sniper on this user — fires when opponent answers.
+        effects.sniperFor.add(user.id);
+      } else if (card === "cut" && opponent) {
+        // Apply to the opponent's NEXT question.
+        effects.cutFor.add(opponent.id);
+      } else if (card === "double") {
+        // This user's next correct answer doubles.
+        effects.doubleFor.add(user.id);
+      }
+      // Broadcast so the opponent sees the burn animation immediately.
+      broadcastRoom(room, {
+        type: "card_used",
+        userId: user.id,
+        card,
+        remaining: { ...inv },
+      });
       return;
     }
 

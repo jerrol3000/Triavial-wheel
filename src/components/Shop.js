@@ -18,21 +18,27 @@ import OtherAvatar from "./OtherAvatar";
 // Tab icons. Strings render as emoji; objects with `iconName` render
 // through <Icon name=...> so the same wheel.png art used everywhere
 // else also appears in the Spins tab pill (and coins in Currency).
-// All tabs now resolve to illustrated PNGs via the Icon component
-// (with emoji fallback inside Icon.js for any 404). Style matches the
-// existing wheel.png / gift.png / coins.png set so the strip reads as
-// one coherent navigation row instead of "3 illustrated + 6 emoji".
+// Tab consolidation pass: 9 tabs → 6. The cosmetic tabs (Frames,
+// Pointers, Celebrations, Titles) were each sparsely populated and
+// they all answered the same player question: "what does my profile
+// look like?" Merged them into a single "Looks" tab that internally
+// groups by category — much less navigation, same shopping experience.
+// Each tab icon stays on its individual PNG so the strip still reads
+// as the same visual vocabulary.
 const TAB_DEFS = [
-  { id: "featured",    label: "Featured",      iconName: "featured",    description: "Today's picks — rotating selection of hot items." },
-  { id: "spins",       label: "Spins",         iconName: "free_spin",   description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
-  { id: "bundle",      label: "Bundles",       iconName: "gift",        description: "Save by buying multiple items together. Most include bonus spins." },
-  { id: "frame",       label: "Frames",        iconName: "frame",       description: "Decorate your avatar with rings and glows." },
-  { id: "pointer",     label: "Pointers",      iconName: "pointer",     description: "Replace the wheel's default pointer with your own style." },
-  { id: "celebration", label: "Celebrations",  iconName: "celebration", description: "Effects that play when you win a round." },
-  { id: "title",       label: "Titles",        iconName: "title",       description: "Badges shown next to your username." },
-  { id: "boost",       label: "Boosts",        iconName: "boost",       description: "Limited-time multipliers and one-shot perks." },
-  { id: "currency",    label: "Coins & Pro",   iconName: "coins",       description: "Top up coins with real money or upgrade to Pro." },
+  { id: "featured", label: "Featured",    iconName: "featured",  description: "Today's picks — rotating selection of hot items." },
+  { id: "spins",    label: "Spins",       iconName: "free_spin", description: "Spin packs to keep the wheel turning. Coins → spins, no real money required." },
+  { id: "bundle",   label: "Bundles",     iconName: "gift",      description: "Save by buying multiple items together. Most include bonus spins." },
+  { id: "looks",    label: "Looks",       iconName: "frame",     description: "Frames, pointers, titles, celebrations — everything that makes your profile and wheel yours." },
+  { id: "boost",    label: "Boosts",      iconName: "boost",     description: "Limited-time multipliers and one-shot perks." },
+  { id: "currency", label: "Coins & Pro", iconName: "coins",     description: "Top up coins with real money or upgrade to Pro." },
 ];
+
+// When the "looks" tab is active we render items from these underlying
+// catalog categories. Keeping the catalog category strings unchanged
+// (data layer) and only collapsing in the UI keeps the cosmetics
+// system itself simple — no schema migration required.
+const LOOKS_CATEGORIES = ["frame", "pointer", "title", "celebration"];
 
 // Categories hidden from the store tabs but still present in the catalog
 // (so already-owned items keep working). Featured rotation also skips
@@ -80,6 +86,20 @@ export default function Shop() {
   const itemsForTab = useMemo(() => {
     if (activeTab === "currency") return null;
     if (activeTab === "featured") return pickFeatured(catalog);
+    // "looks" is a UI-level merge of 4 underlying catalog categories
+    // (frame, pointer, title, celebration). Sort first by category
+    // (so frames cluster, then pointers, etc.) then by sort_order
+    // within each group.
+    if (activeTab === "looks") {
+      return catalog
+        .filter((c) => LOOKS_CATEGORIES.includes(c.category))
+        .sort((a, b) => {
+          const ca = LOOKS_CATEGORIES.indexOf(a.category);
+          const cb = LOOKS_CATEGORIES.indexOf(b.category);
+          if (ca !== cb) return ca - cb;
+          return (a.sort_order - b.sort_order) || a.price_coins - b.price_coins;
+        });
+    }
     return catalog.filter((c) => c.category === activeTab)
       .sort((a, b) => (a.sort_order - b.sort_order) || a.price_coins - b.price_coins);
   }, [catalog, activeTab]);

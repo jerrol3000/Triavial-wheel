@@ -1,10 +1,9 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v19: Home grid now fully illustrated — all six tiles render
-// through <Icon>. Higher/Lower, Friend Challenges, and Season Pass
-// have their dedicated PNGs in /public/icons/ wired up via the
-// icons.js registry.
-const CACHE = "trivia-wheel-v19";
+// v20: Home tile icons bumped — hero 56 → 84 px, secondary 44 → 68
+// px — with negative margins on the wrapper so the tiles
+// themselves stay the same size. Bigger glyphs, identical boxes.
+const CACHE = "trivia-wheel-v20";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

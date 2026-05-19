@@ -192,10 +192,26 @@ export default function Home() {
                 {/* Prefer the illustrated PNG via <Icon> when available
                     so the Home grid matches the rest of the app's icon
                     vocabulary; tiles without a registered PNG fall
-                    through to the emoji until artwork ships for them. */}
-                <div style={{ fontSize: hero ? 48 : 36, lineHeight: 1, flex: hero ? "0 0 auto" : undefined, display: "inline-flex", alignItems: "center", justifyContent: "center" }} aria-hidden="true">
+                    through to the emoji until artwork ships for them.
+                    Negative top/bottom margin pulls the icon's flow
+                    box back so the tile's overall height stays
+                    anchored to text + padding even though the
+                    rendered glyph is now meaningfully bigger. Same
+                    pattern we use on the Shop tab strip. */}
+                <div
+                  style={{
+                    fontSize: hero ? 72 : 56,
+                    lineHeight: 1,
+                    flex: hero ? "0 0 auto" : undefined,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: hero ? "-12px 0" : "-10px 0",
+                  }}
+                  aria-hidden="true"
+                >
                   {tile.iconName
-                    ? <Icon name={tile.iconName} size={hero ? 56 : 44} />
+                    ? <Icon name={tile.iconName} size={hero ? 84 : 68} />
                     : tile.icon}
                 </div>
                 <div style={{ flex: hero ? 1 : undefined, minWidth: 0 }}>

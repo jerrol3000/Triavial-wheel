@@ -53,6 +53,27 @@ class RealtimeClient {
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   emit(msg) { this.listeners.forEach((f) => { try { f(msg); } catch (e) {} }); }
 
+  // Snapshot of current client state — used by the debug panel so the
+  // user can SEE exactly what's happening when "connecting" hangs.
+  // Returns synchronously so the UI updates every render without
+  // a network call.
+  state() {
+    const READY_STATE_LABEL = ["CONNECTING (0)", "OPEN (1)", "CLOSING (2)", "CLOSED (3)"];
+    return {
+      readyState: this.ws ? this.ws.readyState : null,
+      readyStateLabel: this.ws ? READY_STATE_LABEL[this.ws.readyState] : "no socket",
+      connecting: this.connecting,
+      shouldReconnect: this.shouldReconnect,
+      reconnectAttempts: this.reconnectAttempts,
+      terminalError: this.terminalError,
+      lastError: this.lastError,
+      lastUrl: this.lastUrl || wsUrl(),
+      hasToken: !!getToken(),
+      lastCloseCode: this.lastCloseCode || null,
+      lastCloseReason: this.lastCloseReason || null,
+    };
+  }
+
   // Manual diagnostic — pings /api/health to confirm the backend is reachable at all.
   async diagnose() {
     const url = healthUrl();
@@ -125,6 +146,8 @@ class RealtimeClient {
     ws.onclose = (e) => {
       this.connecting = false;
       if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+      this.lastCloseCode = e && e.code;
+      this.lastCloseReason = (e && e.reason) || null;
       this.lastError = e && e.code !== 1000 ? `close ${e.code}${e.reason ? ` ${e.reason}` : ""}` : null;
       this.emit({ type: "close", code: e && e.code, reason: e && e.reason });
       // Don't retry on a terminal error (already set by onmessage)

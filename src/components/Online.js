@@ -687,28 +687,32 @@ function ReactionLayer() {
 }
 
 // ─── ConnectionStatus ───────────────────────────────────────────────────────
-// Drives the banner shown when the WS isn't connected. Auto-diagnoses
-// after 4 s of unresolved connecting so the user gets a specific error
-// + actionable next step instead of staring at an indefinite spinner.
-//
-// Error states (priority order):
-//   1. auth_required → session expired or never signed in
-//   2. give_up       → tried 6 times, network/server is genuinely down
-//   3. forbidden     → user is banned
-//   4. <none>        → just connecting; show neutral spinner
+// Live debug-grade banner shown when the WS isn't connected. Always
+// visible introspection (no "click Diagnose to learn what's wrong"):
+//   • current WS readyState (CONNECTING / OPEN / CLOSING / CLOSED)
+//   • WS URL being tried
+//   • token presence
+//   • last close code + reason
+//   • API health probe result
+//   • a "Hard reload" button that unregisters the service worker and
+//     does a clean reload — fixes 99% of "I shipped a fix but my
+//     browser still serves old code" cases
 function ConnectionStatus() {
   const dispatch = useDispatch();
   const error = useSelector((s) => s.online.error);
   const [diag, setDiag] = useState(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [rtState, setRtState] = useState(rt.state());
 
-  // Tick once a second so we can swap the message after ~4 s of
-  // unresolved connecting. Cheap — 1 setState/s, doesn't trigger
-  // anything else heavy.
+  // Tick once a second so we can re-poll rt.state() and update the
+  // displayed readyState. Cheap; only mounted while disconnected.
   useEffect(() => {
     const start = Date.now();
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    const t = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+      setRtState(rt.state());
+    }, 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -720,12 +724,29 @@ function ConnectionStatus() {
     setRunning(false);
   };
 
-  // Auto-fire a diagnose after 4 s so users don't have to know to
-  // click the button. Once. Idempotent on subsequent re-renders.
-  useEffect(() => {
-    if (elapsed === 4 && !diag && !running) runDiagnose();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elapsed]);
+  // Auto-diagnose on mount so the user never has to click a button to
+  // understand what's failing. The probe is cheap and gives a deterministic
+  // result in <500ms when the backend is healthy.
+  useEffect(() => { runDiagnose(); }, []);
+
+  // Nuke the SW + caches + reload. Fixes the "browser holding old bundle"
+  // class of issues that the v4 network-first SW was supposed to prevent
+  // — but the user has to actually be running the v4+ SW for that to work.
+  // This forces a clean start.
+  const hardReload = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) {}
+    // Cache-bust on reload so the index.html itself comes from network.
+    window.location.replace(window.location.pathname + "?_t=" + Date.now());
+  };
 
   // Categorize the failure so we can show targeted copy + actions.
   const isAuth     = error === "auth_required";
@@ -741,11 +762,10 @@ function ConnectionStatus() {
 
   const body  = isAuth      ? "Sign in again to use live VS matches."
               : isForbidden ? "Live play is disabled for this account. Contact support if this is a mistake."
-              : isGaveUp    ? "Check your network and tap Retry, or come back in a moment."
-              : elapsed > 4 ? "Taking longer than usual — running a quick diagnostic…"
+              : isGaveUp    ? "Tap Hard reload if this keeps happening — your browser may be holding stale code."
+              : elapsed > 4 ? "Taking longer than usual. The live status below shows what's happening."
               : null;
 
-  // Accent color matches severity.
   const bg = isFailing ? "rgba(239,68,68,0.12)" : "rgba(245,158,11,0.12)";
   const border = isFailing ? "rgba(239,68,68,0.4)" : "rgba(245,158,11,0.4)";
 
@@ -764,36 +784,45 @@ function ConnectionStatus() {
             Sign in
           </button>
         ) : (
-          <>
-            <button className="tw-pill" style={{ cursor: "pointer" }}
-                    onClick={() => { rt.forceReconnect(); dispatch(setError(null)); setElapsed(0); }}>
-              Retry
-            </button>
-            <button className="tw-pill" style={{ cursor: "pointer" }} onClick={runDiagnose} disabled={running}>
-              {running ? "…" : "Diagnose"}
-            </button>
-          </>
+          <button className="tw-pill" style={{ cursor: "pointer" }}
+                  onClick={() => { rt.forceReconnect(); dispatch(setError(null)); setElapsed(0); setTimeout(() => setRtState(rt.state()), 100); }}>
+            Retry
+          </button>
         )}
       </div>
-      {diag && (
-        <div style={{ marginTop: 10, fontSize: 12, fontFamily: "monospace", background: "rgba(0,0,0,0.25)", padding: 10, borderRadius: 8 }}>
-          <div>API health: <strong style={{ color: diag.reachable ? "var(--good)" : "var(--bad)" }}>{diag.reachable ? "✓ reachable" : "✗ unreachable"}</strong></div>
-          {!diag.reachable && diag.network_error && <div style={{ color: "var(--bad)" }}>Network: {diag.network_error}</div>}
-          <div>Auth token: <strong>{diag.token ? "✓ present" : "✗ missing — sign in"}</strong></div>
-          <div>WS URL: <span style={{ color: "var(--text-dim)" }}>{diag.wsUrl}</span></div>
-          {diag.error && <div style={{ color: "var(--bad)" }}>Last error: {diag.error}</div>}
-          {!diag.reachable && (
-            <div style={{ marginTop: 8, padding: 8, background: "rgba(239,68,68,0.15)", borderRadius: 6, color: "var(--text)" }}>
-              💡 Server seems down. Try again in a moment.
-            </div>
-          )}
-          {diag.reachable && !diag.token && (
-            <div style={{ marginTop: 8, padding: 8, background: "rgba(245,158,11,0.15)", borderRadius: 6 }}>
-              💡 Sign in first — online play needs an account.
-            </div>
-          )}
+
+      {/* Live debug — always shown, updates every second. Lets the
+          user (and remote support) see exactly what's failing without
+          having to click any buttons. */}
+      <div style={{ marginTop: 10, fontSize: 11, fontFamily: "ui-monospace, Menlo, Consolas, monospace", background: "rgba(0,0,0,0.25)", padding: 10, borderRadius: 8, lineHeight: 1.6, color: "var(--text-dim)", wordBreak: "break-all" }}>
+        <div><strong style={{ color: "var(--text)" }}>WS state:</strong> {rtState.readyStateLabel}</div>
+        <div><strong style={{ color: "var(--text)" }}>Token:</strong> {rtState.hasToken ? "✓ present" : "✗ missing"}</div>
+        <div><strong style={{ color: "var(--text)" }}>URL:</strong> {rtState.lastUrl ? rtState.lastUrl.replace(/token=[^&]+/, "token=…") : "(not yet attempted)"}</div>
+        {diag && (
+          <div><strong style={{ color: "var(--text)" }}>API /health:</strong>{" "}
+            <span style={{ color: diag.reachable ? "var(--good)" : "var(--bad)" }}>
+              {diag.reachable ? "✓ reachable" : `✗ ${diag.network_error || diag.status}`}
+            </span>
+          </div>
+        )}
+        {rtState.lastCloseCode != null && (
+          <div><strong style={{ color: "var(--text)" }}>Last close:</strong> code {rtState.lastCloseCode}{rtState.lastCloseReason ? ` "${rtState.lastCloseReason}"` : ""}</div>
+        )}
+        {rtState.terminalError && (
+          <div style={{ color: "var(--bad)" }}><strong>Terminal error:</strong> {rtState.terminalError}</div>
+        )}
+        {rtState.reconnectAttempts > 0 && (
+          <div><strong style={{ color: "var(--text)" }}>Reconnect attempts:</strong> {rtState.reconnectAttempts} / 6</div>
+        )}
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <button className="tw-pill" style={{ cursor: "pointer", fontSize: 11 }} onClick={runDiagnose} disabled={running}>
+            {running ? "Probing…" : "Re-probe API"}
+          </button>{" "}
+          <button className="tw-pill" style={{ cursor: "pointer", fontSize: 11, background: "rgba(239,68,68,0.2)" }} onClick={hardReload}>
+            Hard reload (clears cache)
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

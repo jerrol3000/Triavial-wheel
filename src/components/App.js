@@ -67,6 +67,20 @@ export default function App() {
     // first navigation. Includes owned/equipped state when authed.
     dispatch(fetchCatalog());
     dispatch(fetchBadges());
+    // WAKE THE BACKEND. Fly machines scale-to-zero on idle and the
+    // first request after a sleep can take 2-4 seconds while the VM
+    // spins back up. Without this, a player who hadn't touched the
+    // app in a few hours would click VS and stare at "Connecting to
+    // live server…" while Fly cold-started. Now: we ping /api/health
+    // in parallel with every other boot fetch so the server is hot
+    // by the time the player clicks anything.
+    try { api.get("/health").catch(() => {}); } catch (e) {}
+    // EAGER WS connect — fires off the token (synchronous), NOT off
+    // the user object (async via fetchMe). Saves the ~200-500 ms
+    // round-trip between app boot and user resolution. The
+    // dedicated user-keyed useEffect below still handles
+    // sign-in-after-boot for guests who auth via the AuthModal.
+    if (getToken()) { try { rt.connect(); } catch (e) {} }
     if (getToken()) {
       dispatch(fetchMe());
       // Daily login bonus — claim once per UTC day. Backend is idempotent.

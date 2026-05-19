@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { setView, toggleSound, setModal, pushToast } from "../store/uiSlice";
 import { progressToNext } from "../utils/level";
@@ -8,6 +8,33 @@ import { sfx } from "../utils/sound";
 import { useT } from "../i18n";
 import Icon from "./Icon";
 import NotificationBell from "./NotificationBell";
+import { rt } from "../realtime/client";
+
+// Tiny live-WS dot. Renders a green dot when the live server is
+// connected, amber when connecting, red on a sticky terminal error.
+// Lets the user GLANCE at the banner and know whether VS will
+// connect immediately or if there's a network/auth issue to address.
+// Polls rt.state() every 2s so it's cheap but accurate.
+function LiveDot() {
+  const [state, setState] = useState(() => rt.state());
+  useEffect(() => {
+    const t = setInterval(() => setState(rt.state()), 2000);
+    return () => clearInterval(t);
+  }, []);
+  // 1 = OPEN, 0 = CONNECTING, 2/3 = closing/closed
+  let color, label;
+  if (state.terminalError) { color = "#ef4444"; label = `Live: ${state.terminalError}`; }
+  else if (state.readyState === 1) { color = "#10b981"; label = "Live server: connected"; }
+  else if (state.readyState === 0 || state.connecting) { color = "#f59e0b"; label = "Live server: connecting…"; }
+  else { color = "#6b7280"; label = "Live server: offline"; }
+  return (
+    <span title={label} aria-label={label} style={{
+      display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+      background: color, boxShadow: state.readyState === 1 ? `0 0 6px ${color}` : "none",
+      marginLeft: 6,
+    }} />
+  );
+}
 
 export default function Banner() {
   const dispatch = useDispatch();
@@ -112,6 +139,10 @@ export default function Banner() {
           <Icon name="settings" size={20} />
         </button>
         {user && <NotificationBell />}
+        {/* Live-WS dot — green when connected, amber connecting,
+            red on a terminal auth/network error. Lets the user see
+            at a glance whether VS will connect immediately. */}
+        {user && <LiveDot />}
         {user && user.is_admin && (
           <a className="tw-pill tw-banner-hide-sm" href="/admin" title="Admin panel" style={{ cursor: "pointer", textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: 6, paddingLeft: 6 }}>
             <Icon name="admin" size={20} /> Admin

@@ -1,12 +1,14 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v16: VS REDESIGN PART 2 — Best-of-3 series (3 rounds auto-advance,
-// series badge in header, intra-series round_end events), Comeback
-// Boost (lose a ranked match → +50% rating on next win), Premium
-// emote tier (Pro/Season Pass gates the spicy emoji pack), Daily VS
-// leaderboard (top players today get cosmetic + coin prizes, claim
-// after midnight).
-const CACHE = "trivia-wheel-v16";
+// v17: UI/UX + CONNECTION REFINEMENT — Home grid now has hierarchy
+// (Daily + VS as hero tiles, others as compact 2x2 below); WS now
+// connects eagerly on token (not user object), with a /api/health
+// warm-up ping on boot to wake Fly cold-starts; ConnectionStatus
+// has a 2-second silent grace period so happy-path connects never
+// show a warning UI; banner has a live-WS dot for at-a-glance
+// connection state; VS tile pre-warms the WS in parallel with
+// navigation; bottom nav locked to 44px tap target floor.
+const CACHE = "trivia-wheel-v17";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

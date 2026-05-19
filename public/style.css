@@ -327,6 +327,11 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   padding: 8px 4px;
   cursor: pointer;
   transition: color 160ms ease;
+  /* Tap target floor — Apple HIG calls for 44pt minimum. With 8px
+     padding + 28px icon, we're at 44px. Lock this in so a future
+     padding tweak doesn't accidentally shrink the touch zone below
+     the accessibility threshold. */
+  min-height: 44px;
 }
 .tw-nav button.active { color: var(--primary-2); }
 .tw-nav button svg { width: 28px; height: 28px; }
@@ -741,24 +746,34 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   align-items: center;
 }
 
-/* Mode grid — the new Home layout. 2 columns by default (mobile-
-   first), 3 columns at desktop widths. Each tile is a clickable
-   card with an icon + title + subtitle. Hover lifts slightly to
-   telegraph the tile-press affordance. The wheel is now one tile
-   among six — not the hero. */
+/* Mode grid — the Home layout.
+   Hierarchy: two HERO tiles (Daily + VS) stacked full-width at top,
+   then a 2x2 (mobile) / 4x1 (tablet+) grid of secondary modes.
+   The hero tiles have a horizontal layout (icon + text + Play pill)
+   while secondaries are compact vertical cards. */
+.tw-mode-hero-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
 .tw-mode-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 10px;
 }
 @media (min-width: 720px) {
-  .tw-mode-grid { grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .tw-mode-grid { grid-template-columns: repeat(4, 1fr); gap: 12px; }
 }
 .tw-mode-tile {
   appearance: none;
   font: inherit;
   color: var(--text);
+  /* Apple HIG / Material Design tap target — 44px minimum on the
+     smaller axis. Hero tiles use min-height already; this is the
+     floor for the secondary square cards. */
+  min-height: 44px;
 }
 .tw-mode-tile:hover {
   transform: translateY(-2px);
@@ -772,6 +787,9 @@ h1, h2, h3, .display { font-family: "Fredoka", "Inter", sans-serif; letter-spaci
   transform: none;
   filter: none;
 }
+/* Hero tiles — larger touch target (>= 80px) since they're the
+   primary CTAs. Outer border stronger than secondary tiles. */
+.tw-mode-tile.hero { border-width: 2px; }
 
 /* Hero SPIN button — 2.5D treatment so it feels like a chunky
    physical button you can press. Stacked elements:

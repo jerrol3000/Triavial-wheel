@@ -257,7 +257,13 @@ function Lobby() {
       <h1 style={{ margin: "8px 0", display: "inline-flex", alignItems: "center", gap: 10 }}>
         <Icon name="vs" size={32} /> Play with Friends
       </h1>
-      {!connected && <ConnectionStatus />}
+      {/* Silent grace period: don't show the ConnectionStatus card
+          AT ALL for the first 2 seconds of mount. Normal-speed
+          connects open in well under that window, so the user never
+          sees a warning UI for the happy path. ConnectionStatus
+          internally still auto-diagnoses if it lingers (4s), so a
+          real outage will still surface. */}
+      {!connected && <ConnectionStatusGated />}
 
       {/* Difficulty selector — applies to both Quick Match (queues you
           into the same-difficulty bracket) AND Invite a Friend (host
@@ -808,6 +814,21 @@ function ReactionLayer() {
       <div style={{ color: "var(--text-dim)", fontSize: 12 }}>{reaction.username}</div>
     </div>
   );
+}
+
+// Silent-grace wrapper. Mounts only after a brief delay so the
+// happy-path connect (which usually opens in 200-800 ms) never
+// triggers a visible warning UI. If the WS DOES eventually open
+// during the grace period, this never even renders because the
+// parent gates on `!connected` and the open switch unmounts us.
+function ConnectionStatusGated() {
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setShow(true), 2000);
+    return () => clearTimeout(t);
+  }, []);
+  if (!show) return null;
+  return <ConnectionStatus />;
 }
 
 // ─── ConnectionStatus ───────────────────────────────────────────────────────

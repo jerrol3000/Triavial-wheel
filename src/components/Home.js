@@ -9,6 +9,8 @@ import StreakBanner from "./StreakBanner";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 import { useT } from "../i18n";
+import { rt } from "../realtime/client";
+import { api } from "../api/client";
 
 // Home — a clean 2×3 grid of game modes.
 //
@@ -83,7 +85,19 @@ export default function Home() {
       subtitle: "Real-time 1v1 against a stranger or a friend.",
       bg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(34,211,238,0.18))",
       border: "rgba(16,185,129,0.4)",
-      action: () => dispatch(setView("online")),
+      // PRE-WARM the WS + server health BEFORE navigating to the
+      // Online view. This eliminates the "Connecting to live
+      // server…" banner for users who land on the app fresh, since
+      // by the time the Online view's useEffect calls rt.connect()
+      // again, the connection is usually already open. Both calls
+      // are idempotent (rt.connect short-circuits on an active
+      // socket; /api/health is cheap), so firing them twice is a
+      // free defense against cold-start jank.
+      action: () => {
+        try { rt.connect(); } catch (e) {}
+        try { api.get("/health").catch(() => {}); } catch (e) {}
+        dispatch(setView("online"));
+      },
       authedOnly: true,
     },
     {
@@ -118,13 +132,24 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="tw-mode-grid">
-          {tiles.map((tile) => {
+        {/* Hierarchy: two hero tiles (Daily + VS) at full row width,
+            then a 2x2 grid of secondary modes. This reflects the
+            actual usage funnel — Daily is the universal entry-point
+            and VS is the brand-defining social hook. Higher/Lower,
+            Wheel, Friend Challenges, and Season Pass are all great
+            but secondary in priority for a new session.
+            On screens >= 720px the secondary 2x2 expands to 4x1
+            for a more spacious layout. */}
+        {(() => {
+          const heroIds = new Set(["daily", "online"]);
+          const heroTiles = tiles.filter((t) => heroIds.has(t.id));
+          const secondaryTiles = tiles.filter((t) => !heroIds.has(t.id));
+          const renderTile = (tile, hero) => {
             const locked = tile.authedOnly && !user;
             return (
               <button
                 key={tile.id}
-                className={`tw-card tw-mode-tile ${locked ? "locked" : ""}`}
+                className={`tw-card tw-mode-tile ${locked ? "locked" : ""} ${hero ? "hero" : ""}`}
                 onClick={() => {
                   sfx.click();
                   if (locked) {
@@ -137,14 +162,14 @@ export default function Home() {
                   cursor: "pointer",
                   background: locked ? "rgba(255,255,255,0.04)" : tile.bg,
                   border: `1px solid ${locked ? "rgba(255,255,255,0.1)" : tile.border}`,
-                  textAlign: "center",
-                  padding: "20px 14px",
-                  minHeight: 140,
+                  textAlign: hero ? "left" : "center",
+                  padding: hero ? "20px 20px" : "20px 14px",
+                  minHeight: hero ? 100 : 140,
                   display: "flex",
-                  flexDirection: "column",
+                  flexDirection: hero ? "row" : "column",
                   alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
+                  justifyContent: hero ? "flex-start" : "center",
+                  gap: hero ? 16 : 6,
                   position: "relative",
                   opacity: locked ? 0.7 : 1,
                   transition: "transform 0.12s ease, filter 0.12s ease",
@@ -164,15 +189,32 @@ export default function Home() {
                     fontSize: 11, color: "var(--text-dim)",
                   }}>🔒</span>
                 )}
-                <div style={{ fontSize: 36, lineHeight: 1 }} aria-hidden="true">{tile.icon}</div>
-                <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 16 }}>{tile.title}</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.35, maxWidth: 240 }}>
-                  {tile.subtitle}
+                <div style={{ fontSize: hero ? 48 : 36, lineHeight: 1, flex: hero ? "0 0 auto" : undefined }} aria-hidden="true">{tile.icon}</div>
+                <div style={{ flex: hero ? 1 : undefined, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: hero ? 18 : 16 }}>{tile.title}</div>
+                  <div style={{ fontSize: hero ? 13 : 12, color: "var(--text-dim)", lineHeight: 1.35, maxWidth: hero ? "none" : 240, marginTop: hero ? 4 : 0 }}>
+                    {tile.subtitle}
+                  </div>
                 </div>
+                {hero && (
+                  <div className="tw-pill" style={{ background: "rgba(255,255,255,0.15)", border: "none", fontWeight: 700, color: "#fff", flex: "0 0 auto" }}>
+                    Play →
+                  </div>
+                )}
               </button>
             );
-          })}
-        </div>
+          };
+          return (
+            <>
+              <div className="tw-mode-hero-stack">
+                {heroTiles.map((t) => renderTile(t, /* hero */ true))}
+              </div>
+              <div className="tw-mode-grid">
+                {secondaryTiles.map((t) => renderTile(t, /* hero */ false))}
+              </div>
+            </>
+          );
+        })()}
       </section>
 
       {/* RIGHT — live leaderboard. */}

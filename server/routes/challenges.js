@@ -292,6 +292,16 @@ router.post("/:id/submit", requireAuth, (req, res) => {
   if (!isSender && !isReceiver) return res.status(403).json({ error: "not_yours" });
   if (row.status !== "pending") return res.status(400).json({ error: "already_resolved" });
 
+  // BUG-FIX: previously this endpoint didn't check whether the player
+  // had already submitted their side of the challenge. That let a
+  // player submit MULTIPLE times — they could submit a low score
+  // first, peek at the response, then re-submit a higher score to
+  // overwrite. Worse, an unguarded re-submit would also re-trigger
+  // the receiver's wager debit below, double-charging coins.
+  // /play already had the same guard; bring /submit into parity.
+  if (isSender && row.sender_correct !== null) return res.status(400).json({ error: "already_played" });
+  if (isReceiver && row.receiver_correct !== null) return res.status(400).json({ error: "already_played" });
+
   // If receiver is submitting, lock their wager from coins now (we
   // didn't lock at challenge-creation because they hadn't accepted yet).
   if (isReceiver && row.wager > 0) {

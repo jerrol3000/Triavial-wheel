@@ -141,6 +141,26 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_hl_dataset_score ON hl_scores(dataset, best_streak DESC);
 
+  -- Daily VS leaderboard tally. One row per (user, UTC date) counting
+  -- ranked match wins for the day. Resolved at day-end (or lazily on
+  -- first read after the date rolls over) into cosmetic + coin prizes
+  -- for top placements. Simpler than running a synchronous tournament:
+  -- the daily leaderboard ALREADY embodies the "compete to climb"
+  -- mechanic, plus it scales without a real-time scheduler.
+  CREATE TABLE IF NOT EXISTS daily_vs (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date TEXT NOT NULL,
+    wins INTEGER NOT NULL DEFAULT 0,
+    losses INTEGER NOT NULL DEFAULT 0,
+    ties INTEGER NOT NULL DEFAULT 0,
+    -- prizes are awarded once per (user, date) at day-end. Bitflag:
+    -- bit 0 = top-3 prize claimed, bit 1 = top-10 prize claimed.
+    prizes_awarded INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, date)
+  );
+  CREATE INDEX IF NOT EXISTS idx_daily_vs_leaderboard ON daily_vs(date, wins DESC);
+
   -- VS rivalry tracker. Persistent head-to-head record between any
   -- two players who have ever played each other online. Drives the
   -- "You're 5-3 against MrAlex" callouts in the VS lobby + match-end
@@ -313,6 +333,12 @@ ensureColumn("stats", "free_spins", "INTEGER NOT NULL DEFAULT 5");
 // (the migration was missed in an earlier commit). Default = now so
 // existing rows aren't treated as having infinite regen pending.
 ensureColumn("stats", "free_spins_updated_at", "INTEGER NOT NULL DEFAULT 0");
+// Comeback Boost: flag flipped to 1 the moment the player loses a
+// ranked (quick) VS match. Their NEXT ranked win then applies a
+// +50% rating bonus and clears the flag. Small psychological hook
+// ("just one more, I can climb back") — and a natural monetization
+// vector if we later add a paid "extra boost" SKU.
+ensureColumn("stats", "comeback_boost_active", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "last_login_date", "TEXT");
 ensureColumn("stats", "login_streak", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("stats", "online_wins", "INTEGER NOT NULL DEFAULT 0");

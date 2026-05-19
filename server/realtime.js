@@ -87,6 +87,9 @@ function publicRoom(room) {
     // inventories so they can read the opponent's threat surface
     // ("they still have a Sniper, watch the next pick").
     powerCards: room.powerCards || {},
+    // Best-of-3 series state. Drives the "🏆 1-0" pill in the
+    // LiveMatch header and the inter-round transitions.
+    series: room.series || null,
   };
 }
 
@@ -161,6 +164,13 @@ function makeRoom({ kind, code, difficulty = "medium", hostId = null }) {
     // question advances. `cutFor` lists userIds whose timer is
     // shortened; `doubleFor` lists userIds whose next-correct doubles.
     questionEffects: { cutFor: new Set(), doubleFor: new Set() },
+    // Best-of-3 series. For quick (ranked) matches, three rounds
+    // form a series. First to 2 round wins is the series winner;
+    // ties between players in round wins force a third round.
+    // Friend rooms default to format:"bo1" — host can change in
+    // a future round-options pass. Series persists across rounds
+    // until a winner is declared, then resets.
+    series: { format: kind === "quick" ? "bo3" : "bo1", roundWins: {}, complete: false, round: 0 },
     // Continue-rematch state: both players must vote "yes" within the
     // window to start round 2. Pending difficulty-change requests live
     // alongside so the next round can pick the new value.
@@ -236,6 +246,11 @@ function startMatch(room) {
     if (p) room.powerCards[p.id] = { sniper: 1, cut: 1, double: 1 };
   }
   room.questionEffects = { cutFor: new Set(), doubleFor: new Set() };
+  // Reset series state ONLY when starting a fresh series (after a
+  // continue-vote). Intra-series rounds keep the running tally.
+  if (room.series?.complete) {
+    room.series = { format: room.kind === "quick" ? "bo3" : "bo1", roundWins: {}, complete: false, round: 0 };
+  }
   advanceQuestion(room, /* first */ true);
 }
 
@@ -372,7 +387,57 @@ function endMatch(room, opts = {}) {
   room.started = false;
   if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
   const [p1, p2] = room.players;
-  const winner = !p1 ? p2 : !p2 ? p1 : (p1.score === p2.score ? null : (p1.score > p2.score ? p1 : p2));
+  const roundWinner = !p1 ? p2 : !p2 ? p1 : (p1.score === p2.score ? null : (p1.score > p2.score ? p1 : p2));
+
+  // Best-of-3 series progression. Increment the round-win counter
+  // for the round's winner; ties don't count toward series wins
+  // (force a third round to break it). Check completion: 2 wins =
+  // series done, OR 3 rounds played caps the series even at 1-1-1.
+  const series = room.series || (room.series = { format: room.kind === "quick" ? "bo3" : "bo1", roundWins: {}, complete: false, round: 0 });
+  if (series.format === "bo3" && !opts.forfeiterId) {
+    if (roundWinner) {
+      series.roundWins[roundWinner.id] = (series.roundWins[roundWinner.id] || 0) + 1;
+    }
+    series.round = (series.round || 0) + 1;
+    const maxWins = Math.max(0, ...Object.values(series.roundWins));
+    const seriesIsDone = maxWins >= 2 || series.round >= 3;
+    if (!seriesIsDone) {
+      // INTRA-SERIES round — broadcast round_end (NOT match_end so
+      // the client doesn't show the continue-vote screen) and
+      // schedule the next round to auto-start in ~2.5s. No DB write
+      // for individual rounds; only the series outcome persists.
+      broadcastRoom(room, {
+        type: "round_end",
+        roundWinnerId: roundWinner ? roundWinner.id : null,
+        round: series.round,
+        seriesWins: { ...series.roundWins },
+        players: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct } : null),
+      });
+      setTimeout(() => {
+        if (!room || !rooms.has(room.code)) return;
+        if (room.finished) startMatch(room); // startMatch resets finished flag + scores
+      }, 2500);
+      return;
+    }
+  }
+
+  // Series complete (or single-match format). Determine the SERIES
+  // winner from accumulated round wins; fall back to the single
+  // round's winner if series tracking is bo1 / unused. Forfeit
+  // shortcircuits — forfeiter loses the series immediately.
+  let winner = roundWinner;
+  if (series.format === "bo3") {
+    const aWins = series.roundWins[p1?.id] || 0;
+    const bWins = series.roundWins[p2?.id] || 0;
+    if (opts.forfeiterId) {
+      winner = p1 && opts.forfeiterId === p1.id ? p2 : p1;
+    } else if (aWins !== bWins) {
+      winner = aWins > bWins ? p1 : p2;
+    } else {
+      winner = roundWinner; // tied series, fall back to last-round winner
+    }
+  }
+
   if (p1 && p2) {
     db.prepare(`
       INSERT INTO matches (kind, player1_id, player2_id, player1_score, player2_score, winner_id, started_at, finished_at)
@@ -380,6 +445,8 @@ function endMatch(room, opts = {}) {
     `).run(room.kind, p1.id, p2.id, p1.score, p2.score, winner ? winner.id : null, room.startedAt, Date.now());
     applyMatchRewards(p1, p2, winner, opts.forfeiterId, room.kind, room.difficulty, room);
   }
+  // Reset series state for the next continue-vote rematch.
+  series.complete = true;
 
   // Update session-level standings: W/L/T tally + per-player current
   // win streak. A win extends the streak (and bumps bestStreak); a
@@ -405,6 +472,25 @@ function endMatch(room, opts = {}) {
       streak = 0;
     }
     room.sessionScores[p.id] = { wins, losses, ties, streak, bestStreak };
+  }
+
+  // Daily VS tally. One row per (user, UTC date). RANKED matches only
+  // (kind=quick) — friendly matches don't count toward the daily
+  // leaderboard for the same anti-farming reason as the season XP.
+  // Forfeit-shortened matches (isMicroMatch) also skip the tally to
+  // stop two-account loops from gaming the prizes.
+  if (room.kind === "quick" && p1 && p2 && (room.index >= 3 || !opts.forfeiterId)) {
+    const now = Date.now();
+    const d = new Date(now);
+    const today = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    const bumpFor = (uid, key) => {
+      db.prepare(`
+        INSERT INTO daily_vs(user_id, date, ${key}, updated_at) VALUES (?, ?, 1, ?)
+        ON CONFLICT(user_id, date) DO UPDATE SET ${key} = ${key} + 1, updated_at = excluded.updated_at
+      `).run(uid, today, now);
+    };
+    if (!winner) { bumpFor(p1.id, "ties"); bumpFor(p2.id, "ties"); }
+    else { bumpFor(winner.id, "wins"); const loser = winner.id === p1.id ? p2 : p1; bumpFor(loser.id, "losses"); }
   }
 
   // Update the persistent rivalry record between these two players.
@@ -521,6 +607,30 @@ function applyMatchRewards(p1, p2, winner, forfeiterId, kind, difficulty, room) 
       spinsReward = baseSpins;
       coinsReward = Math.round(baseCoins * mult);
       ratingDelta = Math.round(baseRating * mult);
+
+      // Comeback Boost: ranked-match-only flag. Consumed by a win
+      // (+50% on rating gain), armed by a loss. Net cycle: lose →
+      // armed → win → bonus + cleared. Forfeits don't arm to stop
+      // a forfeit-farming loop (lose-on-purpose for the boost on
+      // your next win against a different opponent).
+      if (isWinner && !isForfeiter) {
+        const cb = db.prepare("SELECT comeback_boost_active FROM stats WHERE user_id = ?").get(p.id);
+        if (cb && cb.comeback_boost_active) {
+          ratingDelta = Math.round(ratingDelta * 1.5);
+          coinsReward = Math.round(coinsReward * 1.2); // small coin bonus too
+          db.prepare("UPDATE stats SET comeback_boost_active = 0 WHERE user_id = ?").run(p.id);
+          // Tell the player their boost cashed in.
+          sendToUser(p.id, {
+            type: "comeback_consumed",
+            ratingDelta,
+            coinsReward,
+          });
+        }
+      } else if (!isWinner && !isTie && !isForfeiter) {
+        // Arm the boost for next win. Idempotent — already-active is fine.
+        db.prepare("UPDATE stats SET comeback_boost_active = 1 WHERE user_id = ?").run(p.id);
+        sendToUser(p.id, { type: "comeback_armed" });
+      }
     }
 
     updateStats.run(wonInc, lostInc, isWinner ? 1 : 0, spinsReward, coinsReward, ratingDelta, Date.now(), p.id);
@@ -951,13 +1061,39 @@ function handleMessage(ws, user, msg) {
     }
 
     case "reaction": {
-      // Pre-defined safe set only.
-      const ALLOWED = new Set(["👋","👏","🔥","😢","🎉","💪","🤔","😱","💯"]);
-      if (!ALLOWED.has(msg.emoji)) return;
+      // Tiered emote validation:
+      //   - FREE set: everyone can send these
+      //   - PREMIUM set: requires Pro OR season_premium active
+      // Server keeps the source of truth so a client patching the
+      // local FREE_REACTIONS array doesn't bypass the gate.
+      const FREE_SET    = new Set(["👋","👏","🔥","🎉","💪","🤔"]);
+      const PREMIUM_SET = new Set(["😱","💯","🤡","💀","🧊","🐐","🤯","🔫","👑"]);
+      const emoji = String(msg.emoji || "");
+      const isFree = FREE_SET.has(emoji);
+      const isPremium = PREMIUM_SET.has(emoji);
+      if (!isFree && !isPremium) return; // unknown emoji → drop
+      if (isPremium) {
+        // Validate the player can actually use a premium emote. Pro
+        // OR an active premium season pass. Single small query —
+        // safe to do inline on every reaction since reactions are
+        // already rate-limited by mute / chat throttle.
+        const row = db.prepare(`
+          SELECT s.pro_until, us.premium
+          FROM stats s
+          LEFT JOIN user_season us ON us.user_id = s.user_id AND us.premium = 1
+          WHERE s.user_id = ?
+        `).get(user.id);
+        const isPro = !!(row && row.pro_until && row.pro_until > Date.now());
+        const hasSeasonPremium = !!(row && row.premium);
+        if (!isPro && !hasSeasonPremium) {
+          send(ws, { type: "emote_locked", emoji });
+          return;
+        }
+      }
       const room = findRoomForUser(user.id);
       if (!room) return;
       if (isMuted(user.id)) return;
-      broadcastRoom(room, { type: "reaction", userId: user.id, username: user.username, emoji: msg.emoji, at: Date.now() });
+      broadcastRoom(room, { type: "reaction", userId: user.id, username: user.username, emoji, at: Date.now(), premium: isPremium });
       return;
     }
 

@@ -1,17 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { rt } from "../realtime/client";
-import { pushToast } from "../store/uiSlice";
+import { pushToast, setView } from "../store/uiSlice";
 import { confirmDialog } from "../utils/confirm";
 
 const PRESETS = ["GG!", "Nice try!", "Good luck!", "👋", "Tough one!", "You got this!"];
-const REACTIONS = ["👋","👏","🔥","😢","🎉","💪","🤔","😱","💯"];
+// Two emote tiers:
+//   FREE — everyone gets these. Standard trash-talk vocabulary.
+//   PREMIUM — Pro members + Season Pass premium holders. The "I'm
+//     spending money on this game" flex set, designed to be slightly
+//     more theatrical than the freebies so the difference is visible
+//     to the opponent (the opponent sees the emote fly across the
+//     screen too; that's the whole point).
+// Server validates ownership server-side before broadcasting so a
+// client can't just patch the FREE_REACTIONS array locally.
+const FREE_REACTIONS    = ["👋","👏","🔥","🎉","💪","🤔"];
+const PREMIUM_REACTIONS = ["😱","💯","🤡","💀","🧊","🐐","🤯","🔫","👑"];
 
 export default function ChatPanel({ disabled = false }) {
   const dispatch = useDispatch();
   const room = useSelector((s) => s.online.room);
   const notice = useSelector((s) => s.online.chatNotice);
   const me = useSelector((s) => s.auth.user);
+  // Premium gate: Pro OR Season Pass premium unlocks the spicy
+  // emote pack. Each is checked independently so a player with
+  // either path gets access. Future: a standalone "Emote Pack"
+  // SKU could set an `emotes_unlocked` flag here too.
+  const isPro = useSelector((s) => !!s.stats.pro);
+  const seasonPremium = useSelector((s) => !!(s.stats.perks && s.stats.perks.season_premium));
+  const hasPremiumEmotes = isPro || seasonPremium;
   const [text, setText] = useState("");
   const scrollRef = useRef(null);
 
@@ -77,8 +94,39 @@ export default function ChatPanel({ disabled = false }) {
       </div>
 
       <div className="tw-chat-reactions">
-        {REACTIONS.map((e) => (
+        {FREE_REACTIONS.map((e) => (
           <button key={e} className="tw-chat-reaction" onClick={() => sendReact(e)} disabled={disabled}>{e}</button>
+        ))}
+        {PREMIUM_REACTIONS.map((e) => (
+          <button key={e}
+            className="tw-chat-reaction"
+            style={hasPremiumEmotes ? undefined : { opacity: 0.45, position: "relative" }}
+            onClick={() => {
+              if (hasPremiumEmotes) {
+                sendReact(e);
+              } else {
+                // Soft-gated: tapping a locked emote opens the Season
+                // Pass page rather than throwing an error toast. The
+                // discoverability + upgrade hint in one tap.
+                dispatch(pushToast({
+                  icon: "⭐",
+                  title: "Premium emote",
+                  text: "Unlock with Season Pass premium or Pro.",
+                  duration: 3500,
+                }));
+                dispatch(setView("season"));
+              }
+            }}
+            disabled={disabled}
+            title={hasPremiumEmotes ? "Premium emote" : "Locked — unlock with Season Pass premium or Pro"}
+          >
+            {e}
+            {!hasPremiumEmotes && (
+              <span style={{
+                position: "absolute", top: -2, right: -2, fontSize: 9,
+              }}>🔒</span>
+            )}
+          </button>
         ))}
       </div>
 

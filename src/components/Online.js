@@ -117,6 +117,43 @@ export default function Online() {
         }
         case "kicked":        dispatch(pushToast({ icon: "⚠️", title: "Signed in elsewhere", text: "This tab was disconnected." })); dispatch(leftRoom()); break;
         case "error":         dispatch(setError(msg.error)); break;
+        case "comeback_armed": {
+          dispatch(pushToast({
+            icon: "💪",
+            title: "Comeback Boost armed",
+            text: "Next ranked win gets +50% rating. Climb back.",
+            duration: 4200,
+          }));
+          dispatch(fetchStats());
+          break;
+        }
+        case "comeback_consumed": {
+          dispatch(pushToast({
+            icon: "🚀",
+            title: "Comeback boost cashed!",
+            text: `+${msg.ratingDelta} rating (1.5× from the boost)`,
+            duration: 4500,
+          }));
+          break;
+        }
+        case "round_end": {
+          // Best-of-3 intra-series round. Server auto-advances to
+          // the next round in ~2.5s — we just surface a celebratory
+          // banner-toast so the player feels the round result. The
+          // series score is in msg.seriesWins; the actual match_end
+          // (with continue-vote UI) only fires when the SERIES
+          // resolves (one player at 2 wins or 3 rounds played).
+          const youWon = msg.roundWinnerId === user.id;
+          const tied = !msg.roundWinnerId;
+          dispatch(pushToast({
+            icon: tied ? "🤝" : youWon ? "🏆" : "💔",
+            title: tied ? `Round ${msg.round}: tied` : youWon ? `Round ${msg.round}: WON` : `Round ${msg.round}: LOST`,
+            text: "Next round starts in a moment…",
+            duration: 2400,
+          }));
+          if (youWon) sfx.win?.(); else sfx.lose?.();
+          break;
+        }
         // Power Cards — published events that drive UI feedback.
         // Inventory updates flow through room_state's powerCards
         // field; these case branches are just for the celebratory
@@ -290,6 +327,11 @@ function Lobby() {
         </div>
       </div>
 
+      {/* Daily VS leaderboard — today's top players by ranked wins.
+          Public, social-proof panel that gives a player a reason to
+          come back and grind for the daily cosmetic prize. */}
+      <DailyVsPanel />
+
       <div className="tw-card">
         <div className="tw-row" style={{ justifyContent: "space-between" }}>
           <div>
@@ -436,6 +478,18 @@ function LiveMatch() {
           {opponent && opponent.id && (
             <RivalryStrip opponentId={opponent.id} opponentName={opponent.username} />
           )}
+          {/* Comeback Boost indicator — only renders when active.
+              Communicates "you've got a 1.5× rating bonus locked and
+              loaded" so the player feels the upside before queueing. */}
+          <ComebackBoostIndicator />
+          {/* Series format chip — telegraphs "this is best of 3"
+              before the match starts so the player knows what to
+              expect. */}
+          {room.kind === "quick" && (
+            <div className="tw-pill" style={{ marginTop: 12, alignSelf: "center", display: "inline-block", background: "rgba(124,58,237,0.18)", borderColor: "rgba(124,58,237,0.4)", color: "#fff", fontWeight: 700, fontSize: 12 }}>
+              🏆 Best of 3 · first to 2 round wins
+            </div>
+          )}
         </div>
         <ChatPanel />
       </div>
@@ -501,6 +555,12 @@ function LiveMatch() {
       )}
 
       <div className="tw-card">
+        {/* Series score badge — only renders for best-of-3 formats.
+            Tells the player at a glance "we're tied 1-1, this is the
+            deciding round" without parsing the underlying state. */}
+        {room.series?.format === "bo3" && (
+          <SeriesBadge series={room.series} me={meSlot} opponent={opponent} />
+        )}
         <div className="tw-online-scoreboard">
           <ScoreCard player={meSlot} highlight answered={!!picked} />
           <div className="tw-online-vs">
@@ -915,6 +975,149 @@ function PlayerSlot({ player, you }) {
         <PlayerFlair username={`${player.username}${you ? " (you)" : ""}`} cosmetics={player.public_cosmetics} badges={player.badges} compact />
       </div>
       {player.ready && <div style={{ fontSize: 11, color: "var(--good)", marginTop: 4 }}>✓ Ready</div>}
+    </div>
+  );
+}
+
+// Daily VS leaderboard panel — surfaces today's top players in the
+// Online lobby. Two purposes:
+//   1. Social proof / aspiration ("MrAlex has 7 wins today, I want
+//      that")
+//   2. Yesterday-prize claim banner — if the player ranked top-10
+//      yesterday, they get a one-tap claim CTA with the rewards
+//      revealed in the toast.
+function DailyVsPanel() {
+  const dispatch = useDispatch();
+  const me = useSelector((s) => s.auth.user);
+  const [rows, setRows] = useState([]);
+  const [yesterday, setYesterday] = useState(null);
+  const [claiming, setClaiming] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    // Today's leaderboard (public).
+    api.get("/vs/daily/today").then((r) => {
+      if (!cancelled) setRows(r.data?.leaderboard || []);
+    }).catch(() => {});
+    // Yesterday's leaderboard — for the claim CTA. Computed
+    // client-side from UTC.
+    const d = new Date(Date.now() - 86400000);
+    const ystr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    api.get(`/vs/daily/today?date=${ystr}`).then((r) => {
+      if (cancelled || !me) return;
+      const lb = r.data?.leaderboard || [];
+      const idx = lb.findIndex((row) => row.user_id === me.id);
+      if (idx >= 0 && idx < 10) setYesterday({ date: ystr, rank: idx + 1 });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [me?.id]);
+
+  const claim = async () => {
+    if (!yesterday || claiming) return;
+    setClaiming(true);
+    try {
+      const r = await api.post("/vs/daily/claim", { date: yesterday.date });
+      if (r.data.ok) {
+        const bits = [];
+        if (r.data.coins) bits.push(`+${r.data.coins} coins`);
+        if (r.data.spins) bits.push(`+${r.data.spins} spin${r.data.spins === 1 ? "" : "s"}`);
+        if (r.data.cosmetic) bits.push(`cosmetic: ${r.data.cosmetic}`);
+        dispatch(pushToast({ icon: "🏆", title: `Yesterday's rank #${r.data.rank} claimed`, text: bits.join(" · "), duration: 5000 }));
+        dispatch(fetchStats());
+        setYesterday(null);
+      }
+    } catch (e) {
+      const err = e?.response?.data?.error;
+      if (err === "already_claimed") setYesterday(null);
+      dispatch(pushToast({ icon: "⚠️", title: "Couldn't claim", text: err || "Try again." }));
+    }
+    setClaiming(false);
+  };
+
+  return (
+    <div className="tw-card">
+      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontFamily: "Fredoka", fontWeight: 700 }}>🏆 Daily VS · Top players today</div>
+        <span className="tw-pill" style={{ fontSize: 11 }}>Top 3: cosmetic + 200 coins · Top 10: 100 coins</span>
+      </div>
+
+      {yesterday && (
+        <button className="tw-btn block" onClick={claim} disabled={claiming}
+          style={{ marginBottom: 8, background: "linear-gradient(135deg, #f59e0b, #ef4444)", fontWeight: 700 }}>
+          {claiming ? "Claiming…" : `🏆 Claim yesterday's rank #${yesterday.rank} prize`}
+        </button>
+      )}
+
+      {rows.length === 0 ? (
+        <div style={{ color: "var(--text-dim)", fontSize: 13, padding: 8 }}>
+          No ranked wins recorded yet today. Be the first.
+        </div>
+      ) : (
+        rows.slice(0, 8).map((r, i) => {
+          const isMe = me && r.user_id === me.id;
+          return (
+            <div key={r.user_id} className="tw-row" style={{
+              justifyContent: "space-between", padding: "6px 4px",
+              borderBottom: i < Math.min(rows.length, 8) - 1 ? "1px solid rgba(255,255,255,0.06)" : "none",
+              background: isMe ? "rgba(124,58,237,0.18)" : "transparent",
+              borderRadius: isMe ? 6 : 0,
+              fontWeight: isMe ? 700 : 500,
+            }}>
+              <span style={{ minWidth: 28, color: i < 3 ? "#fbbf24" : "var(--text-dim)", fontWeight: 700 }}>
+                {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+              </span>
+              <span style={{ flex: 1 }}>{r.username}{isMe ? " (you)" : ""}</span>
+              <span style={{ fontFamily: "Fredoka", fontWeight: 700 }}>{r.wins}W</span>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// Comeback Boost indicator — renders only when the player has the
+// boost flag armed in their stats. Pulls from `s.stats` directly so
+// it updates the moment fetchStats lands the armed=1 response after
+// a loss. Self-gating, safe to mount unconditionally.
+function ComebackBoostIndicator() {
+  const armed = useSelector((s) => !!s.stats.comeback_boost_active);
+  if (!armed) return null;
+  return (
+    <div className="tw-row" style={{
+      marginTop: 12, padding: "10px 14px", borderRadius: 12,
+      background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))",
+      border: "1px solid rgba(245,158,11,0.5)",
+      gap: 10, alignItems: "center",
+    }}>
+      <div style={{ fontSize: 24 }} aria-hidden="true">💪</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 13 }}>Comeback Boost armed</div>
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+          Next ranked win gets +50% rating (cashes in automatically).
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Series badge — renders "🏆 1 - 0" for best-of-3 matches showing
+// the current round-wins tally. Highlights the user's side so they
+// instantly know if they're up, down, or tied in the series.
+function SeriesBadge({ series, me, opponent }) {
+  if (!series || series.format !== "bo3") return null;
+  const myWins  = (me && series.roundWins?.[me.id]) || 0;
+  const oppWins = (opponent && series.roundWins?.[opponent.id]) || 0;
+  const round   = (series.round || 0) + 1; // current round (1-indexed)
+  return (
+    <div className="tw-row" style={{ justifyContent: "center", gap: 10, marginBottom: 10 }}>
+      <span className="tw-pill" style={{ fontSize: 11, color: "var(--text-dim)" }}>Best of 3 · Round {round}</span>
+      <span className="tw-pill" style={{
+        fontFamily: "Fredoka", fontWeight: 700,
+        background: "linear-gradient(135deg, rgba(124,58,237,0.3), rgba(236,72,153,0.3))",
+        border: "1px solid rgba(236,72,153,0.5)", color: "#fff",
+      }}>
+        🏆 {myWins} – {oppWins}
+      </span>
     </div>
   );
 }

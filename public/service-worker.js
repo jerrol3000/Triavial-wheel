@@ -1,11 +1,12 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v15: VS REDESIGN — Power Cards (Sniper / Cut / Double), live
-// race-bar score visualization, persistent Rivalry tracker. Plus:
-// Shop tabs consolidated 9→6, Friend-Challenge Rematch button,
-// Streak FOMO uses local timezone, Higher/Lower has global
-// leaderboards, Season Pass premium has a $4.99 USD path.
-const CACHE = "trivia-wheel-v15";
+// v16: VS REDESIGN PART 2 — Best-of-3 series (3 rounds auto-advance,
+// series badge in header, intra-series round_end events), Comeback
+// Boost (lose a ranked match → +50% rating on next win), Premium
+// emote tier (Pro/Season Pass gates the spicy emoji pack), Daily VS
+// leaderboard (top players today get cosmetic + coin prizes, claim
+// after midnight).
+const CACHE = "trivia-wheel-v16";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

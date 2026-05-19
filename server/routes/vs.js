@@ -61,4 +61,93 @@ router.get("/rivalries", requireAuth, (req, res) => {
   }));
 });
 
+// ── Daily VS leaderboard ─────────────────────────────────────────
+// Top players by ranked wins today (UTC). Public — guests can see
+// the leaderboard from the Online lobby to feel the social proof.
+
+function todayUtcKey() {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+router.get("/daily/today", (req, res) => {
+  const date = req.query.date || todayUtcKey();
+  const rows = db.prepare(`
+    SELECT u.id AS user_id, u.username, u.avatar, d.wins, d.losses, d.ties
+    FROM daily_vs d
+    JOIN users u ON u.id = d.user_id
+    WHERE d.date = ? AND u.banned_at IS NULL
+    ORDER BY d.wins DESC, d.losses ASC, d.ties DESC
+    LIMIT 50
+  `).all(date);
+  res.json({ date, leaderboard: rows });
+});
+
+// Top-3 = 1 free spin + 200 coins + cosmetic (frame_emerald);
+// Top-10 = 100 coins. Both prizes awarded once per (user, date).
+// Day-end is "the date != today" condition — players claim by
+// hitting this endpoint after midnight rolls over.
+router.post("/daily/claim", requireAuth, (req, res) => {
+  const date = String((req.body && req.body.date) || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "invalid_date" });
+  if (date === todayUtcKey()) return res.status(400).json({ error: "day_not_complete" });
+
+  // Recompute the leaderboard for that date and find this user's rank.
+  const rows = db.prepare(`
+    SELECT user_id, wins, prizes_awarded FROM daily_vs WHERE date = ?
+    ORDER BY wins DESC, losses ASC, ties DESC
+    LIMIT 50
+  `).all(date);
+  const idx = rows.findIndex((r) => r.user_id === req.user.id);
+  if (idx < 0) return res.status(404).json({ error: "not_on_leaderboard" });
+  const row = rows[idx];
+  const rank = idx + 1;
+
+  let coinsReward = 0, spinsReward = 0, cosmeticId = null;
+  let bitsToSet = 0;
+  if (rank <= 3) {
+    if ((row.prizes_awarded & 1) === 0) {
+      coinsReward = 200;
+      spinsReward = 1;
+      cosmeticId = "frame_emerald";
+      bitsToSet |= 1;
+    }
+  }
+  if (rank <= 10) {
+    if ((row.prizes_awarded & 2) === 0) {
+      coinsReward += 100;
+      bitsToSet |= 2;
+    }
+  }
+  if (!bitsToSet) return res.status(409).json({ error: "already_claimed", rank });
+
+  // Apply prizes + mark bits in a single transaction.
+  let resp;
+  try {
+    const tx = db.transaction(() => {
+      const now = Date.now();
+      if (coinsReward > 0) {
+        db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?")
+          .run(coinsReward, now, req.user.id);
+      }
+      if (spinsReward > 0) {
+        db.prepare("UPDATE stats SET free_spins = free_spins + ?, updated_at = ? WHERE user_id = ?")
+          .run(spinsReward, now, req.user.id);
+      }
+      if (cosmeticId) {
+        db.prepare("INSERT OR IGNORE INTO user_cosmetics(user_id, cosmetic_id, qty, purchased_at) VALUES (?, ?, 1, ?)")
+          .run(req.user.id, cosmeticId, now);
+      }
+      db.prepare("UPDATE daily_vs SET prizes_awarded = prizes_awarded | ?, updated_at = ? WHERE user_id = ? AND date = ?")
+        .run(bitsToSet, now, req.user.id, date);
+      resp = { ok: true, rank, coins: coinsReward, spins: spinsReward, cosmetic: cosmeticId };
+    });
+    tx.immediate();
+  } catch (e) {
+    console.error("[vs/daily/claim] failed", e);
+    return res.status(500).json({ error: "claim_failed" });
+  }
+  res.json(resp);
+});
+
 module.exports = router;

@@ -43,7 +43,7 @@ export default function Home() {
   // gradient, target view) so adding a 7th mode later is one entry.
   const tiles = [
     {
-      id: "daily", icon: "📅",
+      id: "daily", icon: "📅", iconName: "daily_challenge",
       title: "Daily Challenge",
       subtitle: "5 questions. Everyone gets the same set. Streak-eligible.",
       bg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))",
@@ -70,7 +70,7 @@ export default function Home() {
       authedOnly: true,
     },
     {
-      id: "wheel", icon: "🎡",
+      id: "wheel", icon: "🎡", iconName: "wheel",
       title: "Spin the Wheel",
       subtitle: "Classic trivia — wheel picks a category, 10 questions.",
       bg: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
@@ -80,7 +80,7 @@ export default function Home() {
       badge: !stats.pro && (stats.free_spins || 0) > 0 ? `${stats.free_spins} spins` : null,
     },
     {
-      id: "online", icon: "🆚",
+      id: "online", icon: "🆚", iconName: "vs",
       title: "VS Online",
       subtitle: "Real-time 1v1 against a stranger or a friend.",
       bg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(34,211,238,0.18))",
@@ -189,7 +189,15 @@ export default function Home() {
                     fontSize: 11, color: "var(--text-dim)",
                   }}>🔒</span>
                 )}
-                <div style={{ fontSize: hero ? 48 : 36, lineHeight: 1, flex: hero ? "0 0 auto" : undefined }} aria-hidden="true">{tile.icon}</div>
+                {/* Prefer the illustrated PNG via <Icon> when available
+                    so the Home grid matches the rest of the app's icon
+                    vocabulary; tiles without a registered PNG fall
+                    through to the emoji until artwork ships for them. */}
+                <div style={{ fontSize: hero ? 48 : 36, lineHeight: 1, flex: hero ? "0 0 auto" : undefined, display: "inline-flex", alignItems: "center", justifyContent: "center" }} aria-hidden="true">
+                  {tile.iconName
+                    ? <Icon name={tile.iconName} size={hero ? 56 : 44} />
+                    : tile.icon}
+                </div>
                 <div style={{ flex: hero ? 1 : undefined, minWidth: 0 }}>
                   <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: hero ? 18 : 16 }}>{tile.title}</div>
                   <div style={{ fontSize: hero ? 13 : 12, color: "var(--text-dim)", lineHeight: 1.35, maxWidth: hero ? "none" : 240, marginTop: hero ? 4 : 0 }}>

@@ -202,6 +202,32 @@ function joinRoom(room, user) {
   return { ok: true };
 }
 
+// Guarded auto-start scheduler. Fires startMatch in 2s — but ONLY if both
+// players' WS sockets are alive when the timer fires. If either socket is
+// closed (common on mobile: host backgrounds the tab to share the code via
+// messaging app), we bail silently rather than tearing the room down with
+// session_ended. The room stays in its pre-game state; when the missing
+// player reconnects, setupConnection calls this again to re-arm. Idempotent
+// via room.autoStartTimeoutId so repeat calls don't stack.
+function scheduleAutoStartIfReady(room) {
+  if (!room || room.started || room.finished) return;
+  if (room.players.filter(Boolean).length !== 2) return;
+  if (room.autoStartTimeoutId) return; // already scheduled
+  room.autoStartTimeoutId = setTimeout(() => {
+    room.autoStartTimeoutId = null;
+    if (!rooms.has(room.code) || room.started || room.finished) return;
+    const allLive = room.players.filter(Boolean).every((p) => {
+      const conn = connections.get(p.id);
+      return conn && conn.readyState === 1;
+    });
+    if (!allLive) {
+      // Quietly stand down. The next reconnect will re-arm us.
+      return;
+    }
+    startMatch(room);
+  }, 2000);
+}
+
 function startMatch(room) {
   // Guard against the deferred-start race: a player can disconnect
   // during the 3s "match found" countdown, or the room can be torn
@@ -749,7 +775,16 @@ function setupConnection(ws, user) {
 
   // Rejoin existing room if reconnect.
   const existingRoom = findRoomForUser(user.id);
-  if (existingRoom) send(ws, { type: "room_state", room: publicRoom(existingRoom) });
+  if (existingRoom) {
+    send(ws, { type: "room_state", room: publicRoom(existingRoom) });
+    // If this reconnect just restored the second-needed socket on a
+    // pre-game room (e.g. host backgrounded after the friend joined,
+    // now coming back), re-arm the auto-start. The scheduler's own
+    // allLive check guards against firing if the OTHER player is now
+    // the one missing, so this is safe to call unconditionally on any
+    // pre-game reconnect.
+    scheduleAutoStartIfReady(existingRoom);
+  }
 
   ws.on("message", (raw) => {
     let msg;
@@ -772,6 +807,18 @@ function setupConnection(ws, user) {
       // would otherwise return that new room and corrupt it with the
       // disconnect-bonus boost from the OLD match.
       const disconnectRoomCode = room.code;
+      // Grace window: private (friend) rooms need a MUCH longer window
+      // than quick-match rooms. The host typically backgrounds the tab
+      // to share the code via messaging app — on mobile, that suspends
+      // the WS within seconds. If we reaped the room in 15s, the friend
+      // would type the code 30s later and hit "room_not_found". Bumping
+      // pre-game friend rooms to 10min covers the realistic share-then-
+      // join flow ("text the code, friend opens the app, types it in").
+      // For quick-match (no code-sharing flow) and for mid-match rooms
+      // (opponent is waiting for you), 15s stays — those are competitive
+      // and any longer would punish the still-connected player.
+      const isPreGameFriendRoom = room.kind === "private" && !room.started;
+      const graceMs = isPreGameFriendRoom ? 10 * 60 * 1000 : 15 * 1000;
       setTimeout(() => {
         const stillThere = connections.get(user.id);
         if (stillThere && stillThere.readyState === 1) return; // reconnected in time
@@ -783,12 +830,21 @@ function setupConnection(ws, user) {
         if (!stillInOriginal) return;
         const opponent = room2.players.find((p) => p && p.id !== user.id);
         if (opponent) {
-          opponent.score += 100; // disconnect bonus
-          endMatch(room2, { forfeiterId: user.id });
+          // Mid-match: full forfeit (disconnect bonus + match_end with
+          // forfeiterId). Pre-game: there's no match to end — close
+          // the room cleanly with session_ended so the joiner returns
+          // to the lobby with a clear "opponent left" toast, no fake
+          // match_end card showing 0-0.
+          if (room2.started) {
+            opponent.score += 100; // disconnect bonus
+            endMatch(room2, { forfeiterId: user.id });
+          } else {
+            endRoom(room2, "opponent_left_pregame", { byUserId: user.id });
+          }
         } else {
           rooms.delete(room2.code);
         }
-      }, 15 * 1000);
+      }, graceMs);
     }
   });
 }
@@ -924,10 +980,12 @@ function handleMessage(ws, user, msg) {
       const res = joinRoom(room, user);
       if (res.error) { send(ws, { type: "error", error: res.error }); return; }
       broadcastRoom(room, { type: "room_state", room: publicRoom(room) });
-      // Auto-start when 2 players present (private rooms).
-      if (room.players.filter(Boolean).length === 2 && !room.started) {
-        setTimeout(() => startMatch(room), 2000);
-      }
+      // Auto-start when 2 players present AND both sockets are live.
+      // Going through the guarded scheduler (not a bare setTimeout) so
+      // the host being briefly disconnected at join-time doesn't kill
+      // the room — the scheduler bails quietly and re-arms when the
+      // host's WS reconnects via setupConnection.
+      scheduleAutoStartIfReady(room);
       return;
     }
 

@@ -116,7 +116,29 @@ export default function Online() {
           break;
         }
         case "kicked":        dispatch(pushToast({ icon: "⚠️", title: "Signed in elsewhere", text: "This tab was disconnected." })); dispatch(leftRoom()); break;
-        case "error":         dispatch(setError(msg.error)); break;
+        case "error": {
+          // Surface friend-room join failures as visible toasts. Without
+          // these, clicking Join with a bad/expired code did nothing
+          // visible — the error was dispatched into redux but no UI
+          // consumed it, so the user assumed the button was broken.
+          // Connection-level errors (auth_required, forbidden, give_up)
+          // already render in ConnectionStatus, so don't toast those —
+          // keep them in redux for that component to handle.
+          dispatch(setError(msg.error));
+          const joinErrorText = msg.error === "room_not_found"
+              ? "That code isn't valid — ask your friend to share a fresh code."
+              : msg.error === "room_full"
+              ? "That room is already full."
+              : msg.error === "already_in"
+              ? "You're already in this room."
+              : msg.error === "not_friends"
+              ? "You can only invite accepted friends to a private match."
+              : null;
+          if (joinErrorText) {
+            dispatch(pushToast({ icon: "⚠️", title: "Couldn't join", text: joinErrorText, duration: 4500 }));
+          }
+          break;
+        }
         case "comeback_armed": {
           dispatch(pushToast({
             icon: "💪",

@@ -1406,6 +1406,16 @@ img.tw-avatar { background: none; }
   border-color: rgba(236,72,153,0.5);
   color: #fff;
 }
+/* Let the tab icon render larger than the pill's text line-box would
+   normally allow WITHOUT growing the pill itself. Icons are rendered
+   at 28 px (Shop.js), text line-height is ~16 px; the negative margin
+   pulls 6 px of icon-height out of the flow each side so the flex
+   row's effective height stays anchored to the text. Net: bigger,
+   more legible icons + identical pill geometry. */
+.tw-store-tab .tw-icon {
+  margin-top: -6px;
+  margin-bottom: -6px;
+}
 .tw-store-blurb {
   color: var(--text-dim);
   font-size: 13px;

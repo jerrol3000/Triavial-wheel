@@ -115,7 +115,7 @@ export default function Shop() {
             title={t.description}
           >
             <span style={{ fontSize: 18, display: "inline-flex", alignItems: "center" }}>
-              {t.iconName ? <Icon name={t.iconName} size={20} /> : t.icon}
+              {t.iconName ? <Icon name={t.iconName} size={28} /> : t.icon}
             </span>
             <span>{t.label}</span>
           </button>

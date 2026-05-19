@@ -34,8 +34,8 @@ export const TRANSLATIONS = {
     "banner.sound": "Sound",
     "banner.admin": "Admin panel",
 
-    "home.title": "Spin to play",
-    "home.subtitle": "10 questions per round. Streaks multiply your score.",
+    "home.title": "Spin. Answer. Get roasted.",
+    "home.subtitle": "Trivia with a personality. The wheel picks. The questions hit. The wheel talks back.",
     "home.spin": "SPIN",
     "home.spinning": "Spinning…",
     "home.outOfLives": "Out of lives — get more",

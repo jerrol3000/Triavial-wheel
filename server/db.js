@@ -95,6 +95,16 @@ db.exec(`
     PRIMARY KEY (date, position)
   );
 
+  -- Anonymous play counter for the public daily marketing surface
+  -- (spinlore.app/d/<date>). One row per date; incremented every
+  -- time a guest hits POST /api/daily/public/play. Powers the
+  -- "247 people played today" social-proof line on the share card
+  -- without storing any PII about anonymous players.
+  CREATE TABLE IF NOT EXISTS daily_play_counter (
+    date TEXT PRIMARY KEY,
+    plays INTEGER NOT NULL DEFAULT 0
+  );
+
   CREATE TABLE IF NOT EXISTS question_fetch_log (
     bucket TEXT PRIMARY KEY,
     last_fetched_at INTEGER NOT NULL,

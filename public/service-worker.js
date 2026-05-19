@@ -1,9 +1,10 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v11: store tab strip uses illustrated PNGs (featured/frame/pointer/
-// celebration/title/boost) instead of emoji. Bump to make sure the
-// new icon paths are fetched cleanly.
-const CACHE = "trivia-wheel-v11";
+// v12: VIRAL PHASE 1 — public Daily Challenge URL (/d/<date>),
+// shareable Wordle-style result card with Web Share API + deep link,
+// Snark Mode personality layer (witty per-question + per-round
+// blurbs), brand voice pass on the home screen. The 30-second hook.
+const CACHE = "trivia-wheel-v12";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

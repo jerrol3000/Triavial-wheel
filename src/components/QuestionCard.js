@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { decode } from "html-entities";
 import {
@@ -9,6 +9,7 @@ import { usePowerup, addCoins, markAchievement, unlockAchievement } from "../sto
 import { sfx } from "../utils/sound";
 import { haptic } from "../utils/haptics";
 import { pushToast } from "../store/uiSlice";
+import { snarkForAnswer } from "../utils/snark";
 
 const POW = [
   { id: "fifty",  icon: "✂️", action: "fifty"  },
@@ -21,6 +22,13 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
   const dispatch = useDispatch();
   const game = useSelector((s) => s.game);
   const powerups = useSelector((s) => s.stats.powerups);
+
+  // The "Snark line" for the most-recently-answered question. Set
+  // in handlePick alongside the dispatch + cleared on handleNext so
+  // it only shows for the brief reveal window between picking and
+  // advancing. This is the brand-defining personality layer — see
+  // src/utils/snark.js for the full library.
+  const [snark, setSnark] = useState("");
 
   const tickRef = useRef();
 
@@ -92,6 +100,11 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
     // freezes the per-question timer). `timeLeft` is the remaining
     // seconds, so seconds-used = TIME_PER_QUESTION - timeLeft.
     const secondsToAnswer = Math.max(0, TIME_PER_QUESTION - game.timeLeft);
+    // Fire the Snark Mode line ONCE per question, using the actual
+    // ms-to-answer so the "instant_correct" / "wrong_slow" tiers
+    // fire accurately. The line stays on screen during the reveal
+    // window and clears the moment handleNext fires (below).
+    setSnark(snarkForAnswer({ correct: isCorrect, ms: secondsToAnswer * 1000 }));
     dispatch(answerSelected(a));
     if (isCorrect) dispatch(addCoins(5));
     // first_correct fires the moment you land your first right answer
@@ -112,6 +125,7 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
 
   const handleNext = () => {
     sfx.click();
+    setSnark(""); // clear the snark before the next question loads
     if (game.index + 1 >= game.questions.length) {
       dispatch(nextQuestion()); // marks finished
       if (onAnswered) onAnswered(null, null); // signal end-of-round
@@ -211,6 +225,27 @@ export default function QuestionCard({ onAnswered, hidePowerups = false, onEmpty
                 <span style={{ marginLeft: 6, opacity: 0.7 }}>x{powerups[p.id] || 0}</span>
               </button>
             ))}
+          </div>
+        )}
+
+        {game.showResult && snark && (
+          <div
+            className="tw-snark-line"
+            style={{
+              marginTop: 14,
+              padding: "10px 14px",
+              borderRadius: 12,
+              background: "rgba(124,58,237,0.16)",
+              border: "1px solid rgba(124,58,237,0.4)",
+              fontSize: 15,
+              fontWeight: 600,
+              textAlign: "center",
+              fontFamily: "Fredoka",
+              letterSpacing: 0.3,
+              animation: "fadeIn 0.25s ease",
+            }}
+          >
+            {snark}
           </div>
         )}
 

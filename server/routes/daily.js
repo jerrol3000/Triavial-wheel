@@ -29,6 +29,55 @@ router.get("/questions", (req, res) => {
   res.json({ date, questions });
 });
 
+// PUBLIC daily — no auth, deterministic per date, exactly 5 questions.
+// This is the marketing surface: a friend opens spinlore.app/d/<date>,
+// plays in ~90 seconds, shares a Wordle-style result card with a
+// deep-link back. No /stats fetch, no auth handshake, no daily-login
+// modal — guests just play. Date param is optional; defaults to today.
+// Older dates work too (the question picker is deterministic) so the
+// share card's link is still playable if a friend opens it after
+// midnight UTC rolls over.
+router.get("/public/:date?", (req, res) => {
+  const today = todayKey();
+  // Validate the date param — must match YYYY-MM-DD. Anything else
+  // (including future dates more than 24h ahead) falls back to today
+  // so a malformed URL still plays something rather than 404'ing.
+  let date = today;
+  const param = String(req.params.date || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(param)) {
+    // Reject more than 1 day in the future to stop crawlers from
+    // pre-generating tomorrow's set via this endpoint.
+    const future = new Date(param + "T00:00:00Z").getTime();
+    const nowMs = Date.now();
+    if (future <= nowMs + 86400000) date = param;
+  }
+  const questions = pickDailyQuestions(date, 5);
+  res.json({
+    date,
+    isToday: date === today,
+    total: questions.length,
+    questions,
+  });
+});
+
+// Public submit — anonymous play counter. Records that ONE play happened
+// for today's date without identifying the player. Used purely to drive
+// the "X players played today" social-proof number on the share card.
+// No score, no streak, no leaderboard entry — guest play data is
+// deliberately not stored beyond a counter to keep this endpoint
+// abuse-cheap and privacy-light.
+router.post("/public/play", (req, res) => {
+  const date = todayKey();
+  try {
+    db.prepare(`
+      INSERT INTO daily_play_counter (date, plays) VALUES (?, 1)
+      ON CONFLICT(date) DO UPDATE SET plays = plays + 1
+    `).run(date);
+  } catch (e) { /* counter is best-effort */ }
+  const row = db.prepare("SELECT plays FROM daily_play_counter WHERE date = ?").get(date);
+  res.json({ date, plays: row ? row.plays : 1 });
+});
+
 router.post("/submit", requireAuth, (req, res) => {
   const body = req.body || {};
   if (typeof body.score !== "number" || typeof body.correct !== "number" || typeof body.total !== "number" || typeof body.time_ms !== "number") {

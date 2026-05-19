@@ -14,6 +14,7 @@ import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
 import AdRewardModal from "./AdRewardModal";
 import PublicProfile from "./PublicProfile";
+import PublicDaily from "./PublicDaily";
 import ConfirmModal from "./ConfirmModal";
 import Toasts from "./Toasts";
 import BadgeUnlock from "./BadgeUnlock";
@@ -138,6 +139,30 @@ export default function App() {
     }
     try { rt.connect(); } catch (e) {}
   }, [user && user.id]);
+
+  // Public Daily takeover: /d/<YYYY-MM-DD> bypasses the normal app
+  // shell entirely. No Banner, no BottomNav, no daily-bonus modal —
+  // a guest who clicks the share-link should drop straight into the
+  // 5-question challenge with zero chrome between them and the first
+  // question. The boot effect above still runs (auth, stats, etc.)
+  // because that's a no-op for guests and beneficial for authed
+  // users (preserves streak data). When the player exits the daily
+  // we replaceState back to "/" so navigation feels normal.
+  const isPublicDaily = typeof window !== "undefined" && /^\/d\/\d{4}-\d{2}-\d{2}$/.test(window.location.pathname);
+  if (isPublicDaily) {
+    return (
+      <I18nProvider user={user}>
+        <div className="tw-app" style={{ background: "linear-gradient(135deg, #1e1b4b, #312e81)", minHeight: "100vh" }}>
+          <main className="tw-content tw-fade-in" style={{ paddingTop: 16, paddingBottom: 24, maxWidth: 560, margin: "0 auto" }}>
+            <PublicDaily />
+          </main>
+          {(modal === "auth" || (modal && modal.name === "auth")) && <AuthModal />}
+          {modal && typeof modal === "object" && modal.name === "confirm" && <ConfirmModal data={modal.data} />}
+          <Toasts />
+        </div>
+      </I18nProvider>
+    );
+  }
 
   const ViewComp = VIEWS[view] || Home;
   return (

@@ -287,8 +287,14 @@ function advanceQuestion(room, first = false) {
     },
   });
   // Clear cut for next round (single-use, this-question-only effect).
-  // Double stays because it's "next CORRECT answer", not "next question".
+  // Also clear sniper that didn't fire — sniper is question-scoped
+  // ("peek THIS question's opponent pick"); persisting it across
+  // questions would silently fire on the next round and confuse
+  // both players (sniper-armer thinks they wasted the card; sniped
+  // user gets revealed without warning). Double stays because it's
+  // "next CORRECT answer", not "next question".
   effects.cutFor = new Set();
+  effects.sniperFor = new Set();
   room.timeoutId = setTimeout(() => {
     // Anyone who didn't answer gets recorded as wrong.
     const idxAns = room.answers[room.index] || {};
@@ -360,15 +366,24 @@ function recordAnswer(room, userId, answer) {
   // We DM the sniped reveal to whichever opponent has the sniper
   // flag active, not the broadcaster, so the sniped user doesn't
   // know they were sniped until match-end recap.
+  //
+  // BUG-FIX (was clearing the entire sniperFor set whenever ANYONE
+  // answered, including the sniper-armer themselves): a sniper who
+  // armed-then-answered-first would lose their sniper before the
+  // opponent's answer ever landed. Now we only delete the snipers
+  // that ACTUALLY fired (i.e., where sniperUserId !== userId).
+  // Snipers that didn't fire (skipped by the can't-snipe-yourself
+  // continue) survive to the next answer in this question — which
+  // is the opponent's pick we're trying to capture.
   const effects = room.questionEffects;
   if (effects && effects.sniperFor && effects.sniperFor.size > 0) {
+    const consumed = [];
     for (const sniperUserId of effects.sniperFor) {
       if (sniperUserId === userId) continue; // can't snipe yourself
       sendToUser(sniperUserId, { type: "sniper_reveal", userId, answer, correct: isRight });
+      consumed.push(sniperUserId);
     }
-    // Sniper is single-use per arm; clear after the first opponent
-    // answer lands.
-    effects.sniperFor = new Set();
+    for (const id of consumed) effects.sniperFor.delete(id);
   }
   // If both players answered, advance early.
   const playerIds = room.players.filter(Boolean).map((p) => p.id);

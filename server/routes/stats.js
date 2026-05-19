@@ -930,6 +930,14 @@ router.post("/game", requireAuth, (req, res) => {
   }
   progressAllQuestsFor(req.user.id, questEvents);
 
+  // Season Pass: accrue XP using the same `xp_gained` the round
+  // generated, so the pass progresses naturally from playing without
+  // its own grind loop. Silent if no active season.
+  try {
+    const season = require("./season");
+    if (season.awardSeasonXp) season.awardSeasonXp(req.user.id, xp_gained);
+  } catch (e) { /* best-effort */ }
+
   // Award any newly-eligible badges from this game. New ones come back in
   // the response so the client can fire a celebration toast.
   let newBadges = [];

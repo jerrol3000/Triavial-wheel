@@ -105,6 +105,52 @@ db.exec(`
     plays INTEGER NOT NULL DEFAULT 0
   );
 
+  -- Season Pass (a.k.a. Battle Pass). Each season is a time-bounded
+  -- progression ladder: players earn season XP by playing, every
+  -- tier unlocks a reward. Free track gets a subset; premium track
+  -- gets all of them. Premium unlocked once-per-season for a flat
+  -- coin/USD price.
+  --
+  -- Season definitions are HARDCODED in src/server/seasons.js (not
+  -- DB-driven) — they don't change at runtime and embedding the
+  -- tier definitions in code keeps the migration story simple.
+  -- Per-user progress is what lives here.
+  CREATE TABLE IF NOT EXISTS user_season (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    season_id TEXT NOT NULL,
+    xp INTEGER NOT NULL DEFAULT 0,
+    premium INTEGER NOT NULL DEFAULT 0,
+    -- Bitmask of claimed tiers (tier 0 = bit 0, tier 1 = bit 1, …).
+    -- 64-bit signed → supports up to 63 tiers per season, plenty.
+    claimed_mask INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, season_id)
+  );
+
+  -- Friend Challenge: one player sends a 5-question challenge to
+  -- another. Receiver has 24h to play the SAME 5 questions. The
+  -- challenge resolves automatically once both have played (or the
+  -- receiver expires), splitting the wager: winner takes the pot,
+  -- tie returns the wager.
+  CREATE TABLE IF NOT EXISTS friend_challenges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    receiver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    questions_json TEXT NOT NULL,
+    wager INTEGER NOT NULL DEFAULT 0,
+    sender_correct INTEGER,
+    sender_time_ms INTEGER,
+    receiver_correct INTEGER,
+    receiver_time_ms INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending', -- pending | resolved | expired
+    winner_id INTEGER,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    resolved_at INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_fc_receiver ON friend_challenges(receiver_id, status);
+  CREATE INDEX IF NOT EXISTS idx_fc_sender ON friend_challenges(sender_id, status);
+
   CREATE TABLE IF NOT EXISTS question_fetch_log (
     bucket TEXT PRIMARY KEY,
     last_fetched_at INTEGER NOT NULL,

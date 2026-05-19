@@ -10,6 +10,7 @@ import { fetchDailyMeta } from "../store/dailySlice";
 import { markCategoryPlayed, markAchievement, unlockAchievement, useFreeSpin, consumeFreeSpin } from "../store/statsSlice";
 import QuestsHub from "./QuestsHub";
 import GuestWelcome from "./GuestWelcome";
+import StreakBanner from "./StreakBanner";
 import LiveLeaderboard from "./LiveLeaderboard";
 import Icon from "./Icon";
 import { useT } from "../i18n";
@@ -185,6 +186,94 @@ export default function Home() {
           (the left aside collapses below the wheel on mobile). */}
       <section className="tw-home-center">
         {!user && <GuestWelcome />}
+        {/* Streak FOMO banner — only renders when the player has an
+            existing streak AND hasn't played today's daily AND the
+            UTC clock is in the last 6 hours of the day. Self-gating
+            via internal logic so it's safe to mount unconditionally. */}
+        <StreakBanner />
+        {/* Mode-pivot tile strip — Higher/Lower + Season Pass +
+            Friend Challenges. Sits above the wheel so the young-demo
+            features are the first thing a player sees, not buried
+            under the trivia wheel. The wheel stays as the "default"
+            mode below; everything here is the "newer hotness". */}
+        {user && (
+          <div className="tw-col" style={{ gap: 8 }}>
+            <button
+              className="tw-card"
+              onClick={() => { sfx.click(); dispatch(setView("higherlower")); }}
+              style={{
+                cursor: "pointer",
+                background: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(124,58,237,0.18))",
+                border: "1px solid rgba(34,211,238,0.4)",
+                textAlign: "left",
+                padding: "12px 14px",
+              }}
+            >
+              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 28 }} aria-hidden="true">📈</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Higher or Lower</div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    Songs, movies, followers, subs — which is bigger?
+                  </div>
+                </div>
+                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
+                  Play →
+                </div>
+              </div>
+            </button>
+
+            <button
+              className="tw-card"
+              onClick={() => { sfx.click(); dispatch(setView("challenges")); }}
+              style={{
+                cursor: "pointer",
+                background: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.18))",
+                border: "1px solid rgba(245,158,11,0.4)",
+                textAlign: "left",
+                padding: "12px 14px",
+              }}
+            >
+              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 28 }} aria-hidden="true">⚔️</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Friend Challenges</div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    Send a 5-q duel. Wager coins. Winner takes the pot.
+                  </div>
+                </div>
+                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
+                  Open →
+                </div>
+              </div>
+            </button>
+
+            <button
+              className="tw-card"
+              onClick={() => { sfx.click(); dispatch(setView("season")); }}
+              style={{
+                cursor: "pointer",
+                background: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",
+                border: "1px solid rgba(236,72,153,0.4)",
+                textAlign: "left",
+                padding: "12px 14px",
+              }}
+            >
+              <div className="tw-row" style={{ gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 28 }} aria-hidden="true">⭐</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 15 }}>Season Pass</div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    20 tiers of rewards. Play to climb. Premium = the good stuff.
+                  </div>
+                </div>
+                <div className="tw-pill" style={{ background: "rgba(255,255,255,0.12)", border: "none", fontWeight: 700, color: "#fff" }}>
+                  View →
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
         <div className="tw-home-hero">
           <h1 style={{ textAlign: "center", margin: "0", fontSize: 28 }}>{t("home.title")}</h1>
           <p style={{ color: "var(--text-dim)", margin: "4px 0 0", textAlign: "center", fontSize: 13 }}>

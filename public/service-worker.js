@@ -1,10 +1,11 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v12: VIRAL PHASE 1 — public Daily Challenge URL (/d/<date>),
-// shareable Wordle-style result card with Web Share API + deep link,
-// Snark Mode personality layer (witty per-question + per-round
-// blurbs), brand voice pass on the home screen. The 30-second hook.
-const CACHE = "trivia-wheel-v12";
+// v13: VIRAL PHASE 2 — Higher/Lower mini-mode (pop-culture
+// comparisons), Streak FOMO banner (visible decay timer + at-risk
+// warning), Season Pass (20 tiers, free + premium tracks),
+// Friend Challenges (5-q duels with coin wagers). The retention
+// layer on top of phase 1's viral hook.
+const CACHE = "trivia-wheel-v13";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

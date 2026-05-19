@@ -48,6 +48,13 @@ export const ICONS = {
   title:          { emoji: "🏷️", file: "title.png",           label: "Titles" },
   boost:          { emoji: "⚡", file: "boost.png",           label: "Boosts" },
 
+  // Home tile icons — illustrated PNGs for the three new modes
+  // we added in the Home rework (Higher/Lower, Friend Challenges,
+  // Season Pass). Same emoji fallback pattern as everything else.
+  higher_lower:       { emoji: "📈", file: "higher_lower.png",       label: "Higher or Lower" },
+  friend_challenges:  { emoji: "⚔️", file: "friend_challenges.png",  label: "Friend Challenges" },
+  season:             { emoji: "⭐", file: "season.png",             label: "Season Pass" },
+
   // Still emoji-only — drop a matching PNG into public/icons/ and set
   // `file` here to upgrade.
   play:           { emoji: "🎡", file: null, label: "Play" },

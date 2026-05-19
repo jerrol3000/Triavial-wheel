@@ -52,7 +52,7 @@ export default function Home() {
       authedOnly: false,
     },
     {
-      id: "higherlower", icon: "📈",
+      id: "higherlower", icon: "📈", iconName: "higher_lower",
       title: "Higher or Lower",
       subtitle: "Songs, movies, followers — which is bigger? 1-second decisions.",
       bg: "linear-gradient(135deg, rgba(34,211,238,0.18), rgba(124,58,237,0.18))",
@@ -61,7 +61,7 @@ export default function Home() {
       authedOnly: true,
     },
     {
-      id: "challenges", icon: "⚔️",
+      id: "challenges", icon: "⚔️", iconName: "friend_challenges",
       title: "Friend Challenges",
       subtitle: "Send a 5-q duel. Wager coins. Winner takes the pot.",
       bg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(236,72,153,0.18))",
@@ -101,7 +101,7 @@ export default function Home() {
       authedOnly: true,
     },
     {
-      id: "season", icon: "⭐",
+      id: "season", icon: "⭐", iconName: "season",
       title: "Season Pass",
       subtitle: "20 tiers of rewards. Play to climb. Premium = the good stuff.",
       bg: "linear-gradient(135deg, rgba(124,58,237,0.18), rgba(236,72,153,0.18))",

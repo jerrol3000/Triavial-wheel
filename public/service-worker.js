@@ -1,10 +1,10 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v18: Home tiles now use illustrated PNG icons via <Icon> where
-// available (daily_challenge / vs / wheel). Remaining three tiles
-// (Higher/Lower, Friend Challenges, Season Pass) fall back to
-// emoji until their PNGs ship.
-const CACHE = "trivia-wheel-v18";
+// v19: Home grid now fully illustrated — all six tiles render
+// through <Icon>. Higher/Lower, Friend Challenges, and Season Pass
+// have their dedicated PNGs in /public/icons/ wired up via the
+// icons.js registry.
+const CACHE = "trivia-wheel-v19";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

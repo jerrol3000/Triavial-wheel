@@ -195,7 +195,8 @@ export default function Online() {
         // toasts + sound effects + sniper-reveal storage.
         case "card_used": {
           const who = msg.userId === user.id ? "You" : "Opponent";
-          const labels = { sniper: "🎯 Sniper", cut: "⏱️ Time Cut", double: "✖️2 Double" };
+          // Arena-pivoted labels. Server IDs unchanged (back-compat).
+          const labels = { sniper: "👁️ Spy", cut: "✂️ Sabotage", double: "✖️2 Multiplier" };
           dispatch(pushToast({
             icon: "🃏",
             title: `${who} played ${labels[msg.card] || msg.card}`,
@@ -205,11 +206,12 @@ export default function Online() {
           break;
         }
         case "card_resolved": {
-          // Fires when a "double" actually lands on a correct answer.
-          // Triggers a celebration for the user; opponent sees the
-          // burned points via the room_state score update.
+          // Fires when a "double" (Multiplier) actually doubles a
+          // submitted score. Celebration on the user side; opponent
+          // sees the new score via the round_reveal payload.
           if (msg.userId === user.id) {
-            dispatch(pushToast({ icon: "✖️2", title: `+${msg.payload?.points || 0}`, text: "Double points cashed in!" }));
+            const sc = msg.payload?.score ?? msg.payload?.points ?? 0;
+            dispatch(pushToast({ icon: "✖️2", title: `Multiplier hit: ${sc}`, text: "Double score cashed in!" }));
             sfx.coin?.();
           }
           break;
@@ -219,14 +221,14 @@ export default function Online() {
           break;
         }
         case "sniper_reveal": {
-          // We're the sniper — opponent just answered, we see what
-          // they picked + whether it was correct. Stored in component
-          // state via custom event so LiveMatch can render an
-          // overlay; toast for immediate awareness.
+          // We're the Spy — opponent just submitted, we see their
+          // score for THIS round. Server now sends { score, game_type }
+          // instead of the old { answer, correct }.
+          const sc = msg.score ?? msg.answer ?? "?";
           dispatch(pushToast({
-            icon: msg.correct ? "🎯" : "🎯",
-            title: "Sniped!",
-            text: msg.correct ? `Opponent: "${msg.answer}" ✓` : `Opponent: "${msg.answer}" ✗`,
+            icon: "👁️",
+            title: "Spied!",
+            text: `Opponent's score this round: ${sc}`,
             duration: 3500,
           }));
           break;
@@ -1302,10 +1304,16 @@ function RaceBar({ me, opponent }) {
 // matter most — and that's the dopamine.
 function PowerCardTray({ inventory, oppInventory, disabled }) {
   if (!inventory) return null;
+  // Arena-pivoted labels. The server-side IDs stay as sniper/cut/double
+  // (back-compat with deployed players + the use_card switch in
+  // realtime.js), but the UI copy describes the mini-game behavior:
+  //   sniper = see opponent's submitted SCORE the moment they finish
+  //   cut    = opponent's next mini-game has 30% less time on the clock
+  //   double = your next mini-game score is doubled
   const cards = [
-    { id: "sniper", icon: "🎯", label: "Sniper", desc: "See opponent's next pick the moment they lock in." },
-    { id: "cut",    icon: "⏱️", label: "Time Cut", desc: "Opponent's next question caps at 8 seconds." },
-    { id: "double", icon: "✖️2", label: "Double", desc: "Your next correct answer is worth 2× points." },
+    { id: "sniper", icon: "👁️",   label: "Spy",        desc: "See your opponent's score the instant they submit." },
+    { id: "cut",    icon: "✂️",    label: "Sabotage",   desc: "Cut 30% off your opponent's next mini-game timer." },
+    { id: "double", icon: "✖️2",   label: "Multiplier", desc: "Double your next mini-game's score." },
   ];
   const play = (card) => {
     if (disabled) return;

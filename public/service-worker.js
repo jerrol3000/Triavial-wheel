@@ -13,7 +13,20 @@
 // combination. Server's pickGames() shuffle is deterministic per
 // match seed so VS opponents + friend-duel sides race identical
 // content.
-const CACHE = "trivia-wheel-v27";
+// v28: post-bot-playthrough bug fixes
+//   1. findRoomForUser ignored finished rooms → quick_match after a
+//      loss got stuck for ~20s until continue-vote teardown ran.
+//      Now filters out rooms where finished=true so the queue takes
+//      effect immediately.
+//   2. Memory's per-round duration cut 60s → 25s — an AFK opponent
+//      could otherwise hold the match for 5+ min on Memory alone.
+//      Serious Memory players naturally fail inside 25s, so no
+//      legitimate play is cut short.
+//   3. Power Card UI labels updated to Arena names (Spy / Sabotage /
+//      Multiplier) — old labels still said "see opponent's pick"
+//      which doesn't apply to mini-game rounds. Server IDs kept as
+//      sniper/cut/double for back-compat with deployed clients.
+const CACHE = "trivia-wheel-v28";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

@@ -30,7 +30,15 @@ function send(ws, msg) {
 }
 
 function findRoomForUser(userId) {
+  // Skip finished rooms — those are awaiting continue-vote teardown,
+  // which can take up to 20s. Without this filter, a player who just
+  // lost a match would be "stuck" in their old room and quick_match
+  // would early-return room_state instead of starting a new search.
+  // Symptom in the bot playthrough: 0 match_found events after a
+  // forfeit-then-requeue. Mid-match (room.finished === false) is
+  // still found correctly so reconnect flows are untouched.
   for (const room of rooms.values()) {
+    if (room.finished) continue;
     if (room.players.some((p) => p && p.id === userId)) return room;
   }
   return null;

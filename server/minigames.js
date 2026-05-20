@@ -61,8 +61,11 @@ const MINI_GAMES = {
     icon: "🧠",
     tagline: "Repeat the sequence!",
     // Level reached. Beating 20 is effectively impossible on a small
-    // screen.
-    duration_ms: 60000,
+    // screen. Duration capped at 25s so a silent opponent can't hold
+    // the match for 60s on this round alone (5-round match would
+    // otherwise stretch to 5+ minutes if both players go AFK).
+    // Serious players naturally lose the streak well before 25s.
+    duration_ms: 25000,
     higher_wins: true,
     max_score: 20,
   },

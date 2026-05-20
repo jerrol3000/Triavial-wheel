@@ -11,7 +11,11 @@ import { makeRng } from "./_seed";
 // Seeded sequence so both players see the IDENTICAL sequence and the
 // race is purely about who can hold longer.
 
-const TOTAL_TIME_MS = 60000;
+// Capped at 25s (was 60s) so an AFK opponent can't hold a match
+// hostage. Serious Memory players naturally fail by ~level 8-12
+// which lands inside 25s anyway. Matches the server's per-game
+// duration in minigames.js — keep them in sync.
+const TOTAL_TIME_MS = 25000;
 const PAD_FLASH_MS = 500;
 const PAD_GAP_MS = 200;
 const PADS = [

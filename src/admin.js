@@ -327,59 +327,217 @@ function StatCard({ label, value, sub }) {
 // ─── Users ──────────────────────────────────────────────────────────────────
 function Users({ toasts, me }) {
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("");           // "" | banned | admins | pro | test
+  const [inactiveDays, setInactiveDays] = useState(0); // 0 | 30 | 60 | 90
   const [data, setData] = useState({ total: 0, users: [] });
   const [offset, setOffset] = useState(0);
   const [editing, setEditing] = useState(null);
+  // selectedIds: Set of user_ids the admin has ticked. Persists across
+  // page navigations within the same Users mount, so a workflow like
+  // "page 1: select 5, page 2: select 10, then bulk delete 15" works
+  // naturally. Wiped on filter/search change because the criteria
+  // changing means "those rows aren't the user's mental model anymore".
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // { kind: "delete"|"ban"|"unban", ids: [...] }
   const limit = 50;
 
   const load = useCallback(() => {
-    api.get("/admin/users", { params: { q, limit, offset } })
+    const params = { q, limit, offset };
+    if (filter) params.filter = filter;
+    if (inactiveDays > 0) params.inactive_days = inactiveDays;
+    api.get("/admin/users", { params })
       .then((r) => setData(r.data))
       .catch((e) => toasts.push(e?.response?.data?.error || "load failed", "err"));
-  }, [q, offset, toasts]);
+  }, [q, filter, inactiveDays, offset, toasts]);
   useEffect(() => { load(); }, [load]);
+
+  // Wipe selection whenever the search/filter/page criteria changes —
+  // staying selected across criteria changes confuses the admin (and
+  // would let them accidentally bulk-delete users they can no longer
+  // see).
+  useEffect(() => { setSelectedIds(new Set()); }, [q, filter, inactiveDays, offset]);
+
+  const isSelectable = (u) => u.id !== me.id && !u.is_admin; // server enforces too
+  const visibleSelectable = data.users.filter(isSelectable);
+  const allPageSelected = visibleSelectable.length > 0
+    && visibleSelectable.every((u) => selectedIds.has(u.id));
+  const somePageSelected = !allPageSelected && visibleSelectable.some((u) => selectedIds.has(u.id));
+
+  const toggleOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const togglePage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const u of visibleSelectable) next.delete(u.id);
+      } else {
+        for (const u of visibleSelectable) next.add(u.id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Open the confirm dialog for the requested action. Dialog itself
+  // does the API call so we can keep the trigger handlers tiny.
+  const askBulk = (kind) => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setConfirmAction({ kind, ids });
+  };
+
+  const runBulk = async ({ kind, ids }) => {
+    setBulkBusy(true);
+    try {
+      const path = kind === "delete" ? "/admin/users/bulk-delete"
+                 : kind === "ban"    ? "/admin/users/bulk-ban"
+                                     : "/admin/users/bulk-unban";
+      const r = await api.post(path, { user_ids: ids });
+      const n = r.data.deleted ?? r.data.banned ?? r.data.unbanned ?? 0;
+      const skipped = r.data.skipped || [];
+      const verb = kind === "delete" ? "Deleted" : kind === "ban" ? "Banned" : "Unbanned";
+      const skipNote = skipped.length ? ` · ${skipped.length} skipped (self / admins)` : "";
+      toasts.push(`${verb} ${n}${skipNote}`, "ok");
+      clearSelection();
+      setConfirmAction(null);
+      load();
+    } catch (e) {
+      toasts.push(e?.response?.data?.error || "Bulk action failed", "err");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const selectedCount = selectedIds.size;
 
   return (
     <>
       <div className="adm-header">
         <h1>Users</h1>
-        <div className="adm-row">
+        <div className="adm-row" style={{ flexWrap: "wrap", gap: 8 }}>
           <input className="adm-input" placeholder="Search email or username" value={q}
                  onChange={(e) => { setOffset(0); setQ(e.target.value); }} style={{ width: 260 }} />
         </div>
       </div>
+
+      {/* Filter chips. Quick scoping so the admin can bulk-act on a
+          meaningful subset (banned cleanup, test-account purge,
+          inactive culling) without typing search strings. Multi-state
+          radio behavior: tap once to apply, tap again to clear. */}
+      <div className="adm-row" style={{ flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+        <FilterChip active={filter === "banned"}  onClick={() => { setOffset(0); setFilter(filter === "banned" ? "" : "banned"); }}>🚫 Banned</FilterChip>
+        <FilterChip active={filter === "test"}    onClick={() => { setOffset(0); setFilter(filter === "test" ? "" : "test"); }}>🧪 Test accounts</FilterChip>
+        <FilterChip active={filter === "admins"}  onClick={() => { setOffset(0); setFilter(filter === "admins" ? "" : "admins"); }}>🛡️ Admins</FilterChip>
+        <FilterChip active={filter === "pro"}     onClick={() => { setOffset(0); setFilter(filter === "pro" ? "" : "pro"); }}>⭐ Pro</FilterChip>
+        <span style={{ width: 1, height: 22, background: "rgba(255,255,255,0.08)", margin: "0 4px" }} />
+        <FilterChip active={inactiveDays === 30}  onClick={() => { setOffset(0); setInactiveDays(inactiveDays === 30 ? 0 : 30); }}>😴 Inactive 30d+</FilterChip>
+        <FilterChip active={inactiveDays === 90}  onClick={() => { setOffset(0); setInactiveDays(inactiveDays === 90 ? 0 : 90); }}>💤 Inactive 90d+</FilterChip>
+        {(filter || inactiveDays > 0 || q) && (
+          <button className="adm-btn ghost sm" onClick={() => { setQ(""); setFilter(""); setInactiveDays(0); setOffset(0); }}>
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Sticky bulk-action bar — shows ONLY when 1+ row is selected.
+          Sliding-in pattern is more discoverable than a hidden menu
+          and stays out of the way otherwise. Counts + clear inline so
+          the admin can always see how many they're about to affect. */}
+      {selectedCount > 0 && (
+        <div className="adm-card" style={{
+          background: "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(239,68,68,0.10))",
+          border: "1px solid rgba(245,158,11,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: 12, flexWrap: "wrap", marginBottom: 8,
+        }}>
+          <div style={{ fontWeight: 600 }}>
+            {selectedCount} user{selectedCount === 1 ? "" : "s"} selected
+          </div>
+          <div className="adm-row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <button className="adm-btn warn sm" disabled={bulkBusy} onClick={() => askBulk("ban")}>
+              🚫 Ban
+            </button>
+            <button className="adm-btn ghost sm" disabled={bulkBusy} onClick={() => askBulk("unban")}>
+              ✓ Unban
+            </button>
+            <button className="adm-btn danger sm" disabled={bulkBusy} onClick={() => askBulk("delete")}>
+              🗑 Delete
+            </button>
+            <button className="adm-btn ghost sm" disabled={bulkBusy} onClick={clearSelection}>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="adm-card">
         <div className="adm-table-wrap">
           <table className="adm-table">
             <thead>
               <tr>
+                <th style={{ width: 32 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all on this page"
+                    checked={allPageSelected}
+                    ref={(el) => { if (el) el.indeterminate = somePageSelected; }}
+                    onChange={togglePage}
+                    disabled={visibleSelectable.length === 0}
+                    title={
+                      visibleSelectable.length === 0
+                        ? "Nothing on this page can be bulk-acted (admins / self)"
+                        : allPageSelected ? "Unselect all on this page" : "Select all on this page"
+                    }
+                  />
+                </th>
                 <th>User</th><th>Email</th><th>Level</th><th>Coins</th>
                 <th>Games</th><th>High</th><th>Status</th><th>Joined</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {data.users.map((u) => (
-                <tr key={u.id}>
-                  <td>@{u.username}</td>
-                  <td className="mono">{u.email}</td>
-                  <td>L{u.level || 1}</td>
-                  <td>{u.coins || 0}</td>
-                  <td>{u.games_played || 0}</td>
-                  <td>{u.high_score || 0}</td>
-                  <td>
-                    {u.is_admin && <span className="adm-tag admin">admin</span>}{" "}
-                    {u.pro && <span className="adm-tag pro">pro</span>}{" "}
-                    {u.banned_at && <span className="adm-tag banned">banned</span>}
-                  </td>
-                  <td>{timeAgo(u.created_at)}</td>
-                  <td>
-                    <button className="adm-btn ghost sm" onClick={() => setEditing(u)}>Manage</button>
-                  </td>
-                </tr>
-              ))}
+              {data.users.map((u) => {
+                const selectable = isSelectable(u);
+                const checked = selectedIds.has(u.id);
+                return (
+                  <tr key={u.id} style={{
+                    background: checked ? "rgba(245,158,11,0.08)" : undefined,
+                  }}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select @${u.username}`}
+                        checked={checked}
+                        disabled={!selectable}
+                        onChange={() => toggleOne(u.id)}
+                        title={!selectable ? (u.id === me.id ? "Can't bulk-act on yourself" : "Can't bulk-act on admins") : ""}
+                      />
+                    </td>
+                    <td>@{u.username}</td>
+                    <td className="mono">{u.email}</td>
+                    <td>L{u.level || 1}</td>
+                    <td>{u.coins || 0}</td>
+                    <td>{u.games_played || 0}</td>
+                    <td>{u.high_score || 0}</td>
+                    <td>
+                      {u.is_admin && <span className="adm-tag admin">admin</span>}{" "}
+                      {u.pro && <span className="adm-tag pro">pro</span>}{" "}
+                      {u.banned_at && <span className="adm-tag banned">banned</span>}
+                    </td>
+                    <td>{timeAgo(u.created_at)}</td>
+                    <td>
+                      <button className="adm-btn ghost sm" onClick={() => setEditing(u)}>Manage</button>
+                    </td>
+                  </tr>
+                );
+              })}
               {!data.users.length && (
-                <tr><td colSpan={9} style={{ color: "var(--text-dim)", textAlign: "center" }}>No users.</td></tr>
+                <tr><td colSpan={10} style={{ color: "var(--text-dim)", textAlign: "center" }}>No users.</td></tr>
               )}
             </tbody>
           </table>
@@ -394,7 +552,113 @@ function Users({ toasts, me }) {
       </div>
 
       {editing && <UserEditor user={editing} me={me} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} toasts={toasts} />}
+
+      {confirmAction && (
+        <BulkConfirm
+          action={confirmAction}
+          users={data.users}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => runBulk(confirmAction)}
+          busy={bulkBusy}
+        />
+      )}
     </>
+  );
+}
+
+function FilterChip({ active, onClick, children }) {
+  return (
+    <button
+      className={`adm-btn ${active ? "" : "ghost"} sm`}
+      onClick={onClick}
+      style={{
+        fontWeight: active ? 700 : 500,
+        background: active ? "linear-gradient(135deg, #f59e0b, #ef4444)" : undefined,
+        color: active ? "#fff" : undefined,
+        border: active ? "none" : undefined,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Bulk action confirmation ──────────────────────────────────────────────
+// Hard delete forces the admin to TYPE "DELETE" before the button
+// enables. Cheap, well-established friction that turns a one-misclick
+// data-loss event into a deliberate action. Ban / unban are reversible
+// so they just need a single-click confirm.
+function BulkConfirm({ action, users, onCancel, onConfirm, busy }) {
+  const [typed, setTyped] = useState("");
+  const isDelete = action.kind === "delete";
+  const REQUIRED = "DELETE";
+  const verbVerb = isDelete ? "Delete" : action.kind === "ban" ? "Ban" : "Unban";
+  const verbVerbing = isDelete ? "Deleting" : action.kind === "ban" ? "Banning" : "Unbanning";
+  const verbed = isDelete ? "deleted" : action.kind === "ban" ? "banned" : "unbanned";
+
+  // Resolve usernames for the IDs in this action — the list might span
+  // multiple pages, but for any IDs not in the current page's data we
+  // just show the raw id. Server also returns its own skipped list
+  // post-action, so showing "id X" here for off-page rows is honest
+  // about what we know.
+  const labels = action.ids.map((id) => {
+    const u = users.find((x) => x.id === id);
+    return u ? `@${u.username}` : `id ${id}`;
+  });
+  const preview = labels.slice(0, 8).join(", ") + (labels.length > 8 ? `, +${labels.length - 8} more` : "");
+
+  const okToFire = !busy && (!isDelete || typed === REQUIRED);
+
+  return (
+    <div className="adm-modal-backdrop" onClick={onCancel}>
+      <div className="adm-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+        <h2 style={{ marginTop: 0, color: isDelete ? "var(--bad)" : undefined }}>
+          {verbVerb} {action.ids.length} user{action.ids.length === 1 ? "" : "s"}?
+        </h2>
+
+        {isDelete && (
+          <div style={{
+            background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.35)",
+            borderRadius: 8, padding: "10px 12px", marginBottom: 12, fontSize: 13,
+          }}>
+            <strong>This is irreversible.</strong> All of these users' stats, friends,
+            challenges, leaderboard entries, cosmetics, badges, and chat history will
+            be permanently removed (FK cascades). Server skips bootstrap admins + you.
+          </div>
+        )}
+
+        <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 14 }}>
+          <strong style={{ color: "var(--text)" }}>Affecting:</strong> {preview}
+        </div>
+
+        {isDelete && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 13, color: "var(--text-dim)" }}>
+              Type <code style={{ color: "var(--bad)" }}>{REQUIRED}</code> to confirm:
+            </label>
+            <input
+              className="adm-input"
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={REQUIRED}
+              autoFocus
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+        )}
+
+        <div className="adm-row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <button className="adm-btn ghost" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button
+            className={`adm-btn ${isDelete ? "danger" : action.kind === "ban" ? "warn" : ""}`}
+            onClick={onConfirm}
+            disabled={!okToFire}
+          >
+            {busy ? `${verbVerbing}…` : `${verbVerb} ${action.ids.length}`}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

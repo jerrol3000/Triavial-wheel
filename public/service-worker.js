@@ -1,23 +1,14 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v23: Friend Challenges playthrough fixes. Three bugs found in a
-// 47-scenario adversarial run + fixed:
-//   1. Cancelled status mis-rendered as 🤝 TIED ("Dead heat — both
-//      refunded") on the receiver's past-results card. Outcome calc
-//      now short-circuits on c.status === "cancelled" before the
-//      winner_id checks; new banner ("X withdrew this challenge",
-//      🚫 glyph, neutral grey glow) and share-text tag (🚫 Withdrawn).
-//   2. Receiver mid-play cancel race: if the sender cancelled while
-//      the receiver was answering, /submit 400'd and the UI dropped
-//      them on a fake "Submitted!" interstitial. Now we listen for
-//      the cancelled push during the play phase and bail out with a
-//      clear toast; also distinguish already_resolved vs network in
-//      the submit catch.
-//   3. Defensive: cancel transaction now checks UPDATE.changes === 0
-//      and returns 400 not_cancellable instead of silently refunding
-//      again. Safe today thanks to sync sqlite + single-thread Node,
-//      hardens against any future cluster/async refactor.
-const CACHE = "trivia-wheel-v23";
+// v24: Admin Users — bulk data management. Row checkboxes, sticky
+// bulk-action bar (Ban / Unban / Delete), filter chips (Banned,
+// Test accounts, Admins, Pro, Inactive 30d+ / 90d+), and a typed-
+// "DELETE" confirmation dialog for irreversible bulk deletes.
+// Server: /admin/users/bulk-delete, /bulk-ban, /bulk-unban — all
+// transactional, audit-logged per row, capped at 500 IDs, self +
+// bootstrap admins always skipped. GET /admin/users gains a
+// `filter` and `inactive_days` query.
+const CACHE = "trivia-wheel-v24";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

@@ -210,16 +210,46 @@ router.get("/users", (req, res) => {
   const q = String(req.query.q || "").trim();
   const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
   const offset = Math.max(0, Number(req.query.offset || 0));
+  // Filter shortcuts for bulk-management workflows. Stack with each
+  // other AND with the search query, so an admin can find e.g.
+  // "banned users with 'test' in the email, inactive for 30+ days"
+  // before clicking bulk-delete.
+  //   filter=banned     — banned_at IS NOT NULL
+  //   filter=admins     — is_admin = 1
+  //   filter=pro        — pro_until > now
+  //   filter=test       — email or username contains "test"
+  //   inactive_days=30  — created > 30 days ago AND last login (or
+  //                       updated_at) older than 30 days ago. We use
+  //                       stats.updated_at as a proxy for "last active".
+  const filter = String(req.query.filter || "").toLowerCase();
+  const inactiveDays = Math.max(0, Number(req.query.inactive_days || 0)) | 0;
   const params = [];
-  let where = "";
+  const conds = [];
   if (q) {
-    where = "WHERE LOWER(u.email) LIKE ? OR LOWER(u.username) LIKE ?";
+    conds.push("(LOWER(u.email) LIKE ? OR LOWER(u.username) LIKE ?)");
     const like = `%${q.toLowerCase()}%`;
     params.push(like, like);
   }
+  if (filter === "banned") conds.push("u.banned_at IS NOT NULL");
+  if (filter === "admins") conds.push("u.is_admin = 1");
+  if (filter === "pro") { conds.push("s.pro_until > ?"); params.push(Date.now()); }
+  if (filter === "test") {
+    conds.push("(LOWER(u.email) LIKE '%test%' OR LOWER(u.username) LIKE '%test%')");
+  }
+  if (inactiveDays > 0) {
+    const cutoff = Date.now() - inactiveDays * DAY;
+    // updated_at tracks last stats change (any gameplay action bumps it);
+    // created_at is the registration timestamp. We want "registered MORE
+    // than N days ago AND no activity in the last N days" — that
+    // excludes brand-new dormant signups.
+    conds.push("u.created_at < ?");
+    conds.push("COALESCE(s.updated_at, 0) < ?");
+    params.push(cutoff, cutoff);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   const rows = db.prepare(`
     SELECT u.id, u.email, u.username, u.is_admin, u.banned_at, u.created_at,
-           s.xp, s.level, s.coins, s.games_played, s.pro_until,
+           s.xp, s.level, s.coins, s.games_played, s.pro_until, s.updated_at AS last_active_at,
            l.high_score
     FROM users u
     LEFT JOIN stats s ON s.user_id = u.id
@@ -228,7 +258,7 @@ router.get("/users", (req, res) => {
     ORDER BY u.created_at DESC
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
-  const total = db.prepare(`SELECT COUNT(*) AS n FROM users u ${where}`).get(...params).n;
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM users u LEFT JOIN stats s ON s.user_id = u.id ${where}`).get(...params).n;
   res.json({
     total,
     users: rows.map((r) => ({
@@ -329,6 +359,161 @@ router.delete("/users/:id", (req, res) => {
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
   audit.logAdmin(req.user.id, "user.delete", String(id));
   res.json({ ok: true });
+});
+
+// ─── Bulk user management ──────────────────────────────────────────────────
+//
+// All three endpoints share the same shape:
+//   POST { user_ids: [int, int, ...] }
+//   → { deleted|banned|unbanned: N, skipped: [{id, reason, ...}] }
+//
+// Safety:
+//   - Hard cap of 500 IDs per request — accidental "select all from
+//     a 10k-user database" pings can't bring down the box or get
+//     audit-logged to oblivion.
+//   - Self-ID + bootstrap admins always go into `skipped`, never the
+//     destructive list. Server is the source of truth; the client UI
+//     also hides the checkboxes on those rows but a tampered client
+//     can't bypass these guards.
+//   - All deletes happen in a single transaction so a malformed ID
+//     mid-batch rolls back the whole thing — admin sees a clean
+//     all-or-nothing failure, not a half-applied wipe.
+//   - Audit log: one entry per affected user_id, prefixed with
+//     "bulk." so a later forensic search can correlate the batch.
+//   - users → all dependent tables have ON DELETE CASCADE FKs +
+//     `PRAGMA foreign_keys = ON` (see db.js), so a user delete
+//     also wipes stats, friendships, friend_challenges, leaderboard,
+//     daily_scores, user_cosmetics, user_equipped, user_badges,
+//     seen_questions, season progress, hl_scores, etc. No orphan
+//     rows possible.
+const BULK_MAX = 500;
+function partitionIds(rawIds, selfId) {
+  // Normalize, dedupe, filter invalid, split into actionable vs
+  // skipped. Returns { actionable: [ids], skipped: [{id, reason}] }.
+  const seen = new Set();
+  const actionable = [];
+  const skipped = [];
+  for (const raw of rawIds || []) {
+    const id = Number(raw);
+    if (!Number.isInteger(id) || id <= 0) {
+      skipped.push({ id: raw, reason: "invalid_id" });
+      continue;
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (id === selfId) { skipped.push({ id, reason: "self" }); continue; }
+    if (isBootstrapAdmin(id)) { skipped.push({ id, reason: "bootstrap_admin" }); continue; }
+    actionable.push(id);
+  }
+  return { actionable, skipped };
+}
+
+router.post("/users/bulk-delete", (req, res) => {
+  const ids = req.body && req.body.user_ids;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "user_ids must be an array" });
+  if (ids.length === 0) return res.status(400).json({ error: "no_ids" });
+  if (ids.length > BULK_MAX) return res.status(400).json({ error: "too_many", max: BULK_MAX });
+
+  const { actionable, skipped } = partitionIds(ids, req.user.id);
+  if (actionable.length === 0) {
+    return res.json({ deleted: 0, skipped });
+  }
+
+  // One transaction so any FK violation / unexpected error rolls
+  // back ALL deletes. Admin sees a clean "nothing happened"
+  // instead of a half-applied wipe they can't recover from.
+  let deleted = 0;
+  try {
+    const del = db.prepare("DELETE FROM users WHERE id = ?");
+    const tx = db.transaction((batch) => {
+      let n = 0;
+      for (const id of batch) {
+        const r = del.run(id);
+        if (r.changes > 0) n += 1;
+      }
+      return n;
+    });
+    deleted = tx(actionable);
+  } catch (e) {
+    console.error("[admin/bulk-delete] failed", e);
+    return res.status(500).json({ error: "bulk_delete_failed", detail: String(e.message || e) });
+  }
+
+  // Audit log AFTER successful delete — one row per user, all sharing
+  // the bulk action name + same timestamp so a forensic query can
+  // correlate which delete was part of which batch.
+  for (const id of actionable) {
+    audit.logAdmin(req.user.id, "user.bulk_delete", String(id), { batch_size: actionable.length });
+  }
+
+  res.json({ deleted, skipped });
+});
+
+router.post("/users/bulk-ban", (req, res) => {
+  const ids = req.body && req.body.user_ids;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "user_ids must be an array" });
+  if (ids.length === 0) return res.status(400).json({ error: "no_ids" });
+  if (ids.length > BULK_MAX) return res.status(400).json({ error: "too_many", max: BULK_MAX });
+
+  const { actionable, skipped } = partitionIds(ids, req.user.id);
+  if (actionable.length === 0) return res.json({ banned: 0, skipped });
+
+  const now = Date.now();
+  let banned = 0;
+  try {
+    const upd = db.prepare("UPDATE users SET banned_at = ? WHERE id = ? AND banned_at IS NULL");
+    const tx = db.transaction((batch) => {
+      let n = 0;
+      for (const id of batch) {
+        const r = upd.run(now, id);
+        if (r.changes > 0) n += 1;
+      }
+      return n;
+    });
+    banned = tx(actionable);
+  } catch (e) {
+    console.error("[admin/bulk-ban] failed", e);
+    return res.status(500).json({ error: "bulk_ban_failed" });
+  }
+
+  for (const id of actionable) {
+    audit.logAdmin(req.user.id, "user.bulk_ban", String(id), { batch_size: actionable.length });
+  }
+  res.json({ banned, skipped });
+});
+
+router.post("/users/bulk-unban", (req, res) => {
+  const ids = req.body && req.body.user_ids;
+  if (!Array.isArray(ids)) return res.status(400).json({ error: "user_ids must be an array" });
+  if (ids.length === 0) return res.status(400).json({ error: "no_ids" });
+  if (ids.length > BULK_MAX) return res.status(400).json({ error: "too_many", max: BULK_MAX });
+
+  // Bootstrap-admin filter still applies (idempotent — they're never
+  // banned anyway), self-id too. partitionIds handles both.
+  const { actionable, skipped } = partitionIds(ids, req.user.id);
+  if (actionable.length === 0) return res.json({ unbanned: 0, skipped });
+
+  let unbanned = 0;
+  try {
+    const upd = db.prepare("UPDATE users SET banned_at = NULL WHERE id = ? AND banned_at IS NOT NULL");
+    const tx = db.transaction((batch) => {
+      let n = 0;
+      for (const id of batch) {
+        const r = upd.run(id);
+        if (r.changes > 0) n += 1;
+      }
+      return n;
+    });
+    unbanned = tx(actionable);
+  } catch (e) {
+    console.error("[admin/bulk-unban] failed", e);
+    return res.status(500).json({ error: "bulk_unban_failed" });
+  }
+
+  for (const id of actionable) {
+    audit.logAdmin(req.user.id, "user.bulk_unban", String(id), { batch_size: actionable.length });
+  }
+  res.json({ unbanned, skipped });
 });
 
 // ─── Questions ──────────────────────────────────────────────────────────────

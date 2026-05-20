@@ -32,6 +32,18 @@ export default function Online() {
   useEffect(() => {
     if (!user) return;
     rt.connect();
+    // LATE-SUBSCRIBER SYNC. App.js eagerly calls rt.connect() on boot
+    // (so live notifications work from anywhere in the app). By the
+    // time the user navigates to /online and this listener attaches,
+    // the WS may ALREADY be open — and rt.emit({type:"open"}) already
+    // fired into the void. Result: redux `connected` stayed false
+    // forever, ConnectionStatus stuck on "still trying to connect…"
+    // even though the live debug line shows WS state OPEN (1).
+    // Sync from the live readyState now so the listener doesn't have
+    // to wait for the next reconnect to learn the truth.
+    const live = rt.state();
+    if (live.readyState === 1) dispatch(setConnected(true));
+    else if (live.readyState === 3) dispatch(setConnected(false));
     let reactionTimer = null;
     const off = rt.on((msg) => {
       switch (msg.type) {

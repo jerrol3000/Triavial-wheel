@@ -42,12 +42,15 @@ import { playSFX, haptic } from "./_synth";
 const DURATION_MS = 10000;
 const SPAWN_INTERVAL_MS = 380;
 const ORB_RADIUS = 26;
+const MEGA_RADIUS = 60;
 const CHAIN_RANGE = 50;
+const MEGA_THRESHOLD = 18; // mega orb spawns once when crossing this score
 
 const KIND_NORMAL = "n";
 const KIND_GOLD = "g";
 const KIND_BOMB = "b";
 const KIND_CHAIN = "c";
+const KIND_MEGA = "m";
 
 function rollKind(rng, score) {
   // Bombs more common as score climbs — risk scales with reward.
@@ -84,6 +87,11 @@ export default function BubblePop({ onComplete, seed }) {
     arenaH: 360,
     arenaW: 320,
     shake: 0,
+    megaSpawned: false,    // single mega per round
+    glintLayer: null,      // ambient background glints
+    glints: [],            // small decorative drift particles
+    appRef: null,          // app handle for spawnMega
+    spawnFn: null,         // setter so we can spawn mega imperatively
   });
 
   const begin = () => {
@@ -162,15 +170,38 @@ export default function BubblePop({ onComplete, seed }) {
       new AdvancedBloomFilter({ threshold: 0.4, bloomScale: 0.7, brightness: 1, blur: 6, quality: 4 }),
     ];
 
+    // ── Ambient glint layer (background) ────────────────────────
+    // Small decorative dots drift across the back of the arena —
+    // gives the space a sense of life even when no orbs are active.
+    const glintLayer = new PIXI.Container();
+    app.stage.addChildAt(glintLayer, 2); // behind orbs but above bg
+    state.glintLayer = glintLayer;
+    for (let i = 0; i < 24; i++) {
+      const g = new PIXI.Graphics();
+      g.beginFill(accentColor, 0.4);
+      g.drawCircle(0, 0, 1 + Math.random());
+      g.endFill();
+      g.x = Math.random() * W;
+      g.y = Math.random() * H;
+      glintLayer.addChild(g);
+      state.glints.push({
+        sprite: g,
+        vy: 0.2 + Math.random() * 0.4,
+        baseAlpha: 0.2 + Math.random() * 0.4,
+        phase: Math.random() * Math.PI * 2,
+      });
+    }
+
     // ── Orb factory ──────────────────────────────────────────────
-    function spawnOrb() {
+    function spawnOrb(forcedKind) {
       const rng = rngRef.current;
-      const kind = rollKind(rng, scoreRef.current);
-      const x = ORB_RADIUS + 8 + rng.int(Math.max(1, W - (ORB_RADIUS + 8) * 2));
-      const body = Matter.Bodies.circle(x, -ORB_RADIUS, ORB_RADIUS, {
+      const kind = forcedKind || rollKind(rng, scoreRef.current);
+      const radius = kind === KIND_MEGA ? MEGA_RADIUS : ORB_RADIUS;
+      const x = radius + 8 + rng.int(Math.max(1, W - (radius + 8) * 2));
+      const body = Matter.Bodies.circle(x, -radius, radius, {
         restitution: 0.65,
         friction: 0.04,
-        density: 0.001,
+        density: kind === KIND_MEGA ? 0.002 : 0.001,
       });
       Matter.Body.setVelocity(body, { x: (rng.int(40) - 20) / 100, y: 0 });
       Matter.Body.setAngularVelocity(body, (rng.int(20) - 10) / 100);
@@ -181,39 +212,41 @@ export default function BubblePop({ onComplete, seed }) {
       const color = kind === KIND_GOLD  ? 0xfbbf24
                   : kind === KIND_BOMB  ? 0x475569
                   : kind === KIND_CHAIN ? 0x22d3ee
+                  : kind === KIND_MEGA  ? 0xf472b6
                                         : accentColor;
       // Outer halo
       const halo = new PIXI.Graphics();
       halo.beginFill(color, 0.25);
-      halo.drawCircle(0, 0, ORB_RADIUS + 10);
+      halo.drawCircle(0, 0, radius + 12);
       halo.endFill();
       container.addChild(halo);
-      // Body — hex faceted
+      // Body — hex faceted (octagonal for mega for distinctness)
       const orb = new PIXI.Graphics();
+      const sides = kind === KIND_MEGA ? 8 : 6;
       const pts = [];
-      for (let i = 0; i < 6; i++) {
-        const a = (Math.PI / 3) * i;
-        pts.push(Math.cos(a) * ORB_RADIUS, Math.sin(a) * ORB_RADIUS);
+      for (let i = 0; i < sides; i++) {
+        const a = (Math.PI * 2 / sides) * i;
+        pts.push(Math.cos(a) * radius, Math.sin(a) * radius);
       }
       orb.beginFill(color);
       orb.drawPolygon(pts);
       orb.endFill();
-      orb.lineStyle(1.5, 0xffffff, 0.55);
+      orb.lineStyle(kind === KIND_MEGA ? 2.5 : 1.5, 0xffffff, kind === KIND_MEGA ? 0.7 : 0.55);
       orb.drawPolygon(pts);
       // Inner highlight
       const inner = new PIXI.Graphics();
-      inner.beginFill(0xffffff, 0.3);
-      inner.drawCircle(-6, -8, 6);
+      inner.beginFill(0xffffff, kind === KIND_MEGA ? 0.4 : 0.3);
+      inner.drawCircle(-radius * 0.25, -radius * 0.3, radius * 0.22);
       inner.endFill();
       container.addChild(orb, inner);
 
       // Symbol overlay for special orbs.
       if (kind !== KIND_NORMAL) {
         const sym = new PIXI.Text(
-          kind === KIND_GOLD ? "★" : kind === KIND_BOMB ? "✕" : "↯",
+          kind === KIND_GOLD ? "★" : kind === KIND_BOMB ? "✕" : kind === KIND_CHAIN ? "↯" : "◈",
           {
             fontFamily: "JetBrains Mono, monospace",
-            fontSize: 18, fontWeight: "900",
+            fontSize: kind === KIND_MEGA ? 36 : 18, fontWeight: "900",
             fill: kind === KIND_BOMB ? 0xfb7185 : 0xffffff,
             dropShadow: true, dropShadowColor: 0x000000, dropShadowDistance: 1,
           }
@@ -224,8 +257,8 @@ export default function BubblePop({ onComplete, seed }) {
 
       // Glow ring per type for visual telegraph
       container.filters = [new GlowFilter({
-        distance: 10,
-        outerStrength: kind === KIND_BOMB ? 1.0 : 1.6,
+        distance: kind === KIND_MEGA ? 18 : 10,
+        outerStrength: kind === KIND_BOMB ? 1.0 : kind === KIND_MEGA ? 2.5 : 1.6,
         innerStrength: 0,
         color: color,
         quality: 0.2,
@@ -235,10 +268,10 @@ export default function BubblePop({ onComplete, seed }) {
       container.y = body.position.y;
       container.eventMode = "static";
       container.cursor = "pointer";
-      container.hitArea = new PIXI.Circle(0, 0, ORB_RADIUS + 4);
+      container.hitArea = new PIXI.Circle(0, 0, radius + 4);
 
       const orbRecord = {
-        body, container, kind, born: Date.now(), popped: false,
+        body, container, kind, radius, born: Date.now(), popped: false,
         trailLastEmit: 0,
       };
 
@@ -246,6 +279,8 @@ export default function BubblePop({ onComplete, seed }) {
       orbLayer.addChild(container);
       state.orbs.push(orbRecord);
     }
+    state.spawnFn = spawnOrb;
+    state.appRef = app;
 
     // Pop a single orb. `isChain` = true if this pop was triggered by
     // a chain reaction (no combo break on miss, no combo gating).
@@ -291,17 +326,45 @@ export default function BubblePop({ onComplete, seed }) {
           Math.hypot(o.body.position.x - body.position.x, o.body.position.y - body.position.y) <= 90
         );
         nearby.forEach((n, i) => setTimeout(() => handlePop(n, true), 60 + i * 40));
+      } else if (kind === KIND_MEGA) {
+        // MEGA orb — the rare-event score moment.
+        points = 25;
+        burstColor = 0xf472b6;
+        burstCount = 40;
+        if (!isChain) {
+          hit(); hit(); // double combo for mega
+          playSFX("hit_perfect");
+          playSFX("bass_drop");
+          haptic([25, 40, 25, 40, 25]);
+          // Earthquake shake
+          state.shake = 28;
+          flashChromatic(app.stage, 320, 16);
+          celebrateCombo(5, { origin: { x: container.x / W, y: container.y / H } });
+          // Confetti shower
+          import("./_fx").then(({ celebratePB }) => celebratePB({ origin: { x: container.x / W, y: container.y / H } }));
+        }
       } else {
-        // Normal orb — tier by height.
+        // Normal orb — tier by height. "Perfect" = top 12% of arena.
         const y = body.position.y;
-        const tier = y < H * 0.33 ? 3 : y < H * 0.66 ? 2 : 1;
+        const isPerfect = y < H * 0.12 && !isChain;
+        const tier = isPerfect ? 5
+                  : y < H * 0.33 ? 3
+                  : y < H * 0.66 ? 2
+                                 : 1;
         points = tier;
         burstColor = accentColor;
-        burstCount = 6 + tier * 2;
+        burstCount = isPerfect ? 18 : 6 + tier * 2;
         if (!isChain) {
           hit();
-          playSFX(tier === 3 ? "hit_perfect" : tier === 2 ? "hit_good" : "hit_late");
-          haptic(tier === 3 ? 14 : tier === 2 ? 10 : 6);
+          if (isPerfect) {
+            hit(); // bonus combo on perfect
+            playSFX("hit_perfect");
+            playSFX("power_up");
+            haptic([12, 18, 12]);
+          } else {
+            playSFX(tier === 3 ? "hit_perfect" : tier === 2 ? "hit_good" : "hit_late");
+            haptic(tier === 3 ? 14 : tier === 2 ? 10 : 6);
+          }
         }
       }
 
@@ -349,14 +412,23 @@ export default function BubblePop({ onComplete, seed }) {
     }
 
     // ── Per-frame ticker ─────────────────────────────────────────
-    const ticker = () => {
+    let frameTime = 0;
+    const ticker = (delta) => {
       const now = Date.now();
+      frameTime += delta / 60;
       if (phaseRef.current === "racing") {
         const elapsed = now - startRef.current;
         const cadence = Math.max(260, SPAWN_INTERVAL_MS - elapsed / 60);
         if (now - state.spawnLast >= cadence) {
           state.spawnLast = now;
           spawnOrb();
+        }
+        // MEGA ORB: spawns once when score crosses MEGA_THRESHOLD.
+        // High score = mega orb appears as the reward for staying
+        // alive. Worth +25 if caught — single biggest moment.
+        if (!state.megaSpawned && scoreRef.current >= MEGA_THRESHOLD) {
+          state.megaSpawned = true;
+          spawnOrb(KIND_MEGA);
         }
       }
 
@@ -375,6 +447,11 @@ export default function BubblePop({ onComplete, seed }) {
         orb.container.x = orb.body.position.x;
         orb.container.y = orb.body.position.y;
         orb.container.rotation = orb.body.angle;
+        // Mega orb subtly pulses to telegraph its rarity.
+        if (orb.kind === KIND_MEGA) {
+          const p = 1 + Math.sin(frameTime * 4) * 0.08;
+          orb.container.scale.set(p);
+        }
         // Emit a soft smoke trail
         if (now - orb.trailLastEmit > 65) {
           orb.trailLastEmit = now;
@@ -382,9 +459,10 @@ export default function BubblePop({ onComplete, seed }) {
           const c = orb.kind === KIND_GOLD ? 0xfbbf24
                   : orb.kind === KIND_BOMB ? 0x475569
                   : orb.kind === KIND_CHAIN ? 0x22d3ee
+                  : orb.kind === KIND_MEGA ? 0xf472b6
                                             : accentColor;
           trail.beginFill(c, 0.25);
-          trail.drawCircle(0, 0, ORB_RADIUS * 0.6);
+          trail.drawCircle(0, 0, (orb.radius || ORB_RADIUS) * 0.6);
           trail.endFill();
           trail.x = orb.body.position.x;
           trail.y = orb.body.position.y;
@@ -398,6 +476,16 @@ export default function BubblePop({ onComplete, seed }) {
           };
           app.ticker.add(t);
         }
+      }
+
+      // Ambient glints drift slowly down + twinkle.
+      for (const g of state.glints) {
+        g.sprite.y += g.vy;
+        if (g.sprite.y > H + 4) {
+          g.sprite.y = -4;
+          g.sprite.x = Math.random() * W;
+        }
+        g.sprite.alpha = g.baseAlpha * (0.7 + 0.3 * Math.sin(frameTime * 2 + g.phase));
       }
 
       // Screen shake decay

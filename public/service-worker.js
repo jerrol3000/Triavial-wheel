@@ -136,7 +136,49 @@
 //   _pixi.js  — adds AdvancedBloomFilter, GlowFilter, RGBSplitFilter,
 //               ShockwaveFilter from pixi-filters. flashChromatic()
 //               and shockwave() helpers for one-line effects.
-const CACHE = "trivia-wheel-v33";
+// v34: ARENA v3 — bar raised. Real game-shaped depth + cinema moments.
+//
+// CASCADE v3
+//   • PERFECT TIER: catch an orb in the top 12% of the arena = +5
+//     (double the normal high-tier reward) + 18-particle burst + bonus
+//     combo. The reflex skill ceiling is now a real thing.
+//   • MEGA ORB ◈: once per round, spawns when score crosses 18.
+//     Twice the size, +25 if caught — single biggest moment per match.
+//     Earthquake screen-shake, bass drop, ×5 combo celebration, PB-style
+//     confetti shower at the impact point.
+//   • AMBIENT GLINTS: 24 small drift particles in the background give
+//     the empty arena texture even before orbs land.
+//
+// ANOMALY v3
+//   • CORE STACKING: missed cores accumulate. coreStack 1→2→3→4+ scores
+//     +3→+6→+10→+15. Stacked cores tint gold then pink and pulse faster.
+//     The temptation to "wait for the stack" creates real risk/reward.
+//   • CONTAINMENT SUCCESS CINEMATIC: at score 25 (cap), once-per-round,
+//     stage-wide ShockwaveFilter ripple + 500ms chromatic-aberration
+//     flash + bass_drop + win confetti + all ambient particles converge
+//     toward the center at 8× speed. The biggest "I won't believe this
+//     is a browser" moment.
+//
+// SURGE v3
+//   • DROP every 16th beat: full-screen white flash (35% alpha) + extra
+//     screen-shake + bass_drop sample + all active particles velocity-
+//     boost outward. Players time their tap on the drop for the max
+//     drama clip.
+//   • COMBO GATES with cumulative visual escalation:
+//       ×3 → particles linger longer + center glow brightens
+//       ×5 → glow even brighter
+//       ×8 → LIGHTNING ARCS jagged across the screen at random,
+//            10-segment polyline with random horizontal jitter,
+//            spawns every 180-380ms while ×8 is held.
+//
+// TRIGGER v2
+//   • Fully Pixi-rendered with bloom + glow.
+//   • Three discrete state panels (STANDBY/ARMED/FIRE) along the top,
+//     active one pulses; status text + ms readout in monospace.
+//   • Scrolling scan-line during STANDBY makes the wait feel mechanical.
+//   • Core flare on FIRE — bursts radially the instant the signal hits.
+//   • Haptic FIRE pulse + bass_kick SFX.
+const CACHE = "trivia-wheel-v34";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

@@ -5,10 +5,10 @@ import {
 } from "./_style";
 import {
   PixiArena, PIXI, PlasmaFilter, hexToRgb,
-  AdvancedBloomFilter, GlowFilter,
+  AdvancedBloomFilter, GlowFilter, ShockwaveFilter,
   flashChromatic, shockwave,
 } from "./_pixi";
-import { celebrateCombo } from "./_fx";
+import { celebrateCombo, celebratePB, celebrateWin } from "./_fx";
 import { playSFX, haptic } from "./_synth";
 
 // Anomaly v2 — proper sci-fi containment exercise.
@@ -222,12 +222,18 @@ export default function CatchBug({ onComplete, seed }) {
       };
       state.anomalies.push(record);
 
+      // Core can STACK — if the player misses a core (lets it
+      // decay), the next time they hit this anomaly, the core
+      // re-spawns at a higher multiplier. coreStack tracks the
+      // accumulated tier: 1 = +3, 2 = +6, 3 = +10, 4+ = +15.
+      record.coreStack = 0;
+
       container.on("pointerdown", () => {
         if (phaseRef.current !== "racing") return;
         const isCore = record.coreActive;
         haptic(isCore ? [20, 30, 20] : 10);
         // Visual pulse
-        container.scale.set(1.55);
+        container.scale.set(isCore ? 1.85 : 1.55);
         setTimeout(() => container.scale.set(1), 90);
         // Particle burst
         for (let i = 0; i < (isCore ? 16 : 10); i++) {
@@ -262,13 +268,20 @@ export default function CatchBug({ onComplete, seed }) {
         flashChromatic(container, 180, isCore ? 14 : 8);
 
         if (isCore) {
-          setScore((s) => s + 3);
+          // Core scoring scales with stack depth — missed cores
+          // accumulate value rather than just disappearing.
+          const stack = Math.max(1, record.coreStack || 1);
+          const pts = stack === 1 ? 3 : stack === 2 ? 6 : stack === 3 ? 10 : 15;
+          setScore((s) => s + pts);
           hit();
+          if (stack >= 2) hit(); // bonus combo on stacked-core
+          if (stack >= 3) hit();
           record.coreActive = false;
           record.core.visible = false;
+          record.coreStack = 0;
           playSFX("hit_perfect");
           shockwave(app, container.x, container.y, 700);
-          celebrateCombo(3, { origin: { x: 0.5, y: 0.55 } });
+          celebrateCombo(stack + 2, { origin: { x: 0.5, y: 0.55 } });
         } else {
           setScore((s) => s + 1);
           hit();
@@ -279,6 +292,7 @@ export default function CatchBug({ onComplete, seed }) {
           record.coreActive = true;
           record.core.visible = true;
           record.coreSpawnedAt = Date.now();
+          record.coreStack = (record.coreStack || 0) + 1;
           playSFX("core_spawn");
         }
         teleportOne(record);
@@ -318,7 +332,29 @@ export default function CatchBug({ onComplete, seed }) {
       const now = Date.now();
 
       // Sync anomaly count to current score tier.
-      if (phaseRef.current === "racing") syncAnomalyCount();
+      if (phaseRef.current === "racing") {
+        syncAnomalyCount();
+        // CONTAINMENT SUCCESS at score 25 (cap) — once-per-round
+        // cinematic: stage-wide shockwave + all-particle convergence
+        // + bloom flash + win confetti. Then game ends naturally.
+        if (!state.cinematicFired && scoreRef.current >= 25) {
+          state.cinematicFired = true;
+          // Center the explosion on the arena's middle.
+          shockwave(app, W / 2, H / 2, 1100);
+          flashChromatic(app.stage, 500, 18);
+          playSFX("bass_drop");
+          haptic([40, 80, 40, 80, 40]);
+          celebrateWin();
+          // Pull all ambient particles toward center fast.
+          for (const p of state.particles) {
+            const dx = W / 2 - p.sprite.x;
+            const dy = H / 2 - p.sprite.y;
+            const d = Math.sqrt(dx * dx + dy * dy) || 1;
+            p.vx = (dx / d) * 8;
+            p.vy = (dy / d) * 8;
+          }
+        }
+      }
 
       // Update each anomaly
       for (const a of state.anomalies) {
@@ -337,16 +373,24 @@ export default function CatchBug({ onComplete, seed }) {
         if (phaseRef.current === "racing") {
           const interval = Math.max(400, AUTO_MOVE_MS - a.hitsForCore * 25);
           if (now - a.lastMove > interval) teleportOne(a);
-          // Decay core if no tap
+          // Decay core if no tap — but core stack STAYS, the next
+          // core will be worth more. Player has incentive to wait
+          // for cores even when juggling 3 anomalies.
           if (a.coreActive && now - a.coreSpawnedAt > 1500) {
             a.coreActive = false;
             a.core.visible = false;
+            // coreStack intentionally NOT reset on natural decay.
           }
         }
-        // Core pulse
+        // Core pulse — stacked cores pulse faster and brighter.
         if (a.core.visible) {
-          const p = 1 + Math.sin(frameElapsed * 8) * 0.18;
+          const stackMul = Math.min(3, a.coreStack || 1);
+          const p = 1 + Math.sin(frameElapsed * 8 * stackMul) * 0.18;
           a.core.scale.set(p);
+          // Tint by stack: 1 = white, 2 = gold, 3+ = pink
+          if (stackMul >= 3) a.core.tint = 0xf472b6;
+          else if (stackMul === 2) a.core.tint = 0xfbbf24;
+          else a.core.tint = 0xffffff;
         }
       }
 

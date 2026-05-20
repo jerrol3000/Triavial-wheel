@@ -93,7 +93,10 @@
 // Share-clip button: live on SoloArena result after a Pixi-game run.
 // MediaRecorder captures the last ~10 seconds of canvas activity at
 // 30fps + 2.5Mbps. One tap → Web Share API or download fallback.
-const CACHE = "trivia-wheel-v31";
+// v32: hotfix — SoloArena was missing `useRef` from the React import
+// (added in the WebGL pivot for the recorder ref). Crashed on entry
+// to the Solo screen with "ReferenceError: useRef is not defined".
+const CACHE = "trivia-wheel-v32";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

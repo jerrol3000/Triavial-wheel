@@ -20,7 +20,7 @@
 // No participation reward (0 score = 0 coins) so a bot scripting the
 // endpoint with submit=0 forever earns nothing.
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { api } from "../api/client";
 import { setView, pushToast } from "../store/uiSlice";

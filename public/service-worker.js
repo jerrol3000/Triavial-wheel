@@ -1,14 +1,23 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v22: Friend Challenges queue management. Adds the Cancel button
-// on outgoing pending rows (sender-only, refunds wager, only
-// while receiver hasn't played yet), per-row × dismiss on past
-// results, and a single-tap Clear-all button at the top of the
-// past list. Server-side: /challenges/:id/cancel, /:id/dismiss,
-// /clear-history endpoints + hidden_by_{sender,receiver} columns
-// so each side can independently hide rows from their own view
-// without affecting the opponent's H2H stats.
-const CACHE = "trivia-wheel-v22";
+// v23: Friend Challenges playthrough fixes. Three bugs found in a
+// 47-scenario adversarial run + fixed:
+//   1. Cancelled status mis-rendered as 🤝 TIED ("Dead heat — both
+//      refunded") on the receiver's past-results card. Outcome calc
+//      now short-circuits on c.status === "cancelled" before the
+//      winner_id checks; new banner ("X withdrew this challenge",
+//      🚫 glyph, neutral grey glow) and share-text tag (🚫 Withdrawn).
+//   2. Receiver mid-play cancel race: if the sender cancelled while
+//      the receiver was answering, /submit 400'd and the UI dropped
+//      them on a fake "Submitted!" interstitial. Now we listen for
+//      the cancelled push during the play phase and bail out with a
+//      clear toast; also distinguish already_resolved vs network in
+//      the submit catch.
+//   3. Defensive: cancel transaction now checks UPDATE.changes === 0
+//      and returns 400 not_cancellable instead of silently refunding
+//      again. Safe today thanks to sync sqlite + single-thread Node,
+//      hardens against any future cluster/async refactor.
+const CACHE = "trivia-wheel-v23";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

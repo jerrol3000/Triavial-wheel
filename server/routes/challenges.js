@@ -444,16 +444,24 @@ router.post("/:id/cancel", requireAuth, (req, res) => {
   if (row.receiver_correct !== null) return res.status(400).json({ error: "receiver_already_played" });
 
   const now = Date.now();
+  let alreadyCancelled = false;
   try {
     const tx = db.transaction(() => {
-      // Mark cancelled + auto-hide for the sender (one less row in
-      // their list right away; receiver still sees it briefly before
-      // the realtime push refreshes them too).
-      db.prepare(`
+      // Mark cancelled + auto-hide for the sender. The WHERE clause
+      // gates on status='pending' so a duplicate-in-flight call can't
+      // flip the row twice. We THEN check changes to also gate the
+      // refund — without this, a future deployment where the SELECT
+      // / handler isn't serialized by Node's single thread (cluster
+      // mode, multi-process, async refactor) could double-credit
+      // coins. Today better-sqlite3 sync + single-process makes the
+      // race impossible, but the cost of the changes-check is one
+      // SQLite return-value read.
+      const upd = db.prepare(`
         UPDATE friend_challenges
         SET status = 'cancelled', resolved_at = ?, hidden_by_sender = 1
         WHERE id = ? AND status = 'pending'
       `).run(now, id);
+      if (upd.changes === 0) { alreadyCancelled = true; return; }
       // Refund the wager. The sender locked it at /send time; nothing
       // else has touched it since (receiver hasn't played).
       if (row.wager > 0) {
@@ -466,6 +474,11 @@ router.post("/:id/cancel", requireAuth, (req, res) => {
     console.error("[challenges/cancel] failed", e);
     return res.status(500).json({ error: "cancel_failed" });
   }
+  // Lost the race with a concurrent cancel (or the row flipped between
+  // the SELECT and the UPDATE). Surface the same error code as the
+  // pre-tx status check would have, so the client sees a consistent
+  // "not_cancellable" rather than a misleading 200 + refunded=0.
+  if (alreadyCancelled) return res.status(400).json({ error: "not_cancellable" });
 
   // Realtime: refresh the receiver's list (the row should drop out of
   // their incoming) + a soft notification so they know what happened.

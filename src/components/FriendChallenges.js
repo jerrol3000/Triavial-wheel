@@ -136,7 +136,12 @@ function ResultRevealCard({ c, me, onClose, onRematch }) {
   const youTime     = youSent ? c.sender_time_ms   : c.receiver_time_ms;
   const oppTime     = youSent ? c.receiver_time_ms : c.sender_time_ms;
   const oppName     = youSent ? c.receiver_username : c.sender_username;
-  const outcome = c.status === "expired" ? "expired"
+  // Outcome priority matters: 'cancelled' / 'expired' must short-circuit
+  // BEFORE the winner check, because cancelled challenges have winner_id
+  // = null with no plays on either side. Without this branch the card
+  // mis-rendered as 🤝 TIED with "Dead heat — both refunded" copy.
+  const outcome = c.status === "cancelled" ? "cancelled"
+                : c.status === "expired" ? "expired"
                 : c.winner_id === me.id ? "won"
                 : c.winner_id ? "lost"
                 : "tied";
@@ -158,12 +163,26 @@ function ResultRevealCard({ c, me, onClose, onRematch }) {
   const banner = outcome === "won" ? { icon: "🏆", title: `You beat ${oppName}!`, glow: "rgba(16,185,129,0.55)" }
                : outcome === "lost" ? { icon: "💔", title: `${oppName} won this one.`, glow: "rgba(239,68,68,0.55)" }
                : outcome === "tied" ? { icon: "🤝", title: "Dead heat — both refunded.", glow: "rgba(245,158,11,0.55)" }
+               : outcome === "cancelled" ? {
+                   icon: "🚫",
+                   // Differentiate by perspective — sender vs receiver.
+                   // Sender almost never sees this card (they auto-hide on
+                   // cancel) but we cover them anyway in case they un-hide
+                   // via a future endpoint.
+                   title: youSent ? "Challenge withdrawn" : `${oppName} withdrew this challenge`,
+                   glow: "rgba(148,163,184,0.45)",
+                 }
                : { icon: "⏰", title: `${oppName} didn't play in time.`, glow: "rgba(148,163,184,0.5)" };
 
   // Snark for the score margin — same generator as solo end-cards.
   const flavor = snarkForRound({ correct: youCorrect || 0, total: 5 });
 
-  const shareText = `⚔️ Spinlore Challenge\nMe:  ${youGrid}  ${youCorrect ?? "—"}/5\n${oppName}: ${oppGrid}  ${oppCorrect ?? "—"}/5\n${outcome === "won" ? "🏆 W" : outcome === "lost" ? "💔 L" : outcome === "tied" ? "🤝 Tie" : "⏰ Expired"}\nhttps://triviawheel.app`;
+  const outcomeTag = outcome === "won" ? "🏆 W"
+                   : outcome === "lost" ? "💔 L"
+                   : outcome === "tied" ? "🤝 Tie"
+                   : outcome === "cancelled" ? "🚫 Withdrawn"
+                   : "⏰ Expired";
+  const shareText = `⚔️ Spinlore Challenge\nMe:  ${youGrid}  ${youCorrect ?? "—"}/5\n${oppName}: ${oppGrid}  ${oppCorrect ?? "—"}/5\n${outcomeTag}\nhttps://triviawheel.app`;
 
   const doShare = async () => {
     try {
@@ -211,7 +230,7 @@ function ResultRevealCard({ c, me, onClose, onRematch }) {
           </div>
         </div>
 
-        {flavor && outcome !== "expired" && (
+        {flavor && outcome !== "expired" && outcome !== "cancelled" && (
           <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 12, background: "rgba(124,58,237,0.16)", border: "1px solid rgba(124,58,237,0.4)", fontFamily: "Fredoka", fontWeight: 600 }}>
             {flavor}
           </div>
@@ -388,7 +407,11 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onC
             const yourScore = youSent ? c.sender_correct : c.receiver_correct;
             const oppScore  = youSent ? c.receiver_correct : c.sender_correct;
             const oppId     = youSent ? c.receiver_id : c.sender_id;
-            const outcome = c.status === "expired" ? "expired"
+            // Same priority fix as ResultRevealCard: cancelled status
+            // must short-circuit before winner_id checks, otherwise a
+            // cancelled challenge with no plays mis-renders as TIED.
+            const outcome = c.status === "cancelled" ? "cancelled"
+                          : c.status === "expired" ? "expired"
                           : c.winner_id === me.id ? "won"
                           : c.winner_id ? "lost"
                           : "tied";
@@ -398,6 +421,7 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onC
             const icon = outcome === "won" ? "🏆"
                        : outcome === "lost" ? "💔"
                        : outcome === "tied" ? "🤝"
+                       : outcome === "cancelled" ? "🚫"
                        : "⏰";
             // Spotlight the most-recently-resolved row — same fresh
             // highlight used on the outgoing list, so the player's eye
@@ -581,6 +605,31 @@ function PlayView({ challengeId, onDone }) {
     return () => { cancelled = true; };
   }, [challengeId, dispatch]);
 
+  // Watch for the sender cancelling MID-PLAY. Narrow but real race:
+  // the receiver loaded /play, started answering, then the sender hit
+  // Cancel. The /submit at end-of-round would 400 with already_resolved
+  // and the receiver would land on "Submitted!" without an actual
+  // submission. Now we navigate them out cleanly with a toast the
+  // instant the cancel push arrives. Only active during the play phase
+  // — once submitted, the other useEffect's listener takes over.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    const off = rt.on((msg) => {
+      if (msg?.type !== "challenge_update") return;
+      if (Number(msg.challenge_id) !== Number(challengeId)) return;
+      if (msg.subtype === "cancelled") {
+        dispatch(pushToast({
+          icon: "🚫",
+          title: "Challenge withdrawn",
+          text: "Your friend cancelled this challenge while you were playing.",
+          duration: 5000,
+        }));
+        onDone();
+      }
+    });
+    return () => { off(); };
+  }, [phase, challengeId, dispatch, onDone]);
+
   // After submitting, listen for the realtime `challenge_update` push.
   // If the OTHER side had already played, this is when we transition
   // from "submitted, waiting" → full reveal card. Without this, the
@@ -634,7 +683,29 @@ function PlayView({ challengeId, onDone }) {
             }).catch(() => {});
           }
         })
-        .catch(() => setPhase("submitted"));
+        .catch((err) => {
+          // Most common failure cause is "already_resolved" — fires if
+          // the sender cancelled while the receiver was answering, OR
+          // if the player's tab was offline and the server expired the
+          // challenge. Surface clear copy in either case rather than
+          // silently dropping the player on a "Submitted!" screen that
+          // never actually submitted.
+          const code = err?.response?.data?.error;
+          if (code === "already_resolved") {
+            dispatch(pushToast({
+              icon: "🚫",
+              title: "Challenge no longer open",
+              text: "Your friend either withdrew it or it expired. No score recorded.",
+              duration: 5000,
+            }));
+            onDone();
+            return;
+          }
+          // Network / unexpected — keep the player on the submitted
+          // screen so they don't lose their result; they can retry by
+          // re-submitting on a future load.
+          setPhase("submitted");
+        });
     }
   };
 

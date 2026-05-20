@@ -532,13 +532,22 @@ router.post("/:id/dismiss", requireAuth, (req, res) => {
 // challenge from the caller's view in one tap. Useful when the past-
 // results list has gotten long; pending challenges are deliberately
 // excluded (they need to be cancelled or resolved, not dismissed).
+//
+// The WHERE clause specifically targets rows that are NOT YET hidden
+// for the caller's role — so `cleared` reports the count of rows that
+// JUST disappeared from their view, not the count of all matching
+// rows. Without the role-aware AND clause, a second call returned a
+// misleading non-zero count (because /:id/cancel auto-hides for the
+// sender, those rows would be re-flagged on every call). Now the
+// endpoint is properly idempotent: second call → cleared=0.
 router.post("/clear-history", requireAuth, (req, res) => {
   const me = req.user.id;
   const result = db.prepare(`
     UPDATE friend_challenges
     SET hidden_by_sender = CASE WHEN sender_id = ? THEN 1 ELSE hidden_by_sender END,
         hidden_by_receiver = CASE WHEN receiver_id = ? THEN 1 ELSE hidden_by_receiver END
-    WHERE (sender_id = ? OR receiver_id = ?) AND status != 'pending'
+    WHERE status != 'pending'
+      AND ((sender_id = ? AND hidden_by_sender = 0) OR (receiver_id = ? AND hidden_by_receiver = 0))
   `).run(me, me, me, me);
   res.json({ ok: true, cleared: result.changes });
 });

@@ -27,6 +27,9 @@ import { setView, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { MiniGameRunner, GAMES, gameMeta } from "../minigames";
+import { celebratePB, celebrateCombo } from "../minigames/_fx";
+import { Recorder, shareGameplay, isRecordingSupported } from "../minigames/_recorder";
+import { getActivePixiCanvas } from "../minigames/_pixi";
 
 export default function SoloArena() {
   const dispatch = useDispatch();
@@ -36,6 +39,13 @@ export default function SoloArena() {
   const [currentGame, setCurrentGame] = useState(null); // { game_type, seed, meta }
   const [lastResult, setLastResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Recorder state: when a Pixi-rendered game starts, we begin
+  // capturing its canvas at 30fps with a 10-sec sliding buffer. On
+  // game end the buffer becomes a downloadable / shareable clip.
+  // Falls back gracefully on browsers without MediaRecorder support
+  // (older iOS, etc.) — no Share button shown in that case.
+  const [clip, setClip] = useState(null); // Blob | null
+  const recorderRef = useRef(null);
 
   const loadBests = useCallback(async () => {
     try {
@@ -59,10 +69,23 @@ export default function SoloArena() {
     if (busy) return;
     setBusy(true);
     sfx.click?.();
+    setClip(null); // wipe any previous clip
     try {
       const r = await api.post("/solo/play", { game_type: gameType });
       setCurrentGame(r.data);
       setMode("play");
+      // Start the recorder after a short delay so the Pixi canvas has
+      // had time to mount and register itself via getActivePixiCanvas().
+      // Only Pixi-backed games (Anomaly, Cascade, Surge) will have an
+      // active canvas — others render via DOM and skip recording.
+      if (isRecordingSupported()) {
+        setTimeout(() => {
+          const canvas = getActivePixiCanvas();
+          if (!canvas) return;
+          recorderRef.current = new Recorder();
+          recorderRef.current.start(canvas);
+        }, 500);
+      }
     } catch (e) {
       dispatch(pushToast({ icon: "⚠️", title: "Couldn't start", text: "Try again." }));
     }
@@ -71,6 +94,15 @@ export default function SoloArena() {
 
   const onGameComplete = async ({ score }) => {
     if (!currentGame) return;
+    // Finalize the recorder before the canvas tears down — captures
+    // the last ~10 seconds of gameplay as a Blob for sharing.
+    if (recorderRef.current) {
+      try {
+        const blob = await recorderRef.current.stop();
+        if (blob) setClip(blob);
+      } catch (e) {}
+      recorderRef.current = null;
+    }
     try {
       const r = await api.post("/solo/submit", {
         game_type: currentGame.game_type,
@@ -82,15 +114,21 @@ export default function SoloArena() {
       dispatch(fetchStats());
       // Refresh bests for next picker render.
       loadBests();
-      // Celebration toast on new PB.
+      // Celebration toast + confetti shower on new PB. The
+      // canvas-confetti burst is what makes PB beats feel like an
+      // actual achievement instead of just a UI toast.
       if (r.data?.is_new_best) {
         sfx.win?.();
+        celebratePB();
         dispatch(pushToast({
           icon: "🏆",
           title: "New personal best!",
           text: `${gameMeta(currentGame.game_type).name}: ${r.data.new_best}${r.data.prev_best > 0 ? ` (was ${r.data.prev_best})` : ""}`,
           duration: 4500,
         }));
+      } else if (r.data?.coins_awarded >= 20) {
+        // Big-but-not-PB run still gets a smaller celebration.
+        celebrateCombo(3);
       }
     } catch (e) {
       dispatch(pushToast({ icon: "⚠️", title: "Couldn't submit", text: "Score may not have saved." }));
@@ -171,6 +209,22 @@ export default function SoloArena() {
 
             <div className="tw-row" style={{ justifyContent: "center", marginTop: 14, gap: 8, flexWrap: "wrap" }}>
               <button className="tw-btn" onClick={() => pickGame(lastResult.game_type)}>🔁 Play again</button>
+              {clip && (
+                <button
+                  className="tw-btn"
+                  style={{ background: "linear-gradient(135deg, #f472b6, #a78bfa)", color: "#fff", border: "none", fontWeight: 700 }}
+                  onClick={async () => {
+                    const meta = gameMeta(lastResult.game_type);
+                    const caption = `${meta.icon} ${meta.name} · ${lastResult.score ?? 0} pts on Spinlore Arena\nhttps://triviawheel.app`;
+                    const r = await shareGameplay(clip, caption);
+                    if (r.method === "download") {
+                      dispatch(pushToast({ icon: "📥", title: "Clip downloaded", text: "Caption copied — paste it with the video." }));
+                    } else if (r.method === "web_share") {
+                      dispatch(pushToast({ icon: "📤", title: "Shared!" }));
+                    }
+                  }}
+                >📹 Share clip</button>
+              )}
               <button className="tw-btn ghost" onClick={() => { setMode("picker"); setCurrentGame(null); setLastResult(null); }}>Pick another</button>
               <button className="tw-btn ghost" onClick={() => dispatch(setView("home"))}>Home</button>
             </div>

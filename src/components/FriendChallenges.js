@@ -9,6 +9,7 @@ import { sfx } from "../utils/sound";
 import { snarkForAnswer, snarkForRound } from "../utils/snark";
 import { confirmDialog } from "../utils/confirm";
 import { MiniGameRunner, gameMeta } from "../minigames";
+import { celebrateWin, celebratePB, commiserate } from "../minigames/_fx";
 
 // FriendChallenges — list + play UI for the head-to-head challenge feature.
 //
@@ -697,9 +698,27 @@ function PlayView({ challengeId, onDone }) {
         .then((r) => {
           dispatch(fetchStats());
           setPhase("submitted");
+          // PB beats on any individual mini-game inside the duel —
+          // confetti shower. /submit now returns pb_hits[] with the
+          // game_type + new score for each new PB.
+          if (Array.isArray(r?.data?.pb_hits) && r.data.pb_hits.length > 0) {
+            celebratePB();
+            for (const hit of r.data.pb_hits) {
+              dispatch(pushToast({
+                icon: "🏆",
+                title: "New personal best!",
+                text: `${gameMeta(hit.game_type).name}: ${hit.score}${hit.prevBest > 0 ? ` (was ${hit.prevBest})` : ""}`,
+                duration: 4500,
+              }));
+            }
+          }
           // If the server resolved on this submit (we were the second
           // player), it returns result; fetch the row to render reveal.
           if (r?.data?.result) {
+            // Celebrate the final outcome — winner gets full shower,
+            // loser gets a soft slate-dust commiseration.
+            if (me && r.data.result.winner_id === me.id) celebrateWin();
+            else if (r.data.result.winner_id && r.data.result.winner_id !== me?.id) commiserate();
             api.get("/challenges/").then((res) => {
               const list = Array.isArray(res.data) ? res.data : (res.data?.challenges || []);
               const meRow = list.find((c) => c.id === Number(challengeId));

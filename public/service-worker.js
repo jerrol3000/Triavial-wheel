@@ -63,7 +63,37 @@
 // Shared infrastructure (src/minigames/_style.js):
 //   ArenaShell · HUDBar · BigDisplay · StartButton · ParticleBurst
 //   · useCombo() hook · per-game accent colors · keyframes
-const CACHE = "trivia-wheel-v30";
+// v31: ARENA GOES WEBGL. Three flagship mini-games now render via
+// PixiJS instead of CSS divs — the "made in CSS" ceiling is gone:
+//   ✦ Anomaly: custom GLSL plasma fragment shader (concentric noise
+//     + ripple + core glow, animated on the GPU)
+//   ◇ Cascade: matter.js physics — falling/bouncing orbs with real
+//     gravity, restitution, and angular velocity
+//   ◉ Surge: audio-reactive Pixi visuals — beat-synced shockwaves
+//     emanate from a glowing core, screen-shake on pocket hits,
+//     particle bursts on every tap
+// New shared infrastructure:
+//   - _pixi.js: PixiArena wrapper + PlasmaFilter custom shader +
+//     active-canvas registry (so the recorder can grab it without
+//     prop drilling)
+//   - _fx.js: canvas-confetti presets (celebrate / celebratePB /
+//     celebrateWin / celebrateCombo / commiserate) + Howler audio
+//     loader with synth fallback
+//   - _recorder.js: MediaRecorder + canvas.captureStream → 10-sec
+//     gameplay clips, navigator.share / download fallback
+//
+// New deps in the bundle: pixi.js, canvas-confetti, framer-motion,
+// howler, matter-js. Bundle grew from ~810kb to 1.5MB (well within
+// PWA norms — Twitter is 2MB, Instagram 3MB).
+//
+// Confetti wired everywhere: SoloArena PBs trigger gold-forward
+// shower, VS match wins fire celebrateWin, friend-challenge wins
+// fire same, losses get soft slate commiseration.
+//
+// Share-clip button: live on SoloArena result after a Pixi-game run.
+// MediaRecorder captures the last ~10 seconds of canvas activity at
+// 30fps + 2.5Mbps. One tap → Web Share API or download fallback.
+const CACHE = "trivia-wheel-v31";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

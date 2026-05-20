@@ -17,6 +17,7 @@ import OtherAvatar from "./OtherAvatar";
 import { sfx } from "../utils/sound";
 import { safeNavigate } from "../utils/navigate";
 import { MiniGameRunner, gameMeta } from "../minigames";
+import { celebrateWin, commiserate } from "../minigames/_fx";
 
 export default function Online() {
   const dispatch = useDispatch();
@@ -78,6 +79,10 @@ export default function Online() {
           sfx.win();
           dispatch(setMatchEnd(msg));
           dispatch(fetchStats());
+          // Confetti for the winner. Loss = soft slate-dust commiseration
+          // (still feels acknowledged, not punishing).
+          if (msg.winnerId && user && msg.winnerId === user.id) celebrateWin();
+          else if (msg.winnerId && user && msg.winnerId !== user.id) commiserate();
           // friend_winner achievement: fires the first time you win
           // any online VS match (quick or friendly). Achievement is
           // idempotent server-side so a second win is a no-op.

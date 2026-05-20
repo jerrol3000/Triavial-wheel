@@ -1,33 +1,65 @@
 import React, { useEffect, useState, useRef } from "react";
 import Matter from "matter-js";
-import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
 import {
   ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo,
 } from "./_style";
-import { PixiArena, PIXI, hexToRgb } from "./_pixi";
+import {
+  PixiArena, PIXI, hexToRgb,
+  AdvancedBloomFilter, GlowFilter,
+  flashChromatic,
+} from "./_pixi";
 import { celebrateCombo } from "./_fx";
-import { playStinger } from "./_audio";
+import { playSFX, haptic } from "./_synth";
 
-// Cascade — Pixi-rendered orbs with matter.js physics. Orbs spawn at
-// the top of the arena, fall under gravity, drift with a subtle wind,
-// and bounce off the floor + walls. Tap an orb to pop it — better
-// timing (orb closer to the top) = more points.
+// Cascade v2 — falling orbs with real physics + STRATEGIC variety.
 //
-// The physics is what sells the upgrade: the CSS divs felt static and
-// fake. Real falling-bouncing geometry feels SATISFYING, even on
-// missed taps you watch them tumble naturally.
+// What changed from v1:
+//   • POWERUP ORB TYPES (rolled at spawn time):
+//       Normal (75%)   → +tier (1/2/3 by Y position), gold body
+//       Gold star (8%) → +5 + extra combo + golden particle burst
+//       Bomb (12%)     → AVOID. Tapping = -1 combo + screen shake.
+//       Chain (5%)     → +2 + triggers a CHAIN REACTION: any orbs
+//                        within 80px of the chain orb auto-pop too,
+//                        worth +1 each (no combo gating). Rare,
+//                        delicious moment.
+//   • CHAIN REACTIONS: when a normal orb pops, any other orb within
+//     50px pops too with a 50ms delay — feels like clusters explode.
+//     Chain pops give +1 each but don't break combo if missed.
+//   • SMOKE TRAILS: each falling orb leaves a brief alpha-fading
+//     trail of small dots — the air feels charged.
+//   • BLOOM + GLOW on the full stage for the "everything alive" feel.
+//   • PARTICLES on EVERY pop, scaled by tier.
+//   • HAPTIC + SOUND per orb type.
 //
-// Scoring:
-//   • Catch in upper third (high) → +3 + combo
-//   • Catch in middle third       → +2 + combo
-//   • Catch in lower third        → +1
-//   • Orb falls past floor        → combo break, no points
-//   • Combo HUD multiplier visible
+// Scoring (still capped at 35 server-side):
+//   • Normal orb pop  → +1/+2/+3 by height
+//   • Gold pop        → +5
+//   • Chain pop       → +2 + ripple
+//   • Bomb tap        → 0 + combo break + shake
+//   • Floor escape    → combo break
 
 const DURATION_MS = 10000;
-const SPAWN_INTERVAL_MS = 400;
+const SPAWN_INTERVAL_MS = 380;
 const ORB_RADIUS = 26;
+const CHAIN_RANGE = 50;
+
+const KIND_NORMAL = "n";
+const KIND_GOLD = "g";
+const KIND_BOMB = "b";
+const KIND_CHAIN = "c";
+
+function rollKind(rng, score) {
+  // Bombs more common as score climbs — risk scales with reward.
+  const bombChance = Math.min(15, 8 + Math.floor(score / 3));
+  const goldChance = 8;
+  const chainChance = 5;
+  const r = rng.int(100);
+  if (r < bombChance) return KIND_BOMB;
+  if (r < bombChance + goldChance) return KIND_GOLD;
+  if (r < bombChance + goldChance + chainChance) return KIND_CHAIN;
+  return KIND_NORMAL;
+}
 
 export default function BubblePop({ onComplete, seed }) {
   const accent = accentFor("bubble_pop");
@@ -38,18 +70,20 @@ export default function BubblePop({ onComplete, seed }) {
   const startRef = useRef(0);
   const doneRef = useRef(false);
   const { combo, hit, miss } = useCombo(1400);
+  const scoreRef = useRef(0);
+  useEffect(() => { scoreRef.current = score; }, [score]);
 
   const phaseRef = useRef("ready");
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
-  // matter + pixi shared state.
   const stateRef = useRef({
     engine: null,
     runner: null,
-    orbs: [], // {body, sprite, born}
+    orbs: [],
     spawnLast: 0,
     arenaH: 360,
     arenaW: 320,
+    shake: 0,
   });
 
   const begin = () => {
@@ -57,7 +91,7 @@ export default function BubblePop({ onComplete, seed }) {
     rngRef.current = makeRng(seed);
     setPhase("racing");
     startRef.current = Date.now();
-    playStinger("bubble_pop");
+    playSFX("whoosh");
   };
 
   useEffect(() => {
@@ -75,110 +109,127 @@ export default function BubblePop({ onComplete, seed }) {
     if (doneRef.current) return;
     doneRef.current = true;
     setPhase("done");
-    sfx.win?.();
-    onComplete({ score });
+    playSFX("win_stinger");
+    onComplete({ score: scoreRef.current });
   };
 
   const setupPixi = (app) => {
     const state = stateRef.current;
-    state.arenaW = app.screen.width;
-    state.arenaH = app.screen.height;
+    const W = app.screen.width, H = app.screen.height;
+    state.arenaW = W; state.arenaH = H;
+    const accentColor = parseInt(accent.hue.slice(1), 16);
 
-    // ── Matter physics engine ────────────────────────────────────
-    const engine = Matter.Engine.create({
-      gravity: { x: 0, y: 0.85 }, // not quite earth gravity — more game-y
-    });
+    // ── Backdrop ─────────────────────────────────────────────────
+    const bg = new PIXI.Graphics();
+    bg.beginFill(0x000000, 0.55);
+    bg.drawRect(0, 0, W, H);
+    bg.endFill();
+    app.stage.addChild(bg);
+
+    // Subtle vertical gradient via a sprite — gives the falling-arena feel.
+    const gradCanvas = document.createElement("canvas");
+    gradCanvas.width = 8; gradCanvas.height = 256;
+    const gctx = gradCanvas.getContext("2d");
+    const gg = gctx.createLinearGradient(0, 0, 0, 256);
+    gg.addColorStop(0, "rgba(96,165,250,0.18)");
+    gg.addColorStop(1, "rgba(15,23,42,0.0)");
+    gctx.fillStyle = gg; gctx.fillRect(0, 0, 8, 256);
+    const gTex = PIXI.Texture.from(gradCanvas);
+    const gradSprite = new PIXI.Sprite(gTex);
+    gradSprite.width = W; gradSprite.height = H;
+    app.stage.addChild(gradSprite);
+
+    // ── Physics ──────────────────────────────────────────────────
+    const engine = Matter.Engine.create({ gravity: { x: 0, y: 0.85 } });
     state.engine = engine;
-
-    // Boundaries — floor, walls.
     const wall = (x, y, w, h) => Matter.Bodies.rectangle(x, y, w, h, { isStatic: true });
     Matter.Composite.add(engine.world, [
-      wall(state.arenaW / 2, state.arenaH + 30, state.arenaW + 200, 60),     // floor
-      wall(-30, state.arenaH / 2, 60, state.arenaH * 2),                     // left
-      wall(state.arenaW + 30, state.arenaH / 2, 60, state.arenaH * 2),       // right
+      wall(W / 2, H + 30, W + 200, 60),
+      wall(-30, H / 2, 60, H * 2),
+      wall(W + 30, H / 2, 60, H * 2),
     ]);
-
     const runner = Matter.Runner.create();
     state.runner = runner;
     Matter.Runner.run(runner, engine);
 
-    // ── Pixi: dark gradient background ───────────────────────────
-    const bg = new PIXI.Graphics();
-    bg.beginFill(0x000000, 0.5);
-    bg.drawRect(0, 0, state.arenaW, state.arenaH);
-    bg.endFill();
-    app.stage.addChild(bg);
+    // ── Orb layer + trail layer + post-fx ────────────────────────
+    const trailLayer = new PIXI.Container();
+    const orbLayer = new PIXI.Container();
+    const fxLayer = new PIXI.Container();
+    app.stage.addChild(trailLayer, orbLayer, fxLayer);
 
-    // Per-frame: sync Pixi sprites to Matter bodies + handle spawn/expiry.
-    const ticker = (delta) => {
-      const now = Date.now();
-      if (phaseRef.current === "racing") {
-        // Spawn cadence accelerates over the round.
-        const elapsed = now - startRef.current;
-        const cadence = Math.max(260, SPAWN_INTERVAL_MS - elapsed / 60);
-        if (now - state.spawnLast >= cadence) {
-          state.spawnLast = now;
-          spawnOrb(app);
-        }
-      }
-      // Sync sprites to bodies + cull off-screen orbs (missed pops).
-      for (let i = state.orbs.length - 1; i >= 0; i--) {
-        const orb = state.orbs[i];
-        if (orb.popped) continue;
-        if (orb.body.position.y > state.arenaH + 40) {
-          // Fell past the floor — combo break.
-          Matter.Composite.remove(engine.world, orb.body);
-          app.stage.removeChild(orb.container);
-          orb.container.destroy({ children: true });
-          state.orbs.splice(i, 1);
-          if (phaseRef.current === "racing") miss();
-        } else {
-          orb.container.x = orb.body.position.x;
-          orb.container.y = orb.body.position.y;
-          orb.container.rotation = orb.body.angle;
-        }
-      }
-    };
-    app.ticker.add(ticker);
+    app.stage.filters = [
+      new AdvancedBloomFilter({ threshold: 0.4, bloomScale: 0.7, brightness: 1, blur: 6, quality: 4 }),
+    ];
 
-    function spawnOrb(app) {
+    // ── Orb factory ──────────────────────────────────────────────
+    function spawnOrb() {
       const rng = rngRef.current;
-      const x = ORB_RADIUS + 8 + rng.int(Math.max(1, state.arenaW - (ORB_RADIUS + 8) * 2));
+      const kind = rollKind(rng, scoreRef.current);
+      const x = ORB_RADIUS + 8 + rng.int(Math.max(1, W - (ORB_RADIUS + 8) * 2));
       const body = Matter.Bodies.circle(x, -ORB_RADIUS, ORB_RADIUS, {
         restitution: 0.65,
         friction: 0.04,
         density: 0.001,
       });
-      // Give orbs a small initial sideways drift for variety.
       Matter.Body.setVelocity(body, { x: (rng.int(40) - 20) / 100, y: 0 });
       Matter.Body.setAngularVelocity(body, (rng.int(20) - 10) / 100);
       Matter.Composite.add(engine.world, body);
 
-      // Pixi visual: a small container with a faceted hex + glow.
+      // Visual depends on kind.
       const container = new PIXI.Container();
-      const glow = new PIXI.Graphics();
-      glow.beginFill(parseInt(accent.hue.slice(1), 16), 0.2);
-      glow.drawCircle(0, 0, ORB_RADIUS + 10);
-      glow.endFill();
-      container.addChild(glow);
+      const color = kind === KIND_GOLD  ? 0xfbbf24
+                  : kind === KIND_BOMB  ? 0x475569
+                  : kind === KIND_CHAIN ? 0x22d3ee
+                                        : accentColor;
+      // Outer halo
+      const halo = new PIXI.Graphics();
+      halo.beginFill(color, 0.25);
+      halo.drawCircle(0, 0, ORB_RADIUS + 10);
+      halo.endFill();
+      container.addChild(halo);
+      // Body — hex faceted
       const orb = new PIXI.Graphics();
-      // Hex faceted shape
       const pts = [];
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 3) * i;
         pts.push(Math.cos(a) * ORB_RADIUS, Math.sin(a) * ORB_RADIUS);
       }
-      orb.beginFill(parseInt(accent.hue.slice(1), 16));
+      orb.beginFill(color);
       orb.drawPolygon(pts);
       orb.endFill();
       orb.lineStyle(1.5, 0xffffff, 0.55);
       orb.drawPolygon(pts);
       // Inner highlight
       const inner = new PIXI.Graphics();
-      inner.beginFill(0xffffff, 0.25);
+      inner.beginFill(0xffffff, 0.3);
       inner.drawCircle(-6, -8, 6);
       inner.endFill();
       container.addChild(orb, inner);
+
+      // Symbol overlay for special orbs.
+      if (kind !== KIND_NORMAL) {
+        const sym = new PIXI.Text(
+          kind === KIND_GOLD ? "★" : kind === KIND_BOMB ? "✕" : "↯",
+          {
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: 18, fontWeight: "900",
+            fill: kind === KIND_BOMB ? 0xfb7185 : 0xffffff,
+            dropShadow: true, dropShadowColor: 0x000000, dropShadowDistance: 1,
+          }
+        );
+        sym.anchor.set(0.5);
+        container.addChild(sym);
+      }
+
+      // Glow ring per type for visual telegraph
+      container.filters = [new GlowFilter({
+        distance: 10,
+        outerStrength: kind === KIND_BOMB ? 1.0 : 1.6,
+        innerStrength: 0,
+        color: color,
+        quality: 0.2,
+      })];
 
       container.x = body.position.x;
       container.y = body.position.y;
@@ -186,52 +237,178 @@ export default function BubblePop({ onComplete, seed }) {
       container.cursor = "pointer";
       container.hitArea = new PIXI.Circle(0, 0, ORB_RADIUS + 4);
 
-      const orbRecord = { body, container, born: Date.now(), popped: false };
+      const orbRecord = {
+        body, container, kind, born: Date.now(), popped: false,
+        trailLastEmit: 0,
+      };
 
-      container.on("pointerdown", () => {
-        if (phaseRef.current !== "racing" || orbRecord.popped) return;
-        orbRecord.popped = true;
-        // Score by vertical position — caught higher = more points.
-        const y = body.position.y;
-        const tier = y < state.arenaH * 0.33 ? 3
-                   : y < state.arenaH * 0.66 ? 2
-                                              : 1;
-        setScore((s) => s + tier);
-        if (tier >= 2) hit(); else hit(); // any pop chains combo
-        sfx.click?.();
-        // Visual: burst, then remove.
-        for (let i = 0; i < 8; i++) {
-          const dot = new PIXI.Graphics();
-          dot.beginFill(parseInt(accent.hue.slice(1), 16));
-          dot.drawCircle(0, 0, 3);
-          dot.endFill();
-          dot.x = container.x;
-          dot.y = container.y;
-          const angle = (Math.PI * 2 * i) / 8;
-          const dx = Math.cos(angle) * 35;
-          const dy = Math.sin(angle) * 35;
-          app.stage.addChild(dot);
-          const start = Date.now();
-          const fx = () => {
-            const t = (Date.now() - start) / 350;
-            if (t >= 1) { try { app.stage.removeChild(dot); dot.destroy(); } catch (e) {} app.ticker.remove(fx); return; }
-            dot.x = container.x + dx * t;
-            dot.y = container.y + dy * t;
-            dot.alpha = 1 - t;
-          };
-          app.ticker.add(fx);
-        }
-        // Remove orb body + sprite
-        Matter.Composite.remove(engine.world, body);
-        app.stage.removeChild(container);
-        container.destroy({ children: true });
-        const idx = state.orbs.indexOf(orbRecord);
-        if (idx >= 0) state.orbs.splice(idx, 1);
-      });
-
-      app.stage.addChild(container);
+      container.on("pointerdown", () => handlePop(orbRecord, false));
+      orbLayer.addChild(container);
       state.orbs.push(orbRecord);
     }
+
+    // Pop a single orb. `isChain` = true if this pop was triggered by
+    // a chain reaction (no combo break on miss, no combo gating).
+    function handlePop(orbRecord, isChain) {
+      if (phaseRef.current !== "racing" || orbRecord.popped) return;
+      orbRecord.popped = true;
+      const { body, container, kind } = orbRecord;
+
+      if (kind === KIND_BOMB && !isChain) {
+        // Tapped a bomb (only player can do this; chain reactions skip bombs).
+        haptic([30, 50, 30]);
+        miss();
+        playSFX("combo_break");
+        state.shake = 14;
+        flashChromatic(app.stage, 220, 14);
+        spawnBurst(container.x, container.y, 12, 0xfb7185);
+        // Remove the bomb
+        Matter.Composite.remove(engine.world, body);
+        try { orbLayer.removeChild(container); container.destroy({ children: true }); } catch (e) {}
+        state.orbs = state.orbs.filter((o) => o !== orbRecord);
+        return;
+      }
+
+      // Determine tier by vertical position (only normal orbs use tier).
+      let points = 0;
+      let burstColor = 0xffffff;
+      let burstCount = 8;
+
+      if (kind === KIND_GOLD) {
+        points = 5;
+        burstColor = 0xfbbf24;
+        burstCount = 16;
+        if (!isChain) { hit(); playSFX("power_up"); haptic([15, 25, 15]); }
+        celebrateCombo(2, { origin: { x: container.x / W, y: container.y / H } });
+      } else if (kind === KIND_CHAIN) {
+        points = 2;
+        burstColor = 0x22d3ee;
+        burstCount = 14;
+        if (!isChain) { hit(); playSFX("power_up"); haptic([10, 15, 10]); }
+        // The defining feature of chain orbs: pop everything in range.
+        const nearby = state.orbs.filter((o) =>
+          o !== orbRecord && !o.popped && o.kind !== KIND_BOMB &&
+          Math.hypot(o.body.position.x - body.position.x, o.body.position.y - body.position.y) <= 90
+        );
+        nearby.forEach((n, i) => setTimeout(() => handlePop(n, true), 60 + i * 40));
+      } else {
+        // Normal orb — tier by height.
+        const y = body.position.y;
+        const tier = y < H * 0.33 ? 3 : y < H * 0.66 ? 2 : 1;
+        points = tier;
+        burstColor = accentColor;
+        burstCount = 6 + tier * 2;
+        if (!isChain) {
+          hit();
+          playSFX(tier === 3 ? "hit_perfect" : tier === 2 ? "hit_good" : "hit_late");
+          haptic(tier === 3 ? 14 : tier === 2 ? 10 : 6);
+        }
+      }
+
+      setScore((s) => s + points);
+      spawnBurst(container.x, container.y, burstCount, burstColor);
+      // Adjacent chain reaction on NORMAL orbs (smaller proximity than KIND_CHAIN's blast).
+      if (!isChain && kind === KIND_NORMAL) {
+        const nearby = state.orbs.filter((o) =>
+          o !== orbRecord && !o.popped && o.kind === KIND_NORMAL &&
+          Math.hypot(o.body.position.x - body.position.x, o.body.position.y - body.position.y) <= CHAIN_RANGE
+        );
+        nearby.forEach((n, i) => setTimeout(() => handlePop(n, true), 50 + i * 35));
+      }
+
+      // Remove the popped orb
+      Matter.Composite.remove(engine.world, body);
+      try { orbLayer.removeChild(container); container.destroy({ children: true }); } catch (e) {}
+      state.orbs = state.orbs.filter((o) => o !== orbRecord);
+    }
+
+    function spawnBurst(x, y, n, color) {
+      for (let i = 0; i < n; i++) {
+        const dot = new PIXI.Graphics();
+        dot.beginFill(color);
+        dot.drawCircle(0, 0, 2 + Math.random() * 2);
+        dot.endFill();
+        dot.x = x; dot.y = y;
+        const angle = (Math.PI * 2 * i) / n + Math.random() * 0.3;
+        const dist = 35 + Math.random() * 40;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        fxLayer.addChild(dot);
+        const start = Date.now();
+        const lifespan = 450 + Math.random() * 200;
+        const t = () => {
+          const p = (Date.now() - start) / lifespan;
+          if (p >= 1) { try { fxLayer.removeChild(dot); dot.destroy(); } catch (e) {} app.ticker.remove(t); return; }
+          dot.x = x + dx * p;
+          dot.y = y + dy * p;
+          dot.alpha = 1 - p;
+          dot.scale.set(1 - p * 0.6);
+        };
+        app.ticker.add(t);
+      }
+    }
+
+    // ── Per-frame ticker ─────────────────────────────────────────
+    const ticker = () => {
+      const now = Date.now();
+      if (phaseRef.current === "racing") {
+        const elapsed = now - startRef.current;
+        const cadence = Math.max(260, SPAWN_INTERVAL_MS - elapsed / 60);
+        if (now - state.spawnLast >= cadence) {
+          state.spawnLast = now;
+          spawnOrb();
+        }
+      }
+
+      // Update orbs — sync positions, emit trails, cull falls.
+      for (let i = state.orbs.length - 1; i >= 0; i--) {
+        const orb = state.orbs[i];
+        if (orb.popped) continue;
+        if (orb.body.position.y > H + 40) {
+          // Missed — fell past floor.
+          Matter.Composite.remove(engine.world, orb.body);
+          try { orbLayer.removeChild(orb.container); orb.container.destroy({ children: true }); } catch (e) {}
+          state.orbs.splice(i, 1);
+          if (phaseRef.current === "racing" && orb.kind !== KIND_BOMB) miss();
+          continue;
+        }
+        orb.container.x = orb.body.position.x;
+        orb.container.y = orb.body.position.y;
+        orb.container.rotation = orb.body.angle;
+        // Emit a soft smoke trail
+        if (now - orb.trailLastEmit > 65) {
+          orb.trailLastEmit = now;
+          const trail = new PIXI.Graphics();
+          const c = orb.kind === KIND_GOLD ? 0xfbbf24
+                  : orb.kind === KIND_BOMB ? 0x475569
+                  : orb.kind === KIND_CHAIN ? 0x22d3ee
+                                            : accentColor;
+          trail.beginFill(c, 0.25);
+          trail.drawCircle(0, 0, ORB_RADIUS * 0.6);
+          trail.endFill();
+          trail.x = orb.body.position.x;
+          trail.y = orb.body.position.y;
+          trailLayer.addChild(trail);
+          const start = Date.now();
+          const t = () => {
+            const p = (Date.now() - start) / 350;
+            if (p >= 1) { try { trailLayer.removeChild(trail); trail.destroy(); } catch (e) {} app.ticker.remove(t); return; }
+            trail.alpha = (1 - p) * 0.25;
+            trail.scale.set(1 + p * 0.5);
+          };
+          app.ticker.add(t);
+        }
+      }
+
+      // Screen shake decay
+      if (state.shake > 0) {
+        app.stage.x = (Math.random() - 0.5) * state.shake;
+        app.stage.y = (Math.random() - 0.5) * state.shake;
+        state.shake *= 0.82;
+        if (state.shake < 0.5) { state.shake = 0; app.stage.x = 0; app.stage.y = 0; }
+      }
+    };
+    app.ticker.add(ticker);
 
     return () => {
       try { app.ticker.remove(ticker); } catch (e) {}
@@ -242,13 +419,13 @@ export default function BubblePop({ onComplete, seed }) {
   };
 
   return (
-    <ArenaShell title="CASCADE" tagline="Catch them high. Combos for chained pops." accent={accent}>
+    <ArenaShell title="CASCADE" tagline="Catch high. Avoid bombs. Chain orbs ignite ⚡" accent={accent}>
       <MinigameKeyframes />
       <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
         <StartButton accent={accent} label="BEGIN"
-                     sublabel="Falling orbs. Higher catch = more points."
+                     sublabel="★ gold = +5 · ↯ chain = ignites cluster · ✕ bomb = avoid"
                      onStart={begin} />
       )}
 

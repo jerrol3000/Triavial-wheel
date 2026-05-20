@@ -96,7 +96,47 @@
 // v32: hotfix — SoloArena was missing `useRef` from the React import
 // (added in the WebGL pivot for the recorder ref). Crashed on entry
 // to the Solo screen with "ReferenceError: useRef is not defined".
-const CACHE = "trivia-wheel-v32";
+// v33: ARENA v2 — actual depth + premium audio + real post-processing.
+//
+// Three flagship games rebuilt to a much higher quality bar:
+//
+// ✦ Anomaly v2
+//    • Difficulty SCALES: 1 anomaly → 2 (score 10) → 3 (score 20)
+//    • AdvancedBloomFilter on the stage + GlowFilter on every body
+//    • Chromatic-aberration flash via RGBSplitFilter on every tap,
+//      double-strength on core captures
+//    • Full-stage SHOCKWAVE on core captures (ShockwaveFilter)
+//    • 50 ambient field particles drift in the background, attracted
+//      toward the nearest anomaly — sells the "energy field" feel
+//    • Haptic feedback (navigator.vibrate) per tap
+//
+// ◇ Cascade v2
+//    • Four ORB TYPES with strategic depth:
+//        Normal (75%) → +1/+2/+3 by height + chain to neighbors
+//        ★ Gold (8%)  → +5 + golden burst + gold confetti
+//        ↯ Chain (5%) → +2 + IGNITES every orb within 90px
+//        ✕ Bomb (12%) → AVOID — tapping breaks combo + screen shake
+//    • Chain reactions on normal pops too (50px proximity)
+//    • Smoke trails on every falling orb
+//    • AdvancedBloomFilter on stage, GlowFilter on each orb
+//
+// ◉ Surge v2
+//    • REAL MUSIC LOOP — synthesized 220bpm 4-on-the-floor kick/snare/
+//      hat/bass scheduled via Web Audio (see _synth.js startMusic)
+//    • LIVE WAVEFORM around the perimeter (64 bars trace the master
+//      out's time-domain data — AnalyserNode driven)
+//    • BAR-DROP bonus: every 8th beat is worth +3 instead of +2,
+//      with screen-wide chromatic aberration + bloom flash
+//    • Lightning combo celebration at ×4
+//
+// New shared infrastructure:
+//   _synth.js — multi-osc voice engine, FX chain (filter + reverb),
+//               10+ rich SFX presets, music scheduler, AnalyserNode
+//               for audio-reactive visuals, navigator.vibrate haptics
+//   _pixi.js  — adds AdvancedBloomFilter, GlowFilter, RGBSplitFilter,
+//               ShockwaveFilter from pixi-filters. flashChromatic()
+//               and shockwave() helpers for one-line effects.
+const CACHE = "trivia-wheel-v33";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

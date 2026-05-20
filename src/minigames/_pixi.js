@@ -19,6 +19,87 @@
 // (e.g. for canvas.captureStream during recording).
 import React, { useEffect, useRef } from "react";
 import * as PIXI from "pixi.js";
+import { AdvancedBloomFilter } from "@pixi/filter-advanced-bloom";
+import { GlowFilter } from "@pixi/filter-glow";
+import { RGBSplitFilter } from "@pixi/filter-rgb-split";
+import { ShockwaveFilter } from "@pixi/filter-shockwave";
+
+// Re-export filter constructors so games can grab them without
+// importing @pixi/filter-* directly.
+export { AdvancedBloomFilter, GlowFilter, RGBSplitFilter, ShockwaveFilter };
+
+// Apply a tasteful "premium game" filter stack to a container. Bloom
+// + Glow gives that high-end "everything is alive" look. Optional
+// chromatic aberration triggered transiently on hits via
+// flashChromatic(container, ms).
+export function applyPremiumFilters(container, { glowColor = 0xa78bfa, bloomThreshold = 0.5, bloomIntensity = 0.55 } = {}) {
+  const bloom = new AdvancedBloomFilter({
+    threshold: bloomThreshold,
+    bloomScale: bloomIntensity,
+    brightness: 1.0,
+    blur: 8,
+    quality: 4,
+  });
+  const glow = new GlowFilter({
+    distance: 12,
+    outerStrength: 1.2,
+    innerStrength: 0,
+    color: glowColor,
+    quality: 0.2,
+  });
+  container.filters = [bloom, glow];
+  return { bloom, glow };
+}
+
+// Trigger a brief chromatic aberration on a container (channel split
+// expands then settles back). Used on impacts — gives that "feedback"
+// flash without being heavy-handed.
+export function flashChromatic(target, durationMs = 180, intensity = 8) {
+  if (!target) return;
+  const split = new RGBSplitFilter([intensity, 0], [0, intensity], [-intensity, -intensity]);
+  const existing = target.filters ? [...target.filters] : [];
+  target.filters = [...existing, split];
+  const start = Date.now();
+  const tick = () => {
+    const t = (Date.now() - start) / durationMs;
+    if (t >= 1) {
+      target.filters = existing;
+      return;
+    }
+    const k = 1 - t;
+    split.red = [intensity * k, 0];
+    split.green = [0, intensity * k];
+    split.blue = [-intensity * k, -intensity * k];
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// Trigger a radial shockwave that ripples outward from a point. The
+// filter is applied to the whole stage briefly.
+export function shockwave(app, x, y, durationMs = 700) {
+  if (!app || !app.stage) return;
+  const filter = new ShockwaveFilter([x, y], {
+    amplitude: 30,
+    wavelength: 160,
+    speed: 600,
+    radius: -1,
+    brightness: 1.0,
+  }, 0);
+  const existing = app.stage.filters ? [...app.stage.filters] : [];
+  app.stage.filters = [...existing, filter];
+  const start = Date.now();
+  const tick = () => {
+    const elapsed = (Date.now() - start) / 1000;
+    if (elapsed * 1000 >= durationMs) {
+      app.stage.filters = existing;
+      return;
+    }
+    filter.time = elapsed;
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
 
 // Active-canvas singleton — set whenever a PixiArena mounts, cleared
 // when it unmounts. The Recorder (_recorder.js) reads from this to

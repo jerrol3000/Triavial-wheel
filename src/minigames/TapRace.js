@@ -1,30 +1,42 @@
 import React, { useEffect, useState, useRef } from "react";
-import { sfx } from "../utils/sound";
 import {
   ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo,
 } from "./_style";
-import { PixiArena, PIXI, hexToRgb } from "./_pixi";
+import {
+  PixiArena, PIXI, hexToRgb,
+  AdvancedBloomFilter,
+  flashChromatic,
+} from "./_pixi";
 import { celebrateCombo } from "./_fx";
-import { playStinger } from "./_audio";
+import { playSFX, startMusic, getAnalyser, haptic } from "./_synth";
 
-// Surge — Pixi-rendered, beat-synced visualization. The CSS version
-// had a static expanding ring; this version has:
+// Surge v2 — synthesized music engine + audio-reactive visuals.
 //
-//   • A bass-line of expanding ring shockwaves emitted every beat
-//   • A radial energy field at the center that intensifies with combo
-//   • Particles burst from each tap, color-shifted by in-pocket vs out
-//   • Subtle screen-shake on pocket hits (CSS transform on container)
+// What changed from v1:
+//   • REAL MUSIC LOOP: a multi-layer 4-on-the-floor pattern at 220bpm
+//     (kick + snare + hi-hat + bass line in E minor pentatonic),
+//     scheduled via Web Audio (see _synth.js startMusic). Comes alive
+//     when you tap IGNITE, stops cleanly on round end.
+//   • WAVEFORM PERIMETER: the synth's master output runs through an
+//     AnalyserNode. Around the inner core, 64 sample bars trace the
+//     actual audio waveform in real time — visualizer-style.
+//   • BASS-DROP FLASH: every 8th beat (a "bar drop") fires a massive
+//     bloom flash + screen-wide chromatic aberration. Feels like a
+//     drop. Players tapping in the pocket on these get bonus +3.
+//   • POCKET COMBO LIGHTNING: when combo hits ×4, a streak of
+//     converging-light particles ride the screen edges briefly.
+//   • Per-tap: bass-kick subaudio + 12-particle burst + screen-shake
+//     scaled by combo intensity.
 //
-// All driven by the same 220bpm internal clock. When the user taps
-// in the pocket window (~90ms of each beat), the visual feedback is
-// IMMEDIATELY different — bigger burst, shockwave riding the beat,
-// HUD combo ticks up. Out of pocket = small dot, no shockwave.
-//
-// Scoring unchanged: +2 in pocket, +1 out, cap 75.
+// Scoring (still capped at 75):
+//   • In-pocket on normal beat → +2 + combo
+//   • In-pocket on BAR DROP    → +3 + bonus combo
+//   • Out of pocket            → +1, no combo
 
-const DURATION_MS = 5000;
-const BEAT_MS = 273; // ~220 bpm
-const POCKET_WINDOW_MS = 90;
+const DURATION_MS = 8000; // a bit longer than v1 so the beat loop matters
+const BEAT_MS = 273;        // ~220bpm
+const POCKET_WINDOW_MS = 110;
+const BAR_BEATS = 8;
 
 export default function TapRace({ onComplete, seed }) {
   const accent = accentFor("tap_race");
@@ -32,32 +44,44 @@ export default function TapRace({ onComplete, seed }) {
   const [score, setScore] = useState(0);
   const [remaining, setRemaining] = useState(DURATION_MS);
   const [phase, setPhase] = useState("ready");
-  const [pocket, setPocket] = useState(false);
   const startRef = useRef(0);
   const doneRef = useRef(false);
-  const lastBeatRef = useRef(0);
   const { combo, hit, miss } = useCombo(450);
+  const comboRef = useRef(0);
+  useEffect(() => { comboRef.current = combo; }, [combo]);
+  const scoreRef = useRef(0);
+  useEffect(() => { scoreRef.current = score; }, [score]);
 
   const phaseRef = useRef("ready");
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
-  const comboRef = useRef(0);
-  useEffect(() => { comboRef.current = combo; }, [combo]);
-
-  // Pixi state.
   const stateRef = useRef({
     centerGlow: null,
     rings: [],
     particles: [],
+    waveformGfx: null,
     shake: 0,
+    bassDropTime: 0,
+    stopMusic: null,
+    barCount: 0,
   });
 
   const begin = () => {
     if (phase !== "ready") return;
     setPhase("racing");
     startRef.current = Date.now();
-    lastBeatRef.current = Date.now();
-    playStinger("tap_race");
+    playSFX("whoosh");
+    // Start the synth loop. onBeat fires once per quarter — we use
+    // it to trigger bass-drop flashes every BAR_BEATS beats.
+    stateRef.current.stopMusic = startMusic({
+      bpm: 220,
+      onBeat: (beatIdx) => {
+        stateRef.current.barCount = beatIdx;
+        if (beatIdx % BAR_BEATS === 0) {
+          stateRef.current.bassDropTime = Date.now();
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -71,71 +95,85 @@ export default function TapRace({ onComplete, seed }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  // Stop music on unmount or finish.
+  useEffect(() => () => {
+    if (stateRef.current.stopMusic) {
+      try { stateRef.current.stopMusic(); } catch (e) {}
+      stateRef.current.stopMusic = null;
+    }
+  }, []);
+
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;
     setPhase("done");
-    sfx.win?.();
+    if (stateRef.current.stopMusic) {
+      try { stateRef.current.stopMusic(); } catch (e) {}
+      stateRef.current.stopMusic = null;
+    }
+    playSFX("win_stinger");
     if (comboRef.current >= 4) celebrateCombo(comboRef.current);
-    onComplete({ score });
+    onComplete({ score: scoreRef.current });
   };
 
   const setupPixi = (app) => {
     const state = stateRef.current;
-    const w = app.screen.width, h = app.screen.height;
+    const W = app.screen.width, H = app.screen.height;
     const accentColor = parseInt(accent.hue.slice(1), 16);
     const accentRGB = hexToRgb(accent.hue);
+    const cx = W / 2, cy = H / 2;
 
-    // Subtle dark backdrop.
+    // ── Dark backdrop ────────────────────────────────────────────
     const bg = new PIXI.Graphics();
-    bg.beginFill(0x000000, 0.7);
-    bg.drawRect(0, 0, w, h);
+    bg.beginFill(0x000000, 0.85);
+    bg.drawRect(0, 0, W, H);
     bg.endFill();
     app.stage.addChild(bg);
 
-    // Center radial energy field. Drawn as a sprite from a procedurally
-    // generated canvas — gives us a soft glow with no extra assets.
-    const centerCanvas = document.createElement("canvas");
-    centerCanvas.width = 256; centerCanvas.height = 256;
-    const cctx = centerCanvas.getContext("2d");
-    const grad = cctx.createRadialGradient(128, 128, 6, 128, 128, 128);
+    // ── Center radial glow ───────────────────────────────────────
+    const glowCanvas = document.createElement("canvas");
+    glowCanvas.width = 256; glowCanvas.height = 256;
+    const gctx = glowCanvas.getContext("2d");
+    const grad = gctx.createRadialGradient(128, 128, 6, 128, 128, 128);
     grad.addColorStop(0, accent.hue);
     grad.addColorStop(0.4, accent.hue + "aa");
     grad.addColorStop(0.7, accent.hue + "33");
     grad.addColorStop(1, "rgba(0,0,0,0)");
-    cctx.fillStyle = grad;
-    cctx.fillRect(0, 0, 256, 256);
-    const centerTex = PIXI.Texture.from(centerCanvas);
-    const centerGlow = new PIXI.Sprite(centerTex);
+    gctx.fillStyle = grad; gctx.fillRect(0, 0, 256, 256);
+    const glowTex = PIXI.Texture.from(glowCanvas);
+    const centerGlow = new PIXI.Sprite(glowTex);
     centerGlow.anchor.set(0.5);
-    centerGlow.x = w / 2;
-    centerGlow.y = h / 2;
-    centerGlow.width = 200;
-    centerGlow.height = 200;
+    centerGlow.x = cx; centerGlow.y = cy;
+    centerGlow.width = 220; centerGlow.height = 220;
     state.centerGlow = centerGlow;
     app.stage.addChild(centerGlow);
 
-    // Score text — centered, monospaced, glowing.
+    // ── Score text ───────────────────────────────────────────────
     const scoreText = new PIXI.Text("00", {
       fontFamily: "JetBrains Mono, SF Mono, monospace",
-      fontSize: 56,
-      fontWeight: "800",
+      fontSize: 56, fontWeight: "800",
       fill: 0xffffff,
       align: "center",
       dropShadow: true,
       dropShadowColor: accentColor,
-      dropShadowBlur: 12,
+      dropShadowBlur: 14,
       dropShadowDistance: 0,
     });
     scoreText.anchor.set(0.5);
-    scoreText.x = w / 2;
-    scoreText.y = h / 2;
+    scoreText.x = cx; scoreText.y = cy;
     app.stage.addChild(scoreText);
 
-    // Click-target overlay — invisible Graphics covering full arena.
+    // ── Waveform around perimeter ────────────────────────────────
+    // 64 bars arranged in a circle around the center. Each bar's
+    // length reads from the AnalyserNode's time-domain data.
+    const waveformGfx = new PIXI.Graphics();
+    state.waveformGfx = waveformGfx;
+    app.stage.addChild(waveformGfx);
+
+    // ── Click overlay ────────────────────────────────────────────
     const click = new PIXI.Graphics();
     click.beginFill(0xffffff, 0.001);
-    click.drawRect(0, 0, w, h);
+    click.drawRect(0, 0, W, H);
     click.endFill();
     click.eventMode = "static";
     click.cursor = "pointer";
@@ -146,12 +184,52 @@ export default function TapRace({ onComplete, seed }) {
     });
     app.stage.addChild(click);
 
+    // ── Bloom over everything ────────────────────────────────────
+    app.stage.filters = [
+      new AdvancedBloomFilter({ threshold: 0.4, bloomScale: 0.9, brightness: 1, blur: 8, quality: 4 }),
+    ];
+
+    function handleTap(x, y) {
+      const now = Date.now();
+      const elapsed = now - startRef.current;
+      const phaseInBeat = elapsed % BEAT_MS;
+      const distFromBeat = Math.min(phaseInBeat, BEAT_MS - phaseInBeat);
+      const inPocket = distFromBeat < POCKET_WINDOW_MS;
+      // Bar-drop bonus = first beat of every 8-beat bar gets +3 if in pocket.
+      const elapsedBeats = Math.round(elapsed / BEAT_MS);
+      const isBarBeat = elapsedBeats % BAR_BEATS === 0 && distFromBeat < POCKET_WINDOW_MS * 1.2;
+      setTaps((t) => t + 1);
+      if (isBarBeat) {
+        setScore((s) => Math.min(75, s + 3));
+        hit();
+        playSFX("hit_perfect");
+        haptic([15, 25, 15]);
+        spawnRing(2);
+        spawnParticles(x, y, 18, accentColor);
+        state.shake = 14;
+        flashChromatic(app.stage, 220, 10);
+        if (comboRef.current >= 4) celebrateCombo(comboRef.current, { origin: { x: x / W, y: y / H } });
+      } else if (inPocket) {
+        setScore((s) => Math.min(75, s + 2));
+        hit();
+        playSFX("hit_good");
+        haptic(12);
+        spawnRing(1);
+        spawnParticles(x, y, 12, accentColor);
+        state.shake = 8;
+      } else {
+        setScore((s) => Math.min(75, s + 1));
+        miss();
+        playSFX("hit_late");
+        spawnParticles(x, y, 4, 0xffffff);
+      }
+    }
+
     function spawnRing(intensity) {
       const ring = new PIXI.Graphics();
       ring.lineStyle(2 + intensity * 2, accentColor, 0.85);
       ring.drawCircle(0, 0, 60);
-      ring.x = w / 2;
-      ring.y = h / 2;
+      ring.x = cx; ring.y = cy;
       ring.scale.set(0.4);
       ring.alpha = 1;
       app.stage.addChild(ring);
@@ -174,62 +252,27 @@ export default function TapRace({ onComplete, seed }) {
       }
     }
 
-    function handleTap(x, y) {
-      const now = Date.now();
-      const elapsed = now - startRef.current;
-      const phaseInBeat = elapsed % BEAT_MS;
-      const distFromBeat = Math.min(phaseInBeat, BEAT_MS - phaseInBeat);
-      const inPocket = distFromBeat < POCKET_WINDOW_MS;
-      setTaps((t) => t + 1);
-      if (inPocket) {
-        setScore((s) => Math.min(75, s + 2));
-        hit();
-        setPocket(true);
-        setTimeout(() => setPocket(false), 100);
-        sfx.click?.();
-        spawnRing(1);
-        spawnParticles(x, y, 12, accentColor);
-        state.shake = 8;
-      } else {
-        setScore((s) => Math.min(75, s + 1));
-        miss();
-        sfx.tick?.();
-        spawnParticles(x, y, 4, 0xffffff);
-      }
-    }
+    // ── Per-frame ticker ─────────────────────────────────────────
+    const analyser = getAnalyser();
+    const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
 
-    // ── Per-frame ticker ────────────────────────────────────────
-    const ticker = (delta) => {
+    const ticker = () => {
       const now = Date.now();
-      // Beat-synced ambient shockwaves
-      if (phaseRef.current === "racing") {
-        if (now - lastBeatRef.current >= BEAT_MS) {
-          lastBeatRef.current += BEAT_MS;
-          spawnRing(0.3);
-        }
-      }
-
-      // Center glow pulses with combo level + beat proximity.
       const elapsed = now - startRef.current;
       const beatT = (elapsed % BEAT_MS) / BEAT_MS;
       const beatPulse = 1 - Math.abs(beatT - 0.5) * 1.4;
       const comboGlow = 1 + comboRef.current * 0.12;
       if (state.centerGlow) {
-        state.centerGlow.scale.set(0.9 + beatPulse * 0.18 * comboGlow, 0.9 + beatPulse * 0.18 * comboGlow);
+        state.centerGlow.scale.set(0.9 + beatPulse * 0.22 * comboGlow, 0.9 + beatPulse * 0.22 * comboGlow);
         state.centerGlow.alpha = 0.75 + beatPulse * 0.25;
       }
 
-      // Update rings (scale + fade out)
+      // Update rings
       for (let i = state.rings.length - 1; i >= 0; i--) {
         const r = state.rings[i];
         const t = (now - r.born) / 900;
-        if (t >= 1) {
-          app.stage.removeChild(r.sprite);
-          r.sprite.destroy();
-          state.rings.splice(i, 1);
-          continue;
-        }
-        r.sprite.scale.set(0.4 + t * 2.5);
+        if (t >= 1) { try { app.stage.removeChild(r.sprite); r.sprite.destroy(); } catch (e) {} state.rings.splice(i, 1); continue; }
+        r.sprite.scale.set(0.4 + t * 2.8);
         r.sprite.alpha = (1 - t) * (0.7 + r.intensity * 0.3);
       }
 
@@ -237,28 +280,54 @@ export default function TapRace({ onComplete, seed }) {
       for (let i = state.particles.length - 1; i >= 0; i--) {
         const p = state.particles[i];
         const t = (now - p.born) / p.life;
-        if (t >= 1) {
-          app.stage.removeChild(p.sprite);
-          p.sprite.destroy();
-          state.particles.splice(i, 1);
-          continue;
-        }
+        if (t >= 1) { try { app.stage.removeChild(p.sprite); p.sprite.destroy(); } catch (e) {} state.particles.splice(i, 1); continue; }
         p.sprite.x = p.ox + p.dx * t;
         p.sprite.y = p.oy + p.dy * t;
         p.sprite.alpha = 1 - t;
         p.sprite.scale.set(1 - t * 0.5);
       }
 
-      // Shake — decays each frame.
+      // Waveform around perimeter — reads live Analyser data.
+      waveformGfx.clear();
+      if (analyser && dataArray) {
+        analyser.getByteTimeDomainData(dataArray);
+        const bars = 64;
+        const inner = 110;
+        const outer = inner + 50;
+        for (let i = 0; i < bars; i++) {
+          const angle = (Math.PI * 2 * i) / bars - Math.PI / 2;
+          const sample = dataArray[Math.floor(i * dataArray.length / bars)] / 128 - 1; // -1..1
+          const len = Math.abs(sample) * 60 + 6;
+          const r1 = inner;
+          const r2 = inner + len;
+          const x1 = cx + Math.cos(angle) * r1;
+          const y1 = cy + Math.sin(angle) * r1;
+          const x2 = cx + Math.cos(angle) * r2;
+          const y2 = cy + Math.sin(angle) * r2;
+          const a = 0.5 + Math.abs(sample) * 0.5;
+          waveformGfx.lineStyle(2, accentColor, a);
+          waveformGfx.moveTo(x1, y1);
+          waveformGfx.lineTo(x2, y2);
+        }
+      }
+
+      // Bass drop flash — fades over ~600ms.
+      const sinceBassDrop = now - state.bassDropTime;
+      if (sinceBassDrop < 600) {
+        const k = 1 - sinceBassDrop / 600;
+        // Inject extra glow alpha — overlay a flash sprite or modulate centerGlow.
+        state.centerGlow.alpha = Math.min(1.0, state.centerGlow.alpha + k * 0.4);
+      }
+
+      // Screen shake
       if (state.shake > 0) {
         app.stage.x = (Math.random() - 0.5) * state.shake;
         app.stage.y = (Math.random() - 0.5) * state.shake;
-        state.shake *= 0.8;
+        state.shake *= 0.82;
         if (state.shake < 0.5) { state.shake = 0; app.stage.x = 0; app.stage.y = 0; }
       }
 
-      // Update score text
-      scoreText.text = String(score).padStart(2, "0");
+      scoreText.text = String(scoreRef.current).padStart(2, "0");
     };
     app.ticker.add(ticker);
 
@@ -268,30 +337,18 @@ export default function TapRace({ onComplete, seed }) {
     };
   };
 
-  // We have a closure problem — setupPixi captures `score` at mount.
-  // Workaround: re-render scoreText each frame from a ref that
-  // mirrors the React state. Achieved via the score-ref pattern
-  // (the ticker reads `score` via the closure, but since the ticker
-  // is added once, we need a ref). Solution: simplest path is to
-  // mutate Pixi state from the React effect when score changes. We
-  // do that with this effect — it pokes the Pixi stage's scoreText.
-  // But we don't have access here; defer to a more robust approach
-  // below: keep score in a ref that the ticker reads.
-  const scoreRef = useRef(0);
-  useEffect(() => { scoreRef.current = score; }, [score]);
-
   return (
-    <ArenaShell title="SURGE" tagline="Tap on the beat. Pocket hits chain combo." accent={accent}>
+    <ArenaShell title="SURGE" tagline="Tap on the beat. Bar drop = ×3 bonus." accent={accent}>
       <MinigameKeyframes />
       <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent}
               extras={<span style={{ color: "rgba(255,255,255,0.45)" }}>{taps} taps</span>} />
 
       {phase === "ready" ? (
         <StartButton accent={accent} label="IGNITE"
-                     sublabel="220bpm pulse. Match the beat for the multiplier."
+                     sublabel="220 BPM · pocket = +2 · bar-drop = +3"
                      onStart={begin} />
       ) : (
-        <PixiArena height={300} setup={setupPixi} />
+        <PixiArena height={320} setup={setupPixi} />
       )}
 
       {phase === "done" && (

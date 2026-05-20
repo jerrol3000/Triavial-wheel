@@ -1,29 +1,29 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Higher / Lower Sprint — show a number. A new number appears.
-// Higher or lower than the previous one? Two big buttons. Each
-// correct, the new number becomes the new anchor and the next
-// number appears. 12 seconds, score = correct calls.
+// Tide — formerly "Higher/Lower Sprint." Same surface mechanic but
+// reframed as a market-ticker / signal-analysis aesthetic:
 //
-// Seeded number sequence so both players race the IDENTICAL puzzle.
-// Wrong guess = small lockout (200ms) to deter spam-tap, but no
-// negative score. New numbers always differ from the previous by
-// at least 5 so there's never an ambiguous tie.
-//
-// Why it's fun: zero-friction decision loop. The brain enters a
-// flow state — it stops "reading numbers" and starts pattern-feeling
-// up/down. Beautifully replayable.
+//   • Two large monospaced numbers: a faded "PRIOR" (left, low
+//     contrast) and a brilliant "NEW" reading (right, accent
+//     colored). Subtle animated rise/fall arrow next to the new
+//     reading.
+//   • Buttons read "RISE" / "FALL" (or up-arrow / down-arrow) in
+//     stark green / red. No emoji.
+//   • Each correct read, the new reading slides left to become the
+//     prior, a fresh number animates in from the right. Cinematic.
+//   • Combo system shown in HUD.
 
 const DURATION_MS = 12000;
 const PENALTY_MS = 200;
 
 function nextNumber(prev, rng) {
-  // Pick a target in [1..99], guarantee ≠ prev and |diff| ≥ 4 so the
-  // call is always clean.
-  let n;
-  let tries = 0;
+  let n; let tries = 0;
   do {
     n = 1 + rng.int(99);
     tries++;
@@ -32,6 +32,7 @@ function nextNumber(prev, rng) {
 }
 
 export default function HiLoSprint({ onComplete, seed }) {
+  const accent = accentFor("hilo_sprint");
   const rngRef = useRef(null);
   const [phase, setPhase] = useState("ready");
   const [anchor, setAnchor] = useState(50);
@@ -42,6 +43,7 @@ export default function HiLoSprint({ onComplete, seed }) {
   const [lockUntil, setLockUntil] = useState(0);
   const startRef = useRef(0);
   const doneRef = useRef(false);
+  const { combo, hit, miss } = useCombo(1200);
 
   const begin = () => {
     if (phase !== "ready") return;
@@ -51,19 +53,17 @@ export default function HiLoSprint({ onComplete, seed }) {
     const a = 10 + rngRef.current.int(80);
     setAnchor(a);
     setTarget(nextNumber(a, rngRef.current));
+    playStinger("hilo_sprint");
   };
 
   useEffect(() => {
     if (phase !== "racing") return;
-    const tick = setInterval(() => {
+    const t = setInterval(() => {
       const left = Math.max(0, DURATION_MS - (Date.now() - startRef.current));
       setRemaining(left);
-      if (left <= 0) {
-        clearInterval(tick);
-        finish();
-      }
+      if (left <= 0) { clearInterval(t); finish(); }
     }, 50);
-    return () => clearInterval(tick);
+    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
@@ -75,107 +75,120 @@ export default function HiLoSprint({ onComplete, seed }) {
     onComplete({ score });
   };
 
-  // direction: "higher" | "lower"
   const guess = (direction) => {
     if (phase !== "racing" || target == null) return;
     if (Date.now() < lockUntil) return;
-    const correct = direction === "higher" ? target > anchor : target < anchor;
+    const correct = direction === "rise" ? target > anchor : target < anchor;
     if (correct) {
       setScore((s) => s + 1);
       setFlash("good");
       sfx.correct?.();
+      hit();
+      setAnchor(target);
+      setTarget(nextNumber(target, rngRef.current));
     } else {
       setFlash("bad");
       sfx.wrong?.();
       setLockUntil(Date.now() + PENALTY_MS);
+      miss();
     }
     setTimeout(() => setFlash(null), 140);
-    if (correct) {
-      setAnchor(target);
-      setTarget(nextNumber(target, rngRef.current));
-    }
   };
 
+  const direction = target != null ? (target > anchor ? "rise" : "fall") : null;
+
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>📊 Higher / Lower</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · ✓ {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-        Is the new number higher or lower than the previous one?
-      </div>
+    <ArenaShell title="TIDE" tagline="Direction call. New reading vs prior." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #06b6d4, #6366f1)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="OPEN MARKET"
+                     sublabel="Tap RISE or FALL. Each correct read locks in."
+                     onStart={begin} />
       )}
 
       {phase === "racing" && target != null && (
         <>
-          <div className="tw-row" style={{
-            justifyContent: "space-around", gap: 12, marginBottom: 14, alignItems: "center",
+          <div style={{
+            padding: "22px 20px", marginBottom: 12, borderRadius: 14,
+            background: flash === "good" ? "rgba(74,222,128,0.10)"
+                      : flash === "bad"  ? "rgba(248,113,113,0.10)"
+                                         : "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.05)",
+            transition: "background 0.10s",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 700, letterSpacing: 1 }}>PREVIOUS</div>
-              <div style={{ fontFamily: "Fredoka", fontSize: 36, fontWeight: 800, opacity: 0.5 }}>{anchor}</div>
-            </div>
-            <div style={{ fontSize: 16, color: "var(--text-dim)" }}>vs</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 700, letterSpacing: 1 }}>NEW</div>
+              <div style={{ fontSize: 9, letterSpacing: 2, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", fontWeight: 700, marginBottom: 4 }}>
+                PRIOR
+              </div>
               <div style={{
-                fontFamily: "Fredoka", fontSize: 56, fontWeight: 800,
-                color: flash === "good" ? "#10b981" : flash === "bad" ? "#ef4444" : "var(--text)",
-                transition: "color 0.10s",
-              }}>{target}</div>
+                fontFamily: '"JetBrains Mono", monospace',
+                fontWeight: 800, fontSize: 32, color: "rgba(255,255,255,0.3)",
+                fontVariantNumeric: "tabular-nums",
+              }}>{String(anchor).padStart(2, "0")}</div>
+            </div>
+
+            <div style={{ fontSize: 18, color: "rgba(255,255,255,0.25)", letterSpacing: 4 }}>→</div>
+
+            <div style={{ flex: 1.5, textAlign: "right" }}>
+              <div style={{ fontSize: 9, letterSpacing: 2, color: accent.hue, textTransform: "uppercase", fontWeight: 700, marginBottom: 4 }}>
+                NEW READING
+              </div>
+              <div style={{
+                fontFamily: '"JetBrains Mono", monospace',
+                fontWeight: 800, fontSize: 64, color: accent.hue,
+                fontVariantNumeric: "tabular-nums",
+                textShadow: `0 0 20px ${accent.glow}`,
+                lineHeight: 1,
+              }}>{String(target).padStart(2, "0")}</div>
             </div>
           </div>
-          <div className="tw-row" style={{ gap: 8 }}>
-            <button onClick={() => guess("higher")}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <button onPointerDown={() => guess("rise")}
               style={{
-                flex: 1, padding: "22px 0", borderRadius: 14,
-                border: "1px solid rgba(16,185,129,0.5)",
-                background: "linear-gradient(135deg, rgba(16,185,129,0.30), rgba(34,197,94,0.30))",
-                color: "#fff", fontFamily: "Fredoka", fontWeight: 800, fontSize: 22,
+                padding: "26px 0", borderRadius: 12,
+                border: "1px solid rgba(74,222,128,0.4)",
+                background: "linear-gradient(180deg, rgba(74,222,128,0.18), rgba(74,222,128,0.04))",
+                color: "#fff",
+                fontFamily: '"Inter", sans-serif',
+                fontWeight: 800, fontSize: 14, letterSpacing: 3,
+                textTransform: "uppercase",
                 cursor: "pointer",
               }}
             >
-              ⬆ Higher
+              ▲ RISE
             </button>
-            <button onClick={() => guess("lower")}
+            <button onPointerDown={() => guess("fall")}
               style={{
-                flex: 1, padding: "22px 0", borderRadius: 14,
-                border: "1px solid rgba(239,68,68,0.5)",
-                background: "linear-gradient(135deg, rgba(239,68,68,0.30), rgba(244,63,94,0.30))",
-                color: "#fff", fontFamily: "Fredoka", fontWeight: 800, fontSize: 22,
+                padding: "26px 0", borderRadius: 12,
+                border: "1px solid rgba(248,113,113,0.4)",
+                background: "linear-gradient(0deg, rgba(248,113,113,0.18), rgba(248,113,113,0.04))",
+                color: "#fff",
+                fontFamily: '"Inter", sans-serif',
+                fontWeight: 800, fontSize: 14, letterSpacing: 3,
+                textTransform: "uppercase",
                 cursor: "pointer",
               }}
             >
-              ⬇ Lower
+              ▼ FALL
             </button>
           </div>
         </>
       )}
 
       {phase === "done" && (
-        <div style={{ padding: "32px 16px", fontFamily: "Fredoka", fontSize: 22, fontWeight: 800 }}>
-          ✓ {score} correct
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>RESOLVED</span>
         </div>
       )}
-    </div>
+    </ArenaShell>
   );
 }

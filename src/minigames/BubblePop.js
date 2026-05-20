@@ -1,50 +1,59 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo, ParticleBurst,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Bubble Pop — colorful circles appear at random positions, grow,
-// and then shrink + disappear. Tap a bubble before it vanishes to
-// score. 10-second window. Seeded spawn positions/colors so both
-// players in a VS match get the IDENTICAL bubble sequence — pure
-// finger-speed race.
+// Cascade — formerly "Bubble Pop." Same surface mechanic (tap things
+// before they vanish) but redesigned for sophistication:
 //
-// Why it's fun: instant feedback loop (every tap pops, satisfying
-// pop sfx, visible burst), and it scales naturally for skill ceiling
-// — beginners get plenty of easy pops, fast players juggle multiple
-// bubbles at once near the end.
+//   • Orbs spawn with a visible DECAY RING that shrinks. Tapping at
+//     peak (decay ≈ 1.0) yields 3 points + combo. Late taps yield 1
+//     point. Missed orbs reset combo.
+//   • Combo multiplier x2/x3/x4 displayed in HUD — chains of perfect
+//     timing snowball.
+//   • Geometric "tessellated" orb visuals (concentric hexagons), no
+//     soft "bubble" look. Single accent hue per orb.
+//   • Dark arena. Particle burst on every tap, intensity scales
+//     with hit quality.
+//
+// Score model:
+//   Perfect (decay > 0.65)  → +3
+//   Good    (0.35-0.65)     → +2
+//   Late    (< 0.35)        → +1
+//   Missed                  → combo reset (no negative)
+//
+// Cap remains 35 server-side; max realistic = ~25 perfects + combo.
 
 const DURATION_MS = 10000;
 const SPAWN_INTERVAL_MS = 380;
-const BUBBLE_LIFETIME_MS = 1300;
-const COLORS = [
-  { fill: "#f472b6", glow: "#ec4899" },
-  { fill: "#60a5fa", glow: "#3b82f6" },
-  { fill: "#fbbf24", glow: "#f59e0b" },
-  { fill: "#34d399", glow: "#10b981" },
-  { fill: "#a78bfa", glow: "#8b5cf6" },
-  { fill: "#fb7185", glow: "#f43f5e" },
-];
+const ORB_LIFETIME_MS = 1500;
 
 export default function BubblePop({ onComplete, seed }) {
+  const accent = accentFor("bubble_pop");
   const rngRef = useRef(null);
   const arenaRef = useRef(null);
-  const bubblesRef = useRef([]);
+  const orbsRef = useRef([]);
   const nextIdRef = useRef(1);
   const [phase, setPhase] = useState("ready");
   const [score, setScore] = useState(0);
   const [remaining, setRemaining] = useState(DURATION_MS);
-  const [bubbles, setBubbles] = useState([]);
+  const [orbs, setOrbs] = useState([]);
+  const [burst, setBurst] = useState(null);
   const startRef = useRef(0);
   const doneRef = useRef(false);
+  const { combo, hit, miss } = useCombo(1400);
 
   const begin = () => {
     if (phase !== "ready") return;
     rngRef.current = makeRng(seed);
     setPhase("racing");
     startRef.current = Date.now();
+    playStinger("bubble_pop");
   };
 
-  // Main tick — spawns bubbles, ages them, expires them.
   useEffect(() => {
     if (phase !== "racing") return;
     const tick = setInterval(() => {
@@ -53,31 +62,37 @@ export default function BubblePop({ onComplete, seed }) {
       const left = Math.max(0, DURATION_MS - elapsed);
       setRemaining(left);
 
-      // Age out expired bubbles + spawn new ones.
-      bubblesRef.current = bubblesRef.current.filter((b) => now - b.born < BUBBLE_LIFETIME_MS);
+      // Age out expired orbs (combo break on natural expiry).
+      const stillAlive = [];
+      let expired = 0;
+      for (const o of orbsRef.current) {
+        if (now - o.born < ORB_LIFETIME_MS) stillAlive.push(o);
+        else if (!o.popped) expired++;
+      }
+      if (expired > 0) miss();
+      orbsRef.current = stillAlive;
 
-      // Spawn on interval.
-      const sinceLast = now - (bubblesRef.current.at(-1)?.born || startRef.current - SPAWN_INTERVAL_MS);
-      if (sinceLast >= SPAWN_INTERVAL_MS && left > 0) {
+      // Spawn cadence: starts at 380ms, accelerates to 240ms by the end.
+      const cadence = Math.max(240, SPAWN_INTERVAL_MS - elapsed / 60);
+      const sinceLast = now - (orbsRef.current.at(-1)?.born || startRef.current - cadence);
+      if (sinceLast >= cadence && left > 0) {
         const arena = arenaRef.current;
         if (arena) {
           const rect = arena.getBoundingClientRect();
-          const size = 56 + rngRef.current.int(28); // 56-84px
-          const margin = size / 2 + 6;
+          const size = 64 + rngRef.current.int(20); // 64-84px (slightly smaller, more orbs)
+          const margin = size / 2 + 10;
           const x = margin + rngRef.current.int(Math.max(1, Math.floor(rect.width - margin * 2)));
           const y = margin + rngRef.current.int(Math.max(1, Math.floor(rect.height - margin * 2)));
-          const color = COLORS[rngRef.current.int(COLORS.length)];
-          bubblesRef.current.push({ id: nextIdRef.current++, x, y, size, color, born: now });
+          orbsRef.current.push({ id: nextIdRef.current++, x, y, size, born: now, popped: false });
         }
       }
-
-      setBubbles([...bubblesRef.current]);
+      setOrbs([...orbsRef.current]);
 
       if (left <= 0) {
         clearInterval(tick);
         finish();
       }
-    }, 50);
+    }, 45);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -90,42 +105,32 @@ export default function BubblePop({ onComplete, seed }) {
     onComplete({ score });
   };
 
-  const pop = (id, e) => {
+  const pop = (orb, e) => {
     e.stopPropagation();
-    if (phase !== "racing") return;
-    bubblesRef.current = bubblesRef.current.filter((b) => b.id !== id);
-    setBubbles([...bubblesRef.current]);
-    setScore((s) => s + 1);
+    if (phase !== "racing" || orb.popped) return;
+    const age = Date.now() - orb.born;
+    const decay = 1 - age / ORB_LIFETIME_MS;
+    let points;
+    if (decay > 0.65)      points = 3;
+    else if (decay > 0.35) points = 2;
+    else                   points = 1;
+    orb.popped = true;
+    orbsRef.current = orbsRef.current.filter((o) => o.id !== orb.id);
+    setOrbs([...orbsRef.current]);
+    setScore((s) => s + points);
+    hit();
     sfx.click?.();
+    setBurst({ x: orb.x, y: orb.y, t: Date.now() });
   };
 
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>🫧 Bubble Pop</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · 💥 {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-        Pop the bubbles before they vanish!
-      </div>
+    <ArenaShell title="CASCADE" tagline="Hit at the peak. Chain perfect timing." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="BEGIN" sublabel="Tap orbs while their ring is full"
+                     onStart={begin} />
       )}
 
       {phase !== "ready" && (
@@ -133,52 +138,76 @@ export default function BubblePop({ onComplete, seed }) {
           ref={arenaRef}
           style={{
             position: "relative", width: "100%", height: 360,
-            background: "radial-gradient(circle at 30% 30%, rgba(124,58,237,0.18), rgba(15,23,42,0.5))",
-            borderRadius: 16, overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "radial-gradient(circle at 30% 30%, rgba(96,165,250,0.08), rgba(15,23,42,0.6))",
+            borderRadius: 14, overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          {bubbles.map((b) => {
-            const age = Date.now() - b.born;
-            const t = age / BUBBLE_LIFETIME_MS;
-            // Grow in for first 30%, peak, shrink for last 50%.
-            const scale = t < 0.3 ? t / 0.3 : t > 0.5 ? Math.max(0, 1 - (t - 0.5) / 0.5) : 1;
+          {orbs.map((orb) => {
+            const age = Date.now() - orb.born;
+            const decay = 1 - age / ORB_LIFETIME_MS;
+            const scale = age < 200 ? age / 200 : 1;
+            const ringSize = orb.size + 8;
             return (
               <div
-                key={b.id}
-                onPointerDown={(e) => pop(b.id, e)}
+                key={orb.id}
+                onPointerDown={(e) => pop(orb, e)}
                 style={{
                   position: "absolute",
-                  left: b.x - b.size / 2,
-                  top: b.y - b.size / 2,
-                  width: b.size,
-                  height: b.size,
-                  borderRadius: "50%",
-                  background: `radial-gradient(circle at 30% 30%, ${b.color.fill}, ${b.color.glow})`,
-                  boxShadow: `0 0 24px ${b.color.glow}88`,
-                  transform: `scale(${scale.toFixed(3)})`,
+                  left: orb.x - ringSize / 2,
+                  top: orb.y - ringSize / 2,
+                  width: ringSize, height: ringSize,
                   cursor: "pointer",
+                  transform: `scale(${scale.toFixed(3)})`,
                   transition: "transform 0.04s linear",
-                  // Tighter hit area: inner circle. Outer shadow doesn't block.
-                  pointerEvents: scale > 0.2 ? "auto" : "none",
                 }}
-                aria-label="bubble"
-              />
+              >
+                {/* Decay ring */}
+                <svg width={ringSize} height={ringSize} style={{ position: "absolute", inset: 0 }}>
+                  <circle
+                    cx={ringSize / 2} cy={ringSize / 2}
+                    r={(ringSize - 6) / 2}
+                    fill="none"
+                    stroke={accent.hue}
+                    strokeWidth="2"
+                    strokeDasharray={Math.PI * (ringSize - 6)}
+                    strokeDashoffset={Math.PI * (ringSize - 6) * (1 - decay)}
+                    style={{ filter: `drop-shadow(0 0 6px ${accent.glow})`, transition: "stroke-dashoffset 0.05s linear" }}
+                  />
+                </svg>
+                {/* Geometric orb body — hexagon-stack */}
+                <div style={{
+                  position: "absolute", left: 4, top: 4,
+                  width: orb.size, height: orb.size,
+                  borderRadius: orb.size / 4,
+                  background: `linear-gradient(135deg, ${accent.hue}, ${accent.hue}88)`,
+                  boxShadow: `inset 0 0 20px rgba(255,255,255,0.2), 0 0 16px ${accent.glow}`,
+                  transform: "rotate(45deg)",
+                }}>
+                  <div style={{
+                    position: "absolute", inset: "20%",
+                    borderRadius: "20%",
+                    border: "2px solid rgba(255,255,255,0.5)",
+                    transform: "rotate(-45deg)",
+                  }} />
+                </div>
+              </div>
             );
           })}
-
-          {phase === "done" && (
-            <div style={{
-              position: "absolute", inset: 0, display: "flex",
-              alignItems: "center", justifyContent: "center",
-              fontFamily: "Fredoka", fontWeight: 800, fontSize: 28,
-              color: "#fff", background: "rgba(15,23,42,0.7)",
-            }}>
-              💥 {score} popped
-            </div>
-          )}
+          {burst && <ParticleBurst at={burst} accent={accent} n={6} />}
         </div>
       )}
-    </div>
+
+      {phase === "done" && (
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>FINAL</span>
+        </div>
+      )}
+    </ArenaShell>
   );
 }

@@ -22,9 +22,9 @@
 const MINI_GAMES = {
   tap_race: {
     id: "tap_race",
-    name: "Tap Race",
-    icon: "👆",
-    tagline: "Tap as fast as you can!",
+    name: "Surge",
+    icon: "◉",
+    tagline: "Tap in rhythm. Pocket hits build combo.",
     // 5-second tap window. Humans cap around 8-10 taps/sec; we cap
     // generously at 15/sec = 75 to leave space for fast-but-real,
     // reject single-fingered macro spam.
@@ -34,9 +34,9 @@ const MINI_GAMES = {
   },
   reaction: {
     id: "reaction",
-    name: "Reaction",
+    name: "Trigger",
     icon: "⚡",
-    tagline: "Wait for green, tap fast!",
+    tagline: "Wait for FIRE. Fastest reaction wins.",
     // Score = max(0, 1000 - reaction_ms). 1000 is theoretical max,
     // sub-150ms human reaction is essentially impossible (Olympic
     // sprinters average 150ms+). Capping the score at 900 enforces
@@ -47,9 +47,9 @@ const MINI_GAMES = {
   },
   color_match: {
     id: "color_match",
-    name: "Color Match",
-    icon: "🎨",
-    tagline: "Match the COLOR, not the word!",
+    name: "Spectrum",
+    icon: "◐",
+    tagline: "Tap the hue. Ignore the word.",
     // 12 seconds, ~10 questions possible at 1.2s each. Cap at 12.
     duration_ms: 12000,
     higher_wins: true,
@@ -57,9 +57,9 @@ const MINI_GAMES = {
   },
   memory: {
     id: "memory",
-    name: "Memory",
-    icon: "🧠",
-    tagline: "Repeat the sequence!",
+    name: "Recall",
+    icon: "⬡",
+    tagline: "Watch the pattern. Replay it exactly.",
     // Level reached. Beating 20 is effectively impossible on a small
     // screen. Duration capped at 25s so a silent opponent can't hold
     // the match for 60s on this round alone (5-round match would
@@ -71,9 +71,9 @@ const MINI_GAMES = {
   },
   quick_math: {
     id: "quick_math",
-    name: "Quick Math",
-    icon: "🔢",
-    tagline: "Solve as many as you can!",
+    name: "Vector",
+    icon: "∑",
+    tagline: "Resolve expressions. Order matters.",
     // 15-second window. ~1.5s/question with 4-choice multiple choice
     // is realistic, cap at 15.
     duration_ms: 15000,
@@ -82,9 +82,9 @@ const MINI_GAMES = {
   },
   bubble_pop: {
     id: "bubble_pop",
-    name: "Bubble Pop",
-    icon: "🫧",
-    tagline: "Pop bubbles before they vanish!",
+    name: "Cascade",
+    icon: "◇",
+    tagline: "Hit at the peak. Chain perfect timing.",
     // 10s window. Bubbles spawn every ~350ms, live ~1200ms. Realistic
     // ceiling is ~25 pops on a phone; cap at 35 for headroom.
     duration_ms: 10000,
@@ -93,9 +93,9 @@ const MINI_GAMES = {
   },
   whack: {
     id: "whack",
-    name: "Whack-a-Mole",
-    icon: "🔨",
-    tagline: "Whack 'em before they hide!",
+    name: "Intercept",
+    icon: "▲",
+    tagline: "Neutralize threats. Spare friendlies.",
     // 12s. 3×3 grid, 1-3 moles up at any moment. Cap at 30 — a
     // perfect player on a small screen would top out around 25.
     duration_ms: 12000,
@@ -104,9 +104,9 @@ const MINI_GAMES = {
   },
   odd_one_out: {
     id: "odd_one_out",
-    name: "Odd One Out",
-    icon: "👀",
-    tagline: "Spot the different one!",
+    name: "Outlier",
+    icon: "◆",
+    tagline: "One tile breaks the pattern.",
     // 12s. Each round shows a 3×3 grid with one cell shaded slightly
     // off — the difficulty ramps as you score (smaller color delta).
     duration_ms: 12000,
@@ -115,9 +115,9 @@ const MINI_GAMES = {
   },
   sequence_tap: {
     id: "sequence_tap",
-    name: "Number Rush",
-    icon: "1️⃣",
-    tagline: "Tap 1, 2, 3… in order!",
+    name: "Sequence",
+    icon: "⊕",
+    tagline: "Tap ascending. Clear the grid.",
     // 15s. Numbers 1-12 scrambled, tap in order; new scramble on
     // completion. Score = total correct taps. Cap 60 (5 full rounds).
     duration_ms: 15000,
@@ -126,9 +126,9 @@ const MINI_GAMES = {
   },
   catch_bug: {
     id: "catch_bug",
-    name: "Catch the Bug",
-    icon: "🐛",
-    tagline: "Tap the bug — it teleports!",
+    name: "Anomaly",
+    icon: "✦",
+    tagline: "Contain the anomaly. Core grants ×3.",
     // 10s. Bug emoji teleports to a new random spot every time it's
     // tapped (and every ~900ms if not). Cap 25.
     duration_ms: 10000,
@@ -137,9 +137,9 @@ const MINI_GAMES = {
   },
   memorize: {
     id: "memorize",
-    name: "Memorize",
-    icon: "👁️",
-    tagline: "Was that emoji in the set?",
+    name: "Cipher",
+    icon: "⊡",
+    tagline: "Memorize the glyph set. Confirm or deny.",
     // 15s. Flash 5-7 emoji for ~1.5s, then ask yes/no on a probe
     // emoji. Multiple rounds. Cap 12.
     duration_ms: 15000,
@@ -148,9 +148,9 @@ const MINI_GAMES = {
   },
   hilo_sprint: {
     id: "hilo_sprint",
-    name: "Higher / Lower Sprint",
-    icon: "📊",
-    tagline: "Higher or lower than the last?",
+    name: "Tide",
+    icon: "△",
+    tagline: "Direction call. New reading vs prior.",
     // 12s. Show a number, then a new one — higher or lower? 2 buttons.
     // Each correct, new number takes the place of the previous.
     // Cap 20.

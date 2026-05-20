@@ -38,7 +38,32 @@
 //   • Per-round breakdown card in MatchEnd — game-by-game receipt
 //     showing who scored what on each mini-game. The natural marketing
 //     screenshot for a mini-game arena.
-const CACHE = "trivia-wheel-v29";
+// v30: ARENA PREMIUM REDESIGN. All 12 mini-games rebuilt against a
+// unified dark-slate, geometric, monospace-data design language.
+// No more children's-app emoji fest — every game now reads as a
+// premium-casual product (reference: Threes! / Reigns / Mini Metro).
+//
+// Renamed (server IDs unchanged for back-compat):
+//   Tap Race → Surge          Bubble Pop → Cascade
+//   Reaction → Trigger        Whack-a-Mole → Intercept
+//   Color Match → Spectrum    Catch the Bug → Anomaly
+//   Memory → Recall           Memorize → Cipher
+//   Quick Math → Vector       Number Rush → Sequence
+//   Odd One Out → Outlier     Higher/Lower → Tide
+//
+// New mechanics on top of the original game loops:
+//   Combo multiplier shared across all games (build chains for ×N)
+//   Surge: rhythm-pocket scoring (in-tempo taps = +2)
+//   Intercept: friend/foe + armored targets (3-tier scoring)
+//   Anomaly: every 5 hits spawns a +3 core for 1.5s
+//   Cipher: abstract glyph generator (~125 unique glyphs)
+//   Outlier: difficulty shifts dimension (color / rotation / scale)
+//   Tide: market-ticker visual aesthetic
+//
+// Shared infrastructure (src/minigames/_style.js):
+//   ArenaShell · HUDBar · BigDisplay · StartButton · ParticleBurst
+//   · useCombo() hook · per-game accent colors · keyframes
+const CACHE = "trivia-wheel-v30";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

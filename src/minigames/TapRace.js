@@ -1,44 +1,60 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo, ParticleBurst,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Tap Race — tap the big button as fast as you can in 5 seconds.
-// Score = number of taps (server clamps to max_score = 75, which is
-// 15 taps/sec — well above realistic single-finger ceilings).
+// Surge — formerly "Tap Race." Same surface mechanic (tap fast in
+// 5s) but redesigned around RHYTHM and INTENSITY:
 //
-// Why this game leads the launch lineup: zero learning curve, satisfying
-// haptic loop (every tap visibly increments the count), and a clear
-// "did I win" outcome. Also the most TikTok-able — watching someone
-// lose at the simplest possible game is the joke.
+//   • Big pulsing beat indicator (concentric rings expanding to a
+//     steady 220bpm tempo) — tapping IN the inner ring = +2 + combo,
+//     tapping out of phase = +1 (no combo).
+//   • Combo multiplier shown in HUD. Sustained-rhythm taps build
+//     to ×4. Hits within rhythm window count as "in the pocket."
+//   • Geometric arena — no cartoony button. The whole arena IS the
+//     tap target, with a centered glowing pulse you're trying to
+//     sync with.
+//
+// Server max is 75 (15 tps × 5s). Surface ceiling: in-rhythm tappers
+// hit higher score per tap, so 75 is much harder than the old
+// "spam any button" version. Skill ceiling exists where it didn't.
 
 const DURATION_MS = 5000;
+const BEAT_MS = 273; // ~220 bpm
+const POCKET_WINDOW_MS = 90;
 
 export default function TapRace({ onComplete, seed }) {
+  const accent = accentFor("tap_race");
   const [taps, setTaps] = useState(0);
+  const [score, setScore] = useState(0);
   const [remaining, setRemaining] = useState(DURATION_MS);
-  const [phase, setPhase] = useState("ready"); // ready | racing | done
+  const [phase, setPhase] = useState("ready");
+  const [burst, setBurst] = useState(null);
+  const [pocket, setPocket] = useState(false);
   const startRef = useRef(0);
   const doneRef = useRef(false);
+  const arenaRef = useRef(null);
+  const { combo, hit, miss } = useCombo(450);
 
-  // Countdown to start — single tap on the screen begins the race.
-  // No 3-2-1 timer; that's friction we don't want. The button copy
-  // makes the start-tap obvious.
-  const start = () => {
+  const begin = () => {
     if (phase !== "ready") return;
     setPhase("racing");
     startRef.current = Date.now();
+    playStinger("tap_race");
   };
 
   useEffect(() => {
     if (phase !== "racing") return;
     const tick = setInterval(() => {
-      const elapsed = Date.now() - startRef.current;
-      const left = Math.max(0, DURATION_MS - elapsed);
+      const left = Math.max(0, DURATION_MS - (Date.now() - startRef.current));
       setRemaining(left);
       if (left <= 0) {
         clearInterval(tick);
         finish();
       }
-    }, 50);
+    }, 40);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -48,71 +64,106 @@ export default function TapRace({ onComplete, seed }) {
     doneRef.current = true;
     setPhase("done");
     sfx.win?.();
-    onComplete({ score: taps });
+    onComplete({ score });
   };
 
-  // Tap handler — counts the tap if we're racing.
-  const onTap = () => {
-    if (phase === "ready") return start();
+  const onTap = (e) => {
+    if (phase === "ready") return begin();
     if (phase !== "racing") return;
+    const now = Date.now();
+    const elapsed = now - startRef.current;
+    // Phase within the current beat — 0 at beat start, BEAT_MS at end.
+    const phaseInBeat = elapsed % BEAT_MS;
+    const distFromBeat = Math.min(phaseInBeat, BEAT_MS - phaseInBeat);
+    const inPocket = distFromBeat < POCKET_WINDOW_MS;
     setTaps((t) => t + 1);
-    sfx.click?.();
+    if (inPocket) {
+      // In the pocket — +2 + combo build.
+      setScore((s) => Math.min(75, s + 2));
+      hit();
+      setPocket(true);
+      setTimeout(() => setPocket(false), 100);
+      sfx.click?.();
+    } else {
+      setScore((s) => Math.min(75, s + 1));
+      miss();
+      sfx.tick?.();
+    }
+    // Particle burst at the click coordinate.
+    if (arenaRef.current && e?.clientX != null) {
+      const r = arenaRef.current.getBoundingClientRect();
+      setBurst({ x: e.clientX - r.left, y: e.clientY - r.top, t: now });
+    }
   };
 
-  // Tap count visually pops on every increment.
+  // Time since round start, used to drive the pulsing beat indicator.
+  const beatElapsed = phase === "racing" ? (Date.now() - startRef.current) % BEAT_MS : 0;
+  const beatT = beatElapsed / BEAT_MS;
+
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
-        👆 Tap Race
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
-        Tap as fast as you can!
-      </div>
+    <ArenaShell title="SURGE" tagline="Tap in rhythm. In-the-pocket = ×combo." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent}
+              extras={<span style={{ color: "rgba(255,255,255,0.45)" }}>{taps} taps</span>} />
 
-      <div style={{
-        fontFamily: "Fredoka", fontSize: 60, fontWeight: 800, marginBottom: 8,
-        color: phase === "racing" ? "var(--accent, #fb923c)" : "var(--text)",
-        transition: "color 0.2s",
-      }}>
-        {taps}
-      </div>
-
-      {phase === "racing" && (
-        <div style={{ height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 999, overflow: "hidden", marginBottom: 18 }}>
+      {phase === "ready" ? (
+        <StartButton accent={accent} label="IGNITE"
+                     sublabel="Match the beat. Pocket hits chain combos."
+                     onStart={begin} />
+      ) : (
+        <div
+          ref={arenaRef}
+          onPointerDown={onTap}
+          style={{
+            position: "relative", width: "100%", height: 280,
+            background: `radial-gradient(circle at center, ${accent.hue}10, rgba(15,23,42,0.7))`,
+            borderRadius: 14, overflow: "hidden",
+            border: `1px solid ${pocket ? accent.hue + "60" : "rgba(255,255,255,0.05)"}`,
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "border-color 0.1s",
+          }}
+        >
+          {/* Outer expanding beat ring */}
           <div style={{
-            height: "100%",
-            width: `${(remaining / DURATION_MS) * 100}%`,
-            background: "linear-gradient(90deg, #fb923c, #ef4444)",
-            transition: "width 50ms linear",
+            position: "absolute",
+            width: 200 + beatT * 80, height: 200 + beatT * 80,
+            borderRadius: "50%",
+            border: `2px solid ${accent.hue}`,
+            opacity: 1 - beatT,
+            pointerEvents: "none",
           }} />
+          {/* Inner stable core */}
+          <div style={{
+            position: "absolute",
+            width: 120, height: 120, borderRadius: "50%",
+            background: `radial-gradient(circle, ${accent.hue}, ${accent.hue}40 70%, transparent)`,
+            boxShadow: pocket ? `0 0 60px ${accent.glow}` : `0 0 30px ${accent.glow}`,
+            transform: pocket ? "scale(1.12)" : "scale(1)",
+            transition: "transform 0.10s, box-shadow 0.10s",
+            pointerEvents: "none",
+          }} />
+          {/* Big score in center, dim until racing */}
+          <div style={{
+            position: "relative",
+            fontFamily: '"JetBrains Mono", monospace',
+            fontWeight: 800, fontSize: 56, color: "#fff",
+            fontVariantNumeric: "tabular-nums",
+            zIndex: 1,
+            textShadow: `0 0 12px ${accent.glow}`,
+            pointerEvents: "none",
+          }}>
+            {String(score).padStart(2, "0")}
+          </div>
+          {burst && <ParticleBurst at={burst} accent={accent} n={4} />}
         </div>
       )}
 
-      <button
-        onClick={onTap}
-        disabled={phase === "done"}
-        style={{
-          width: "100%", padding: "32px 16px",
-          fontSize: 28, fontFamily: "Fredoka", fontWeight: 800,
-          borderRadius: 18, border: "none", cursor: "pointer",
-          background: phase === "racing"
-            ? "linear-gradient(135deg, #fb923c, #ef4444)"
-            : phase === "done"
-            ? "rgba(255,255,255,0.08)"
-            : "linear-gradient(135deg, #f59e0b, #ef4444)",
-          color: "#fff",
-          transform: phase === "racing" ? "scale(0.98)" : "scale(1)",
-          transition: "transform 0.05s, background 0.2s",
-        }}
-      >
-        {phase === "ready" ? "TAP TO START" : phase === "racing" ? "TAP! TAP! TAP!" : `Done — ${taps}`}
-      </button>
-
-      {phase === "racing" && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-dim)" }}>
-          {(remaining / 1000).toFixed(1)}s left
+      {phase === "done" && (
+        <div style={{ textAlign: "center", marginTop: 14, fontSize: 12, letterSpacing: 2, color: "rgba(255,255,255,0.45)", textTransform: "uppercase" }}>
+          {taps} taps · {score} pts
         </div>
       )}
-    </div>
+    </ArenaShell>
   );
 }

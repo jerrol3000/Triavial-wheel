@@ -1,53 +1,67 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Quick Math — solve as many simple arithmetic problems as you can in
-// 15 seconds. 4-button multiple choice (avoids keyboard friction +
-// makes mobile play actually possible). +/-/× only — division is
-// rejection-prone with decimals.
+// Vector — formerly "Quick Math." Same surface mechanic (solve fast
+// arithmetic) but with mature design + harder expressions:
 //
-// Seeded so both players see identical problems (same difficulty
-// budget). The 4 choices include one correct + three "plausible
-// wrongs" (off by ±1, ±2, or order-of-magnitude swaps) so a player
-// can't just spot the "very different number" without computing.
+//   • Mixed-operator expressions where applicable:
+//       "12 + 7" (single op, 60% of rounds)
+//       "23 - 9 + 4" (chained, 25%)
+//       "8 × 7" or "12 × 3" (multiply, 15%)
+//   • Numbers in monospaced typography, treated as data display.
+//   • 4 choices in a 2×2 grid. Wrong distractors are plausible
+//     (off-by-one, swapped digits, or the "naive" answer if you
+//     ignore order of operations).
+//   • Combo system: chained correct answers within 1.4s multiply
+//     the dopamine.
 
 const DURATION_MS = 15000;
-const OPS = ["+", "-", "×"];
 
-function generate(rng) {
-  const op = OPS[rng.int(OPS.length)];
-  let a, b, ans;
-  if (op === "+") {
-    a = 5 + rng.int(40);
-    b = 5 + rng.int(40);
-    ans = a + b;
-  } else if (op === "-") {
-    a = 20 + rng.int(60);
-    b = 5 + rng.int(a - 4); // ensure positive result
-    ans = a - b;
+function gen(rng) {
+  const r = rng.int(100);
+  let text, ans;
+  if (r < 60) {
+    // Single operation +/-
+    if (rng.int(2)) {
+      const a = 8 + rng.int(45), b = 5 + rng.int(40);
+      text = `${a} + ${b}`; ans = a + b;
+    } else {
+      const a = 30 + rng.int(60), b = 5 + rng.int(a - 4);
+      text = `${a} − ${b}`; ans = a - b;
+    }
+  } else if (r < 85) {
+    // Chained — exercises order-of-operations
+    const a = 10 + rng.int(40), b = 4 + rng.int(15), c = 3 + rng.int(8);
+    const op2 = rng.int(2) ? "+" : "−";
+    text = `${a} − ${b} ${op2} ${c}`;
+    ans = op2 === "+" ? a - b + c : a - b - c;
   } else {
-    a = 2 + rng.int(11);
-    b = 2 + rng.int(11);
-    ans = a * b;
+    // Multiplication
+    const a = 2 + rng.int(11), b = 2 + rng.int(11);
+    text = `${a} × ${b}`; ans = a * b;
   }
-  // Build 3 plausible wrong choices.
+  // Distractors: plausible off-by-N values.
   const wrongs = new Set();
   while (wrongs.size < 3) {
     let w = ans + (rng.int(11) - 5);
-    if (w === ans || w < 0) w = ans + rng.int(7) + 1;
+    if (w === ans || w < 0) w = ans + rng.int(8) + 1;
     if (w !== ans) wrongs.add(w);
   }
   const choices = [...wrongs, ans];
-  // Deterministic shuffle of choices.
   for (let i = choices.length - 1; i > 0; i--) {
     const j = rng.int(i + 1);
     [choices[i], choices[j]] = [choices[j], choices[i]];
   }
-  return { text: `${a} ${op} ${b}`, ans, choices };
+  return { text, ans, choices };
 }
 
 export default function QuickMath({ onComplete, seed }) {
+  const accent = accentFor("quick_math");
   const rngRef = useRef(null);
   const [phase, setPhase] = useState("ready");
   const [problem, setProblem] = useState(null);
@@ -56,25 +70,23 @@ export default function QuickMath({ onComplete, seed }) {
   const [flash, setFlash] = useState(null);
   const startRef = useRef(0);
   const doneRef = useRef(false);
+  const { combo, hit, miss } = useCombo(1400);
 
   const begin = () => {
     if (phase !== "ready") return;
     rngRef.current = makeRng(seed);
     setPhase("racing");
     startRef.current = Date.now();
-    setProblem(generate(rngRef.current));
+    setProblem(gen(rngRef.current));
+    playStinger("quick_math");
   };
 
   useEffect(() => {
     if (phase !== "racing") return;
     const t = setInterval(() => {
-      const elapsed = Date.now() - startRef.current;
-      const left = Math.max(0, DURATION_MS - elapsed);
+      const left = Math.max(0, DURATION_MS - (Date.now() - startRef.current));
       setRemaining(left);
-      if (left <= 0) {
-        clearInterval(t);
-        finish();
-      }
+      if (left <= 0) { clearInterval(t); finish(); }
     }, 50);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,65 +106,57 @@ export default function QuickMath({ onComplete, seed }) {
       setScore((s) => s + 1);
       setFlash("good");
       sfx.correct?.();
+      hit();
     } else {
       setFlash("bad");
       sfx.wrong?.();
+      miss();
     }
-    setTimeout(() => setFlash(null), 150);
-    setProblem(generate(rngRef.current));
+    setTimeout(() => setFlash(null), 130);
+    setProblem(gen(rngRef.current));
   };
 
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>🔢 Quick Math</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · ✓ {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14 }}>
-        Solve as many as you can in 15 seconds.
-      </div>
+    <ArenaShell title="VECTOR" tagline="Solve in flow. Wrong answers break the chain." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #f59e0b, #ef4444)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="EXECUTE"
+                     sublabel="Mixed operators. Order of operations matters."
+                     onStart={begin} />
       )}
 
       {phase === "racing" && problem && (
         <>
           <div style={{
-            padding: "28px 16px", marginBottom: 14, borderRadius: 16,
-            background: flash === "good" ? "rgba(16,185,129,0.25)"
-                      : flash === "bad" ? "rgba(239,68,68,0.25)"
-                      : "rgba(255,255,255,0.04)",
-            transition: "background 0.15s",
-            fontFamily: "Fredoka", fontWeight: 800, fontSize: 44,
+            padding: "28px 16px", marginBottom: 12, borderRadius: 14,
+            background: flash === "good" ? "rgba(74,222,128,0.10)"
+                      : flash === "bad"  ? "rgba(248,113,113,0.10)"
+                                         : "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.05)",
+            transition: "background 0.10s",
+            textAlign: "center",
+            fontFamily: '"JetBrains Mono", monospace',
+            fontWeight: 800, fontSize: 44,
+            color: "#fff",
             letterSpacing: 2,
+            fontVariantNumeric: "tabular-nums",
           }}>
-            {problem.text} = ?
+            {problem.text} <span style={{ color: "rgba(255,255,255,0.4)" }}>=</span> <span style={{ color: accent.hue }}>?</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
             {problem.choices.map((c, i) => (
-              <button key={`${c}-${i}`} onClick={() => pick(c)}
+              <button key={`${c}-${i}`} onPointerDown={() => pick(c)}
                 style={{
-                  padding: "20px 0", borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  background: "rgba(255,255,255,0.06)", color: "var(--text)",
-                  fontFamily: "Fredoka", fontWeight: 800, fontSize: 20,
+                  padding: "22px 0", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontWeight: 800, fontSize: 22,
                   cursor: "pointer",
+                  fontVariantNumeric: "tabular-nums",
                 }}
               >
                 {c}
@@ -163,10 +167,15 @@ export default function QuickMath({ onComplete, seed }) {
       )}
 
       {phase === "done" && (
-        <div style={{ padding: "32px 16px", fontFamily: "Fredoka", fontSize: 22, fontWeight: 800 }}>
-          ✓ {score} solved
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>RESOLVED</span>
         </div>
       )}
-    </div>
+    </ArenaShell>
   );
 }

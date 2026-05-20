@@ -1,40 +1,114 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Memorize — show 5-7 emoji for 1.4 seconds, then hide them. A probe
-// emoji appears: was it in the set? Yes / No. New round, set grows
-// by 1 every 3 rounds. 15-second window. Score = correct yes/no.
+// Cipher — formerly "Memorize." Replaces the food-emoji probe ("was
+// that taco in the set?") with abstract glyphs drawn programmatically:
+// each glyph is a unique combination of a base shape (triangle, square,
+// hexagon, circle, diamond) + a fill pattern (solid, ring, dotted,
+// crosshatch, gradient) + a rotation. ~25 unique glyphs from a small
+// generator function. Genuinely abstract — the player has to actually
+// memorize, no shortcut from emoji familiarity.
 //
-// Seeded set + probe so both players see the IDENTICAL trial sequence.
-// Wrong answer = no score (no negative), but you can't lock-in your
-// answer until the set has been hidden — prevents pattern-tap spam.
-//
-// Why it's fun: working-memory load + time pressure. The "is this in
-// the set?" trial format is the canonical n-back style cognitive
-// challenge, and you can FEEL yourself getting smarter (or
-// embarrassed) across the 15 seconds.
+//   • Flash 5-7 glyphs for ~1.3s. Hide. Probe glyph appears: IS IT
+//     IN THE SET?
+//   • Set size grows from 5 to 7 over the first 6 rounds.
+//   • Combo system: chained correct answers within 1.6s build a
+//     multiplier. ×3 combo and you get a "perfect-streak" badge.
+//   • 50/50 in-set vs not-in-set distribution.
 
 const DURATION_MS = 15000;
-const FLASH_MS = 1400;
-const POOL = ["🍕","🍔","🍟","🌮","🍣","🍩","🍎","🍌","🍇","🍉","🥑","🥕","🌽","🥨","🧀","🥐","🍪","🎂","🍰","🍦","🍫","🍿","🥒","🥦","🍑","🍓","🥝","🍒","🥭","🫐","🥥","🍐"];
+const FLASH_MS = 1300;
+
+// Glyph dimensions: each glyph = { shape, fill, rotation }.
+const SHAPES = ["triangle", "square", "hex", "circle", "diamond"];
+const FILLS = ["solid", "ring", "dotted", "lines", "split"];
+const ROTATIONS = [0, 45, 90, 135];
+function totalGlyphCount() { return SHAPES.length * FILLS.length * ROTATIONS.length; }
+function decodeGlyph(idx) {
+  const r = idx % ROTATIONS.length;
+  const f = Math.floor(idx / ROTATIONS.length) % FILLS.length;
+  const s = Math.floor(idx / (ROTATIONS.length * FILLS.length)) % SHAPES.length;
+  return { shape: SHAPES[s], fill: FILLS[f], rotation: ROTATIONS[r] };
+}
 
 function buildRound(rng, roundIdx) {
-  // Set size grows from 5 to 7 over the first 6 rounds, then caps.
-  const size = Math.min(7, 5 + Math.floor(roundIdx / 3));
-  const shuffled = [...POOL];
-  for (let i = shuffled.length - 1; i > 0; i--) {
+  const setSize = Math.min(7, 5 + Math.floor(roundIdx / 3));
+  const pool = Array.from({ length: totalGlyphCount() }, (_, i) => i);
+  // Shuffle pool deterministically.
+  for (let i = pool.length - 1; i > 0; i--) {
     const j = rng.int(i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  const set = shuffled.slice(0, size);
-  // 50/50: probe is in the set or not.
+  const set = pool.slice(0, setSize);
   const inSet = rng.int(2) === 0;
-  const probe = inSet ? set[rng.int(set.length)] : shuffled[size + rng.int(shuffled.length - size)];
+  const probe = inSet ? set[rng.int(set.length)] : pool[setSize + rng.int(pool.length - setSize - 1)];
   return { set, probe, answer: inSet };
 }
 
+function Glyph({ idx, size = 48, accent }) {
+  const g = decodeGlyph(idx);
+  const stroke = "rgba(255,255,255,0.9)";
+  const fillSolid = accent?.hue || "#fcd34d";
+  const inner = size * 0.7;
+  return (
+    <div style={{
+      width: size, height: size,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      transform: `rotate(${g.rotation}deg)`,
+      filter: `drop-shadow(0 0 8px ${accent?.glow || "rgba(252,211,77,0.4)"})`,
+    }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <pattern id={`p-dots-${idx}`} width="4" height="4" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill={fillSolid} />
+          </pattern>
+          <pattern id={`p-lines-${idx}`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="3" height="6" fill={fillSolid} />
+          </pattern>
+          <linearGradient id={`p-split-${idx}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="50%" stopColor={fillSolid} />
+            <stop offset="50%" stopColor="rgba(255,255,255,0.15)" />
+          </linearGradient>
+        </defs>
+        {(() => {
+          const f = g.fill === "ring" ? "transparent"
+                  : g.fill === "dotted" ? `url(#p-dots-${idx})`
+                  : g.fill === "lines"  ? `url(#p-lines-${idx})`
+                  : g.fill === "split"  ? `url(#p-split-${idx})`
+                  :                       fillSolid;
+          const sw = g.fill === "ring" ? 3 : 1.5;
+          const cx = size / 2, cy = size / 2, r = inner / 2;
+          if (g.shape === "circle") return <circle cx={cx} cy={cy} r={r} fill={f} stroke={stroke} strokeWidth={sw} />;
+          if (g.shape === "square") {
+            const x = cx - r, y = cy - r;
+            return <rect x={x} y={y} width={r * 2} height={r * 2} fill={f} stroke={stroke} strokeWidth={sw} />;
+          }
+          if (g.shape === "diamond") {
+            return <polygon points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`} fill={f} stroke={stroke} strokeWidth={sw} />;
+          }
+          if (g.shape === "triangle") {
+            return <polygon points={`${cx},${cy - r} ${cx + r * 0.9},${cy + r * 0.6} ${cx - r * 0.9},${cy + r * 0.6}`} fill={f} stroke={stroke} strokeWidth={sw} />;
+          }
+          // hex
+          const pts = [];
+          for (let i = 0; i < 6; i++) {
+            const a = (Math.PI / 3) * i - Math.PI / 2;
+            pts.push(`${cx + Math.cos(a) * r},${cy + Math.sin(a) * r}`);
+          }
+          return <polygon points={pts.join(" ")} fill={f} stroke={stroke} strokeWidth={sw} />;
+        })()}
+      </svg>
+    </div>
+  );
+}
+
 export default function Memorize({ onComplete, seed }) {
+  const accent = accentFor("memorize");
   const rngRef = useRef(null);
   const [phase, setPhase] = useState("ready");
   const [step, setStep] = useState("show"); // show | probe
@@ -46,6 +120,7 @@ export default function Memorize({ onComplete, seed }) {
   const startRef = useRef(0);
   const flashTimerRef = useRef(null);
   const doneRef = useRef(false);
+  const { combo, hit, miss } = useCombo(1600);
 
   const next = (idx) => {
     if (!rngRef.current) return;
@@ -62,6 +137,7 @@ export default function Memorize({ onComplete, seed }) {
     setPhase("racing");
     startRef.current = Date.now();
     next(0);
+    playStinger("memorize");
   };
 
   useEffect(() => () => { if (flashTimerRef.current) clearTimeout(flashTimerRef.current); }, []);
@@ -71,10 +147,7 @@ export default function Memorize({ onComplete, seed }) {
     const tick = setInterval(() => {
       const left = Math.max(0, DURATION_MS - (Date.now() - startRef.current));
       setRemaining(left);
-      if (left <= 0) {
-        clearInterval(tick);
-        finish();
-      }
+      if (left <= 0) { clearInterval(tick); finish(); }
     }, 50);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,9 +167,11 @@ export default function Memorize({ onComplete, seed }) {
       setScore((s) => s + 1);
       setFlash("good");
       sfx.correct?.();
+      hit();
     } else {
       setFlash("bad");
       sfx.wrong?.();
+      miss();
     }
     setTimeout(() => setFlash(null), 180);
     const nextIdx = roundIdx + 1;
@@ -105,79 +180,64 @@ export default function Memorize({ onComplete, seed }) {
   };
 
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>👁️ Memorize</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · ✓ {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-        Watch the set. Then: was the next emoji in it?
-      </div>
+    <ArenaShell title="CIPHER" tagline="Memorize the set. Was the probe in it?" accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #6366f1, #ec4899)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="DECRYPT"
+                     sublabel="Glyphs flash briefly. Confirm or deny the probe."
+                     onStart={begin} />
       )}
 
       {phase === "racing" && round && (
         <>
           <div style={{
-            padding: "26px 16px", borderRadius: 16, marginBottom: 12,
-            background: flash === "good" ? "rgba(16,185,129,0.25)"
-                      : flash === "bad"  ? "rgba(239,68,68,0.25)"
-                                         : "rgba(255,255,255,0.04)",
-            minHeight: 92, display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 36, gap: 8, flexWrap: "wrap",
+            padding: 18, borderRadius: 14, marginBottom: 12,
+            background: flash === "good" ? "rgba(74,222,128,0.10)"
+                      : flash === "bad"  ? "rgba(248,113,113,0.10)"
+                                         : "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.05)",
             transition: "background 0.15s",
+            minHeight: 110, display: "flex", alignItems: "center", justifyContent: "center",
+            flexWrap: "wrap", gap: 10,
           }}>
             {step === "show"
-              ? round.set.map((e, i) => <span key={i}>{e}</span>)
-              : <span style={{ fontSize: 64 }}>{round.probe}</span>
+              ? round.set.map((g, i) => <Glyph key={i} idx={g} size={42} accent={accent} />)
+              : <Glyph idx={round.probe} size={80} accent={accent} />
             }
           </div>
 
           {step === "show" && (
-            <div style={{ fontSize: 13, color: "var(--text-dim)", fontStyle: "italic" }}>
-              Remember these…
+            <div style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.45)", textAlign: "center", textTransform: "uppercase" }}>
+              Memorize…
             </div>
           )}
           {step === "probe" && (
-            <div className="tw-row" style={{ gap: 8 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => answer(true)}
                 style={{
-                  flex: 1, padding: "20px 0", borderRadius: 14,
-                  border: "1px solid rgba(16,185,129,0.5)",
-                  background: "linear-gradient(135deg, rgba(16,185,129,0.25), rgba(34,197,94,0.25))",
-                  color: "#fff", fontFamily: "Fredoka", fontWeight: 800, fontSize: 18,
+                  flex: 1, padding: "20px 0", borderRadius: 12,
+                  border: "1px solid rgba(74,222,128,0.4)",
+                  background: "rgba(74,222,128,0.08)",
+                  color: "#fff", fontFamily: '"Inter", sans-serif', fontWeight: 800, fontSize: 14,
+                  letterSpacing: 2, textTransform: "uppercase",
                   cursor: "pointer",
                 }}
               >
-                ✓ In set
+                In set
               </button>
               <button onClick={() => answer(false)}
                 style={{
-                  flex: 1, padding: "20px 0", borderRadius: 14,
-                  border: "1px solid rgba(239,68,68,0.5)",
-                  background: "linear-gradient(135deg, rgba(239,68,68,0.25), rgba(244,63,94,0.25))",
-                  color: "#fff", fontFamily: "Fredoka", fontWeight: 800, fontSize: 18,
+                  flex: 1, padding: "20px 0", borderRadius: 12,
+                  border: "1px solid rgba(248,113,113,0.4)",
+                  background: "rgba(248,113,113,0.08)",
+                  color: "#fff", fontFamily: '"Inter", sans-serif', fontWeight: 800, fontSize: 14,
+                  letterSpacing: 2, textTransform: "uppercase",
                   cursor: "pointer",
                 }}
               >
-                ✕ Not in set
+                Not in set
               </button>
             </div>
           )}
@@ -185,10 +245,15 @@ export default function Memorize({ onComplete, seed }) {
       )}
 
       {phase === "done" && (
-        <div style={{ padding: "32px 16px", fontFamily: "Fredoka", fontSize: 22, fontWeight: 800 }}>
-          ✓ {score} correct
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>DECRYPTED</span>
         </div>
       )}
-    </div>
+    </ArenaShell>
   );
 }

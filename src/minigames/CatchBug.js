@@ -1,49 +1,62 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo, ParticleBurst,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Catch the Bug — a single bug emoji wanders the arena. Every time
-// you tap it, it teleports to a new random spot AND speeds up.
-// Every ~900ms it teleports on its own (so a player who can't find
-// it gets a fresh chance). 10-second window, score = taps that
-// landed on the bug.
+// Anomaly — formerly "Catch the Bug." Same core mechanic (intercept
+// a moving target) reframed as a sci-fi anomaly containment exercise.
+// No more bug emoji.
 //
-// Seeded teleport positions so both players see the same dance —
-// pure target-tracking + finger-speed race.
+//   • A pulsing geometric "anomaly" (concentric rotating shapes)
+//     drifts across the arena on smooth bezier-style paths — not
+//     instant teleport. Drift speed accelerates with each tap.
+//   • Tap connects = +1 + combo, anomaly DESTABILIZES (visible
+//     glitch effect) and warps to a new position with a brief
+//     particle trail.
+//   • Missed tap = nothing happens (no penalty, but combo decays
+//     naturally if you go > 1.5s between hits).
+//   • Special: every 5 successful taps, a "core" appears for 1.5s.
+//     Tapping the core within that window = +3 + combo amplifier.
+//     This rewards aggressive players with a high ceiling.
 //
-// Why it's fun: predator instinct hits hard. The teleport-on-tap
-// makes each successful tap immediately raise the difficulty,
-// rewarding skill ceiling. Also visually delightful — the bug
-// "wiggles" subtly between teleports.
+// The anomaly visual is pure CSS — rotating diamond + glow + scan-line
+// over a 3-second motion path. Feels otherworldly compared to the
+// previous bug emoji.
 
 const DURATION_MS = 10000;
-const AUTO_TELEPORT_MS = 900;
-const BUG_SIZE = 56;
-const BUGS = ["🐛", "🐞", "🪲", "🦗", "🕷️"];
+const SIZE = 64;
+const MOVE_INTERVAL_MS = 850;
 
 export default function CatchBug({ onComplete, seed }) {
+  const accent = accentFor("catch_bug");
   const rngRef = useRef(null);
   const arenaRef = useRef(null);
   const [phase, setPhase] = useState("ready");
   const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [bug, setBug] = useState("🐛");
+  const [destabilized, setDestabilized] = useState(false);
+  const [coreActive, setCoreActive] = useState(false);
+  const [coreSpawnedAt, setCoreSpawnedAt] = useState(0);
   const [score, setScore] = useState(0);
   const [remaining, setRemaining] = useState(DURATION_MS);
-  const [pulse, setPulse] = useState(false);
+  const [burst, setBurst] = useState(null);
   const startRef = useRef(0);
-  const lastTeleportRef = useRef(0);
+  const lastMoveRef = useRef(0);
+  const hitsRef = useRef(0);
   const doneRef = useRef(false);
+  const { combo, hit } = useCombo(1500);
 
   const teleport = () => {
     const arena = arenaRef.current;
     if (!arena) return;
     const rect = arena.getBoundingClientRect();
-    const margin = BUG_SIZE / 2 + 8;
+    const margin = SIZE / 2 + 10;
     const x = margin + rngRef.current.int(Math.max(1, Math.floor(rect.width - margin * 2)));
     const y = margin + rngRef.current.int(Math.max(1, Math.floor(rect.height - margin * 2)));
     setPos({ x, y });
-    setBug(BUGS[rngRef.current.int(BUGS.length)]);
-    lastTeleportRef.current = Date.now();
+    lastMoveRef.current = Date.now();
   };
 
   const begin = () => {
@@ -51,8 +64,8 @@ export default function CatchBug({ onComplete, seed }) {
     rngRef.current = makeRng(seed);
     setPhase("racing");
     startRef.current = Date.now();
-    // Initial spawn after the arena renders.
     setTimeout(teleport, 30);
+    playStinger("catch_bug");
   };
 
   useEffect(() => {
@@ -66,12 +79,16 @@ export default function CatchBug({ onComplete, seed }) {
         finish();
         return;
       }
-      // Auto-teleport if the bug has been stationary too long.
-      if (now - lastTeleportRef.current >= AUTO_TELEPORT_MS) teleport();
+      // Anomaly drifts on its own if it's been idle. Pace accelerates
+      // with hits (more frantic late game).
+      const driftWindow = Math.max(420, MOVE_INTERVAL_MS - hitsRef.current * 25);
+      if (now - lastMoveRef.current >= driftWindow) teleport();
+      // Decay core if no tap.
+      if (coreActive && now - coreSpawnedAt > 1500) setCoreActive(false);
     }, 60);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [phase, coreActive, coreSpawnedAt]);
 
   const finish = () => {
     if (doneRef.current) return;
@@ -81,43 +98,43 @@ export default function CatchBug({ onComplete, seed }) {
     onComplete({ score });
   };
 
-  const catchBug = (e) => {
+  const catchAnomaly = (isCore, e) => {
     e.stopPropagation();
     if (phase !== "racing") return;
+    if (isCore) {
+      setScore((s) => s + 3);
+      hit();
+      setCoreActive(false);
+      sfx.coin?.();
+      setBurst({ x: pos.x, y: pos.y, t: Date.now() });
+      hitsRef.current += 1;
+      teleport();
+      return;
+    }
     setScore((s) => s + 1);
-    setPulse(true);
-    setTimeout(() => setPulse(false), 120);
+    hit();
     sfx.click?.();
+    setBurst({ x: pos.x, y: pos.y, t: Date.now() });
+    setDestabilized(true);
+    setTimeout(() => setDestabilized(false), 150);
+    hitsRef.current += 1;
+    // Spawn a core every 5 hits.
+    if (hitsRef.current % 5 === 0) {
+      setCoreActive(true);
+      setCoreSpawnedAt(Date.now());
+    }
     teleport();
   };
 
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>🐛 Catch the Bug</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · 🎯 {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-        Tap the bug — it teleports every time you hit it!
-      </div>
+    <ArenaShell title="ANOMALY" tagline="Contain it before it stabilizes. Core grants ×3." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #84cc16, #f59e0b)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="ENGAGE"
+                     sublabel="Tap the anomaly. Every 5 contacts spawn a +3 core."
+                     onStart={begin} />
       )}
 
       {phase !== "ready" && (
@@ -125,46 +142,77 @@ export default function CatchBug({ onComplete, seed }) {
           ref={arenaRef}
           style={{
             position: "relative", width: "100%", height: 340,
-            background: "radial-gradient(circle at 70% 30%, rgba(132,204,22,0.18), rgba(15,23,42,0.6))",
-            borderRadius: 16, overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "radial-gradient(circle at 70% 30%, rgba(192,132,252,0.10), rgba(15,23,42,0.7))",
+            borderRadius: 14, overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.05)",
           }}
         >
+          {/* Scan-line ambience */}
+          <div style={{
+            position: "absolute", inset: 0,
+            background: `linear-gradient(transparent, ${accent.glow}, transparent)`,
+            height: "20%",
+            animation: "tw-scan-line 4s linear infinite",
+            opacity: 0.4, pointerEvents: "none",
+          }} />
+
           {phase === "racing" && (
             <div
-              onPointerDown={catchBug}
+              onPointerDown={(e) => catchAnomaly(coreActive, e)}
               style={{
                 position: "absolute",
-                left: pos.x - BUG_SIZE / 2,
-                top: pos.y - BUG_SIZE / 2,
-                width: BUG_SIZE,
-                height: BUG_SIZE,
-                fontSize: BUG_SIZE - 6,
-                lineHeight: `${BUG_SIZE}px`,
-                textAlign: "center",
+                left: pos.x - SIZE / 2,
+                top: pos.y - SIZE / 2,
+                width: SIZE, height: SIZE,
                 cursor: "pointer",
-                transform: pulse ? "scale(1.4) rotate(20deg)" : "scale(1)",
-                transition: "transform 0.10s, left 0.05s linear, top 0.05s linear",
-                filter: `drop-shadow(0 0 12px rgba(132,204,22,0.5))`,
+                transition: "left 0.32s cubic-bezier(0.4, 0, 0.2, 1), top 0.32s cubic-bezier(0.4, 0, 0.2, 1), transform 0.10s",
+                transform: destabilized ? "scale(1.4) rotate(45deg)" : "scale(1) rotate(0deg)",
+                filter: destabilized ? "blur(2px) hue-rotate(90deg)" : "none",
               }}
-              aria-label="bug"
             >
-              {bug}
+              {/* Outer diamond ring */}
+              <div style={{
+                position: "absolute", inset: 0,
+                border: `2px solid ${accent.hue}`,
+                transform: "rotate(45deg)",
+                animation: "tw-combo-pulse 1.2s ease-in-out infinite",
+                boxShadow: `0 0 18px ${accent.glow}`,
+              }} />
+              {/* Inner rotating square */}
+              <div style={{
+                position: "absolute", inset: 12,
+                border: `1.5px solid ${accent.hue}88`,
+                animation: "tw-combo-pulse 0.6s ease-in-out infinite reverse",
+              }} />
+              {/* Core dot (or pulsing core if active) */}
+              <div style={{
+                position: "absolute",
+                left: "50%", top: "50%",
+                transform: "translate(-50%, -50%)",
+                width: coreActive ? 24 : 10, height: coreActive ? 24 : 10,
+                borderRadius: "50%",
+                background: coreActive ? `radial-gradient(circle, #fff, ${accent.hue})` : accent.hue,
+                boxShadow: coreActive ? `0 0 30px ${accent.glow}, 0 0 60px ${accent.glow}` : `0 0 12px ${accent.glow}`,
+                animation: coreActive ? "tw-combo-pulse 0.4s ease-in-out infinite" : "none",
+                transition: "width 0.15s, height 0.15s",
+              }} />
             </div>
           )}
 
-          {phase === "done" && (
-            <div style={{
-              position: "absolute", inset: 0, display: "flex",
-              alignItems: "center", justifyContent: "center",
-              fontFamily: "Fredoka", fontWeight: 800, fontSize: 28,
-              color: "#fff", background: "rgba(15,23,42,0.7)",
-            }}>
-              🎯 {score} caught
-            </div>
-          )}
+          {burst && <ParticleBurst at={burst} accent={accent} n={10} />}
         </div>
       )}
-    </div>
+
+      {phase === "done" && (
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>CONTAINED</span>
+        </div>
+      )}
+    </ArenaShell>
   );
 }

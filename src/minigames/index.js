@@ -16,19 +16,21 @@ import CatchBug from "./CatchBug";
 import Memorize from "./Memorize";
 import HiLoSprint from "./HiLoSprint";
 
+// Display names + icons match the redesigned premium-casual aesthetic
+// (no emoji-heavy "child app" feel). Server IDs unchanged for back-compat.
 export const GAMES = {
-  tap_race:     { component: TapRace,    name: "Tap Race",       icon: "👆" },
-  reaction:     { component: Reaction,   name: "Reaction",       icon: "⚡" },
-  color_match:  { component: ColorMatch, name: "Color Match",    icon: "🎨" },
-  memory:       { component: Memory,     name: "Memory",         icon: "🧠" },
-  quick_math:   { component: QuickMath,  name: "Quick Math",     icon: "🔢" },
-  bubble_pop:   { component: BubblePop,  name: "Bubble Pop",     icon: "🫧" },
-  whack:        { component: Whack,      name: "Whack-a-Mole",   icon: "🔨" },
-  odd_one_out:  { component: OddOneOut,  name: "Odd One Out",    icon: "👀" },
-  sequence_tap: { component: NumberRush, name: "Number Rush",    icon: "1️⃣" },
-  catch_bug:    { component: CatchBug,   name: "Catch the Bug",  icon: "🐛" },
-  memorize:     { component: Memorize,   name: "Memorize",       icon: "👁️" },
-  hilo_sprint:  { component: HiLoSprint, name: "Higher / Lower", icon: "📊" },
+  tap_race:     { component: TapRace,    name: "Surge",     icon: "◉" },
+  reaction:     { component: Reaction,   name: "Trigger",   icon: "⚡" },
+  color_match:  { component: ColorMatch, name: "Spectrum",  icon: "◐" },
+  memory:       { component: Memory,     name: "Recall",    icon: "⬡" },
+  quick_math:   { component: QuickMath,  name: "Vector",    icon: "∑" },
+  bubble_pop:   { component: BubblePop,  name: "Cascade",   icon: "◇" },
+  whack:        { component: Whack,      name: "Intercept", icon: "▲" },
+  odd_one_out:  { component: OddOneOut,  name: "Outlier",   icon: "◆" },
+  sequence_tap: { component: NumberRush, name: "Sequence",  icon: "⊕" },
+  catch_bug:    { component: CatchBug,   name: "Anomaly",   icon: "✦" },
+  memorize:     { component: Memorize,   name: "Cipher",    icon: "⊡" },
+  hilo_sprint:  { component: HiLoSprint, name: "Tide",      icon: "△" },
 };
 
 // Pretty name/icon lookup helpers for share cards + result rows.

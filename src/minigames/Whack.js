@@ -1,32 +1,55 @@
 import React, { useEffect, useState, useRef } from "react";
 import { sfx } from "../utils/sound";
 import { makeRng } from "./_seed";
+import {
+  ArenaShell, HUDBar, StartButton, MinigameKeyframes, accentFor, useCombo, ParticleBurst,
+} from "./_style";
+import { playStinger } from "./_audio";
 
-// Whack-a-Mole — 3×3 grid of holes. Moles pop up at seeded random
-// holes; you tap them before they retreat (~900ms window). As time
-// progresses, two moles can be up at once. Score = moles whacked.
+// Intercept — formerly "Whack-a-Mole." Same surface mechanic (tap
+// targets in a grid) but rebuilt as a tactical-feeling threat
+// intercept exercise. No more cute hamster emoji.
 //
-// Seeded so both players see identical pop sequences — the race is
-// purely about reaction + accuracy. Mobile-friendly because the hit
-// targets are large grid cells.
+//   • 3×3 grid of dark "sentry slots". Targets appear as glowing
+//     geometric markers — square (RED) or circle (CYAN).
+//   • TAP RED to neutralize: +1 + combo. TAP CYAN to skip (it
+//     auto-defuses): no penalty, no points. Tapping CYAN incorrectly
+//     breaks the combo and counts as a friendly-fire miss.
+//   • A small fraction of targets are "armored" — they require two
+//     taps. Worth +3 each. Visual: brighter pulse.
+//   • Spawn rate accelerates over time. Multiple targets up at once
+//     in the back half of the round.
 //
-// Why it's fun: the 3×3 grid is intuitive at a glance, moles
-// telegraph their arrival with a "rising" animation, and there's
-// a satisfying squish on a successful whack.
+// Cap unchanged (30) but achievable score now has tactical texture.
+// Friendly-fire prevention adds the "wait before tapping" cognitive
+// load that makes it feel mature, not button-mashy.
 
 const DURATION_MS = 12000;
-const MOLE_LIFETIME_MS = 900;
+const TARGET_LIFETIME_MS = 1000;
 const SPAWN_INTERVAL_MS = 600;
 
+function rollKind(rng, elapsed) {
+  // Mostly hostile (red), small fraction friendly (cyan), rare armored.
+  const r = rng.int(100);
+  // Armored chance ramps from 0% at start to 12% at end.
+  const armoredChance = Math.min(12, Math.floor(elapsed / 1000));
+  if (r < armoredChance) return "armored";
+  if (r < 18 + armoredChance) return "friendly";
+  return "hostile";
+}
+
 export default function Whack({ onComplete, seed }) {
+  const accent = accentFor("whack");
   const rngRef = useRef(null);
   const [phase, setPhase] = useState("ready");
   const [score, setScore] = useState(0);
   const [remaining, setRemaining] = useState(DURATION_MS);
-  const [activeMoles, setActiveMoles] = useState({}); // { cellIdx: { spawnedAt, hit } }
+  const [active, setActive] = useState({}); // cell idx → { kind, spawnedAt, hits, hit }
+  const [burst, setBurst] = useState(null);
   const startRef = useRef(0);
   const lastSpawnRef = useRef(0);
   const doneRef = useRef(false);
+  const { combo, hit, miss } = useCombo(1200);
 
   const begin = () => {
     if (phase !== "ready") return;
@@ -34,6 +57,7 @@ export default function Whack({ onComplete, seed }) {
     setPhase("racing");
     startRef.current = Date.now();
     lastSpawnRef.current = startRef.current - SPAWN_INTERVAL_MS;
+    playStinger("whack");
   };
 
   useEffect(() => {
@@ -44,30 +68,33 @@ export default function Whack({ onComplete, seed }) {
       const left = Math.max(0, DURATION_MS - elapsed);
       setRemaining(left);
 
-      // Age out expired moles.
-      setActiveMoles((prev) => {
+      // Age out expired targets. Hostile/armored expiring without hit = combo break.
+      setActive((prev) => {
         const next = { ...prev };
         let changed = false;
+        let expiredHostile = 0;
         for (const cell of Object.keys(next)) {
-          if (now - next[cell].spawnedAt > MOLE_LIFETIME_MS) {
+          if (now - next[cell].spawnedAt > TARGET_LIFETIME_MS) {
+            if ((next[cell].kind === "hostile" || next[cell].kind === "armored") && !next[cell].hit) expiredHostile++;
             delete next[cell];
             changed = true;
           }
         }
+        if (expiredHostile > 0) miss();
         return changed ? next : prev;
       });
 
-      // Spawn cadence: faster as time progresses.
-      const cadence = Math.max(380, SPAWN_INTERVAL_MS - elapsed / 50);
+      // Spawn cadence: 600ms → 360ms over the round.
+      const cadence = Math.max(360, SPAWN_INTERVAL_MS - elapsed / 35);
       if (now - lastSpawnRef.current >= cadence && left > 0) {
         lastSpawnRef.current = now;
-        setActiveMoles((prev) => {
-          // Find a free cell.
+        setActive((prev) => {
           const free = [];
           for (let i = 0; i < 9; i++) if (!prev[i]) free.push(i);
           if (!free.length) return prev;
           const cell = free[rngRef.current.int(free.length)];
-          return { ...prev, [cell]: { spawnedAt: now, hit: false } };
+          const kind = rollKind(rngRef.current, elapsed);
+          return { ...prev, [cell]: { kind, spawnedAt: now, hits: 0, hit: false } };
         });
       }
 
@@ -88,111 +115,147 @@ export default function Whack({ onComplete, seed }) {
     onComplete({ score });
   };
 
-  const whack = (cellIdx, e) => {
+  const tap = (cellIdx, e) => {
     e.stopPropagation();
     if (phase !== "racing") return;
-    setActiveMoles((prev) => {
-      if (!prev[cellIdx] || prev[cellIdx].hit) return prev;
-      const next = { ...prev, [cellIdx]: { ...prev[cellIdx], hit: true } };
-      // Remove the dead mole after the squish animation.
+    const target = active[cellIdx];
+    if (!target || target.hit) return;
+    if (target.kind === "friendly") {
+      // Friendly fire — no points, combo break, brief shake.
+      miss();
+      sfx.wrong?.();
+      setActive((prev) => {
+        const next = { ...prev };
+        next[cellIdx] = { ...target, hit: true, friendlyHit: true };
+        setTimeout(() => {
+          setActive((cur) => { const o = { ...cur }; delete o[cellIdx]; return o; });
+        }, 200);
+        return next;
+      });
+      return;
+    }
+    if (target.kind === "armored") {
+      const hits = target.hits + 1;
+      if (hits < 2) {
+        setActive((prev) => ({ ...prev, [cellIdx]: { ...target, hits } }));
+        sfx.click?.();
+        return;
+      }
+      setScore((s) => s + 3);
+      hit();
+      sfx.coin?.();
+    } else {
+      setScore((s) => s + 1);
+      hit();
+      sfx.click?.();
+    }
+    setBurst({ x: 0, y: 0, t: Date.now(), cell: cellIdx });
+    setActive((prev) => {
+      const next = { ...prev, [cellIdx]: { ...target, hit: true } };
       setTimeout(() => {
-        setActiveMoles((cur) => {
-          if (!cur[cellIdx]) return cur;
-          const out = { ...cur };
-          delete out[cellIdx];
-          return out;
-        });
-      }, 180);
+        setActive((cur) => { const o = { ...cur }; delete o[cellIdx]; return o; });
+      }, 160);
       return next;
     });
-    setScore((s) => s + 1);
-    sfx.click?.();
   };
 
   return (
-    <div className="tw-card" style={{ textAlign: "center", userSelect: "none" }}>
-      <div className="tw-row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontFamily: "Fredoka", fontSize: 14, fontWeight: 700 }}>🔨 Whack-a-Mole</span>
-        {phase === "racing" && (
-          <span className="tw-pill" style={{ fontSize: 11 }}>
-            ⏱ {(remaining / 1000).toFixed(1)}s · 🔨 {score}
-          </span>
-        )}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10 }}>
-        Tap the moles before they hide!
-      </div>
+    <ArenaShell title="INTERCEPT" tagline="Neutralize threats. Spare friendlies." accent={accent}>
+      <MinigameKeyframes />
+      <HUDBar remainingMs={remaining} score={score} combo={combo} accent={accent} />
 
       {phase === "ready" && (
-        <button
-          onClick={begin}
-          style={{
-            width: "100%", padding: "32px 16px",
-            fontSize: 22, fontFamily: "Fredoka", fontWeight: 800,
-            borderRadius: 18, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #84cc16, #65a30d)",
-            color: "#fff",
-          }}
-        >
-          Tap to start
-        </button>
+        <StartButton accent={accent} label="BEGIN"
+                     sublabel="🟥 = hit · 🔷 = skip · armored = double-tap"
+                     onStart={begin} />
       )}
 
       {phase !== "ready" && (
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8,
-          padding: 8, background: "rgba(34,197,94,0.05)", borderRadius: 16,
-          border: "1px solid rgba(34,197,94,0.15)",
+          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6,
+          padding: 6, borderRadius: 14,
+          background: "rgba(0,0,0,0.4)",
+          border: "1px solid rgba(255,255,255,0.05)",
         }}>
           {Array.from({ length: 9 }, (_, i) => {
-            const mole = activeMoles[i];
-            const isUp = !!mole;
-            const isHit = mole?.hit;
+            const t = active[i];
             return (
               <button
                 key={i}
-                onPointerDown={(e) => whack(i, e)}
-                aria-label={`hole-${i}`}
+                onPointerDown={(e) => tap(i, e)}
                 style={{
                   position: "relative",
                   aspectRatio: "1",
-                  borderRadius: 16,
-                  background: "radial-gradient(circle at 50% 80%, #422006, #1c1917)",
-                  border: "2px solid #292524",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.02)",
+                  border: "1px solid rgba(255,255,255,0.06)",
                   overflow: "hidden",
                   cursor: "pointer",
+                  animation: t?.friendlyHit ? "tw-shake 0.3s ease" : undefined,
                 }}
               >
-                {/* Dirt ring */}
+                {/* Sentry slot grid lines */}
                 <div style={{
-                  position: "absolute", inset: "auto 8% 0", height: "30%",
-                  background: "radial-gradient(ellipse at center, #78350f, #422006 70%)",
-                  borderRadius: "50%",
+                  position: "absolute", inset: 4,
+                  border: "1px dashed rgba(255,255,255,0.06)",
+                  borderRadius: 8,
                 }} />
-                {/* Mole */}
-                <div style={{
-                  position: "absolute", left: "50%", top: "50%",
-                  transform: `translate(-50%, ${isUp ? (isHit ? "10%" : "-10%") : "60%"}) scale(${isHit ? 0.7 : 1})`,
-                  transition: "transform 0.15s cubic-bezier(0.3, 1.8, 0.4, 1)",
-                  fontSize: "min(48px, 9vw)",
-                  filter: isHit ? "grayscale(0.5)" : "none",
-                }}>
-                  {isHit ? "💥" : "🐹"}
-                </div>
+                {t && <TargetMarker target={t} />}
               </button>
             );
           })}
-
-          {phase === "done" && (
-            <div style={{
-              gridColumn: "1 / -1", fontFamily: "Fredoka", fontWeight: 800,
-              fontSize: 22, padding: 16,
-            }}>
-              🔨 {score} whacked
-            </div>
-          )}
         </div>
       )}
+
+      {phase === "done" && (
+        <div style={{
+          textAlign: "center", padding: "20px 0",
+          fontFamily: '"JetBrains Mono", monospace',
+          fontWeight: 800, fontSize: 32, color: accent.hue,
+          textShadow: `0 0 20px ${accent.glow}`,
+        }}>
+          {score} <span style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", marginLeft: 8 }}>NEUTRALIZED</span>
+        </div>
+      )}
+    </ArenaShell>
+  );
+}
+
+function TargetMarker({ target }) {
+  const isFriendly = target.kind === "friendly";
+  const isArmored = target.kind === "armored";
+  const color = isFriendly ? "#22d3ee" : isArmored ? "#fbbf24" : "#f43f5e";
+  const glow = isFriendly ? "rgba(34,211,238,0.5)" : isArmored ? "rgba(251,191,36,0.6)" : "rgba(244,63,94,0.7)";
+  const shape = isFriendly ? "circle" : "square";
+  const damaged = isArmored && target.hits > 0;
+  return (
+    <div style={{
+      position: "absolute", left: "50%", top: "50%",
+      transform: `translate(-50%, -50%) scale(${target.hit ? 0 : 1})`,
+      transition: "transform 0.15s cubic-bezier(0.3, 1.8, 0.4, 1)",
+      filter: damaged ? "brightness(0.7) saturate(0.7)" : "none",
+      animation: "tw-pop 0.18s ease-out",
+    }}>
+      <div style={{
+        width: 40, height: 40,
+        borderRadius: shape === "circle" ? "50%" : 6,
+        background: `linear-gradient(135deg, ${color}, ${color}aa)`,
+        boxShadow: `0 0 24px ${glow}, inset 0 0 8px rgba(255,255,255,0.3)`,
+        border: `2px solid ${color}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        position: "relative",
+      }}>
+        {isArmored && (
+          <div style={{
+            position: "absolute", inset: -4,
+            border: `2px solid ${color}80`, borderRadius: 8,
+            animation: "tw-combo-pulse 0.8s ease-in-out infinite",
+          }} />
+        )}
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>
+          {isFriendly ? "◌" : isArmored ? "◆" : "■"}
+        </div>
+      </div>
     </div>
   );
 }

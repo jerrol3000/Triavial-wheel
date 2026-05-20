@@ -1,18 +1,34 @@
 // Central registry of mini-game components by type. Adding a new
 // game = drop a file in this folder + register it here. The runner
-// below + the rest of the app stay generic.
+// below + the rest of the app stay generic. Keys MUST match the IDs
+// in server/minigames.js — that's the contract the server uses to
+// describe a round to the client.
 import TapRace from "./TapRace";
 import Reaction from "./Reaction";
 import ColorMatch from "./ColorMatch";
 import Memory from "./Memory";
 import QuickMath from "./QuickMath";
+import BubblePop from "./BubblePop";
+import Whack from "./Whack";
+import OddOneOut from "./OddOneOut";
+import NumberRush from "./NumberRush";
+import CatchBug from "./CatchBug";
+import Memorize from "./Memorize";
+import HiLoSprint from "./HiLoSprint";
 
 export const GAMES = {
-  tap_race:    { component: TapRace,    name: "Tap Race",    icon: "👆" },
-  reaction:    { component: Reaction,   name: "Reaction",    icon: "⚡" },
-  color_match: { component: ColorMatch, name: "Color Match", icon: "🎨" },
-  memory:      { component: Memory,     name: "Memory",      icon: "🧠" },
-  quick_math:  { component: QuickMath,  name: "Quick Math",  icon: "🔢" },
+  tap_race:     { component: TapRace,    name: "Tap Race",       icon: "👆" },
+  reaction:     { component: Reaction,   name: "Reaction",       icon: "⚡" },
+  color_match:  { component: ColorMatch, name: "Color Match",    icon: "🎨" },
+  memory:       { component: Memory,     name: "Memory",         icon: "🧠" },
+  quick_math:   { component: QuickMath,  name: "Quick Math",     icon: "🔢" },
+  bubble_pop:   { component: BubblePop,  name: "Bubble Pop",     icon: "🫧" },
+  whack:        { component: Whack,      name: "Whack-a-Mole",   icon: "🔨" },
+  odd_one_out:  { component: OddOneOut,  name: "Odd One Out",    icon: "👀" },
+  sequence_tap: { component: NumberRush, name: "Number Rush",    icon: "1️⃣" },
+  catch_bug:    { component: CatchBug,   name: "Catch the Bug",  icon: "🐛" },
+  memorize:     { component: Memorize,   name: "Memorize",       icon: "👁️" },
+  hilo_sprint:  { component: HiLoSprint, name: "Higher / Lower", icon: "📊" },
 };
 
 // Pretty name/icon lookup helpers for share cards + result rows.

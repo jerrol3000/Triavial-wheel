@@ -1,17 +1,19 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v26: ARENA PIVOT. The product is no longer a trivia game — it's a
-// 1v1 mini-game arena. Trivia questions are gone from VS and Friend
-// Challenges; both flows now sequence 5 mini-games per match:
-//   👆 Tap Race · ⚡ Reaction · 🎨 Color Match · 🧠 Memory · 🔢 Quick Math
-// Each round is 5-15 seconds. Per-round score (number of taps,
-// reaction ms, correct count, memory level) is clamped server-side
-// against a registered max so a tampered client can't post nonsense.
-// Score-comparison resolution uses the game's higher_wins flag.
-// Power Cards re-skinned to work for mini-games: Spy (peek opponent
-// score in real time), Sabotage (cut 30% of opponent's round timer),
-// Multiplier (2x your next round's score).
-const CACHE = "trivia-wheel-v26";
+// v27: ARENA LAUNCH LINEUP EXPANDED. Mini-game roster grows from 5
+// to 12 with 7 new games:
+//   🫧 Bubble Pop      — pop bubbles before they vanish
+//   🔨 Whack-a-Mole    — 3×3 grid, moles pop up
+//   👀 Odd One Out     — spot the slightly different cell
+//   1️⃣ Number Rush     — tap 1→12 in order on a scrambled grid
+//   🐛 Catch the Bug   — bug teleports every tap
+//   👁️ Memorize        — was that emoji in the set?
+//   📊 Higher / Lower  — number sprint
+// With 12 games picked-5-at-a-time, every match is a different
+// combination. Server's pickGames() shuffle is deterministic per
+// match seed so VS opponents + friend-duel sides race identical
+// content.
+const CACHE = "trivia-wheel-v27";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

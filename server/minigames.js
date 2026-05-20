@@ -77,6 +77,84 @@ const MINI_GAMES = {
     higher_wins: true,
     max_score: 15,
   },
+  bubble_pop: {
+    id: "bubble_pop",
+    name: "Bubble Pop",
+    icon: "🫧",
+    tagline: "Pop bubbles before they vanish!",
+    // 10s window. Bubbles spawn every ~350ms, live ~1200ms. Realistic
+    // ceiling is ~25 pops on a phone; cap at 35 for headroom.
+    duration_ms: 10000,
+    higher_wins: true,
+    max_score: 35,
+  },
+  whack: {
+    id: "whack",
+    name: "Whack-a-Mole",
+    icon: "🔨",
+    tagline: "Whack 'em before they hide!",
+    // 12s. 3×3 grid, 1-3 moles up at any moment. Cap at 30 — a
+    // perfect player on a small screen would top out around 25.
+    duration_ms: 12000,
+    higher_wins: true,
+    max_score: 30,
+  },
+  odd_one_out: {
+    id: "odd_one_out",
+    name: "Odd One Out",
+    icon: "👀",
+    tagline: "Spot the different one!",
+    // 12s. Each round shows a 3×3 grid with one cell shaded slightly
+    // off — the difficulty ramps as you score (smaller color delta).
+    duration_ms: 12000,
+    higher_wins: true,
+    max_score: 18,
+  },
+  sequence_tap: {
+    id: "sequence_tap",
+    name: "Number Rush",
+    icon: "1️⃣",
+    tagline: "Tap 1, 2, 3… in order!",
+    // 15s. Numbers 1-12 scrambled, tap in order; new scramble on
+    // completion. Score = total correct taps. Cap 60 (5 full rounds).
+    duration_ms: 15000,
+    higher_wins: true,
+    max_score: 60,
+  },
+  catch_bug: {
+    id: "catch_bug",
+    name: "Catch the Bug",
+    icon: "🐛",
+    tagline: "Tap the bug — it teleports!",
+    // 10s. Bug emoji teleports to a new random spot every time it's
+    // tapped (and every ~900ms if not). Cap 25.
+    duration_ms: 10000,
+    higher_wins: true,
+    max_score: 25,
+  },
+  memorize: {
+    id: "memorize",
+    name: "Memorize",
+    icon: "👁️",
+    tagline: "Was that emoji in the set?",
+    // 15s. Flash 5-7 emoji for ~1.5s, then ask yes/no on a probe
+    // emoji. Multiple rounds. Cap 12.
+    duration_ms: 15000,
+    higher_wins: true,
+    max_score: 12,
+  },
+  hilo_sprint: {
+    id: "hilo_sprint",
+    name: "Higher / Lower Sprint",
+    icon: "📊",
+    tagline: "Higher or lower than the last?",
+    // 12s. Show a number, then a new one — higher or lower? 2 buttons.
+    // Each correct, new number takes the place of the previous.
+    // Cap 20.
+    duration_ms: 12000,
+    higher_wins: true,
+    max_score: 20,
+  },
 };
 
 const GAME_IDS = Object.keys(MINI_GAMES);

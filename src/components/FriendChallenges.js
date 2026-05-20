@@ -7,6 +7,7 @@ import { setView, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { snarkForAnswer, snarkForRound } from "../utils/snark";
+import { confirmDialog } from "../utils/confirm";
 
 // FriendChallenges — list + play UI for the head-to-head challenge feature.
 //
@@ -245,7 +246,7 @@ function ResultRevealCard({ c, me, onClose, onRematch }) {
 
 // ── Per-screen logic ─────────────────────────────────────────────
 
-function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onPlayedAnnounce, onResolvedAnnounce, lastChange, expandedId, onExpand }) {
+function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onCancel, onDismiss, onClearHistory, lastChange, expandedId, onExpand }) {
   const dispatch = useDispatch();
 
   const incoming = challenges.filter((c) => c.receiver_id === me.id && c.status === "pending" && c.receiver_correct === null);
@@ -308,6 +309,12 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onP
             // event lands — a subtle glow draws the eye without
             // shouting.
             const isFresh = lastChange && lastChange.challenge_id === c.id && (Date.now() - lastChange.at) < 6000;
+            // Cancel is only allowed BEFORE the receiver has answered.
+            // Once they've played their side, the sender is locked in —
+            // letting them bail would be a wager-grief escape hatch
+            // (the server enforces this too; we hide the button to
+            // match).
+            const canCancel = !opponentScored;
             return (
               <div key={c.id} className="tw-row" style={{
                 justifyContent: "space-between", padding: "10px 12px", marginLeft: -12, marginRight: -12,
@@ -315,8 +322,9 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onP
                 borderRadius: isFresh ? 10 : 0,
                 background: isFresh ? "rgba(245,158,11,0.10)" : "transparent",
                 transition: "background 0.5s ease, border-radius 0.5s ease",
+                gap: 8,
               }}>
-                <div>
+                <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
                     {c.receiver_username}
                     <RivalryChip h2h={h2h} oppId={c.receiver_id} />
@@ -328,15 +336,31 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onP
                     )}
                   </div>
                 </div>
-                <span className="tw-pill" style={{
-                  fontSize: 11,
-                  background: opponentScored ? "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(239,68,68,0.4))" : undefined,
-                  color: opponentScored ? "#fff" : undefined,
-                  fontWeight: opponentScored ? 700 : 600,
-                  border: opponentScored ? "none" : undefined,
-                }}>
-                  {opponentScored ? "📬 just played" : "⏳ pending"}
-                </span>
+                <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
+                  <span className="tw-pill" style={{
+                    fontSize: 11,
+                    background: opponentScored ? "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(239,68,68,0.4))" : undefined,
+                    color: opponentScored ? "#fff" : undefined,
+                    fontWeight: opponentScored ? 700 : 600,
+                    border: opponentScored ? "none" : undefined,
+                  }}>
+                    {opponentScored ? "📬 just played" : "⏳ pending"}
+                  </span>
+                  {canCancel && onCancel && (
+                    <button
+                      className="tw-pill"
+                      style={{
+                        cursor: "pointer", fontSize: 11, padding: "4px 10px",
+                        background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)",
+                        color: "var(--text)", fontWeight: 600,
+                      }}
+                      title={c.wager > 0 ? `Cancel and refund ${c.wager} coins` : "Cancel this challenge"}
+                      onClick={() => onCancel(c)}
+                    >
+                      ✕ Cancel
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -345,7 +369,19 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onP
 
       {past.length > 0 && (
         <div className="tw-card">
-          <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Past results</div>
+          <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 14 }}>Past results</div>
+            {onClearHistory && (
+              <button
+                className="tw-pill"
+                style={{ cursor: "pointer", fontSize: 11, fontWeight: 600 }}
+                title="Hide every past result from your list (your opponent's view is unaffected)"
+                onClick={onClearHistory}
+              >
+                🧹 Clear all
+              </button>
+            )}
+          </div>
           {past.slice(0, 10).map((c) => {
             const youSent = c.sender_id === me.id;
             const oppName = youSent ? c.receiver_username : c.sender_username;
@@ -376,24 +412,41 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onP
                 background: isFresh ? "rgba(16,185,129,0.10)" : "transparent",
                 transition: "background 0.5s ease",
               }}>
-                <button onClick={() => onExpand(isExpanded ? null : c.id)} className="tw-row" style={{
-                  justifyContent: "space-between", gap: 8, width: "100%",
-                  background: "transparent", border: "none", padding: 0, cursor: "pointer", color: "var(--text)",
-                }}>
-                  <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
-                    <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-                      {icon} vs {oppName}
-                      <RivalryChip h2h={h2h} oppId={oppId} />
+                <div className="tw-row" style={{ gap: 8, width: "100%", alignItems: "center" }}>
+                  <button onClick={() => onExpand(isExpanded ? null : c.id)} className="tw-row" style={{
+                    justifyContent: "space-between", gap: 8, flex: 1, minWidth: 0,
+                    background: "transparent", border: "none", padding: 0, cursor: "pointer", color: "var(--text)",
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+                      <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                        {icon} vs {oppName}
+                        <RivalryChip h2h={h2h} oppId={oppId} />
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                        {yourScore ?? "—"} – {oppScore ?? "—"}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                      {yourScore ?? "—"} – {oppScore ?? "—"}
+                    <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color }}>{outcome.toUpperCase()}</span>
+                      <span style={{ fontSize: 14, color: "var(--text-dim)" }}>{isExpanded ? "▴" : "▾"}</span>
                     </div>
-                  </div>
-                  <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color }}>{outcome.toUpperCase()}</span>
-                    <span style={{ fontSize: 14, color: "var(--text-dim)" }}>{isExpanded ? "▴" : "▾"}</span>
-                  </div>
-                </button>
+                  </button>
+                  {/* Per-row dismiss × — small, low-key, only on
+                      past (non-pending) rows. Outside the expander
+                      button so a tap doesn't toggle the card open. */}
+                  {onDismiss && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDismiss(c); }}
+                      title="Hide this from your list"
+                      style={{
+                        background: "transparent", border: "none", color: "var(--text-dim)",
+                        cursor: "pointer", fontSize: 14, padding: "4px 8px", borderRadius: 8,
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.15)"; e.currentTarget.style.color = "var(--bad)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text-dim)"; }}
+                    >✕</button>
+                  )}
+                </div>
                 {isExpanded && (
                   <div style={{ marginTop: 10 }}>
                     <ResultRevealCard c={c} me={me} onRematch={onRematch} onClose={() => onExpand(null)} />
@@ -740,6 +793,84 @@ export default function FriendChallenges() {
     }
   };
 
+  // Cancel a pending outgoing challenge → refund wager. Confirms first
+  // (especially important with wagered challenges — clear copy on
+  // "you'll get X coins back" so the action's reversible nature is
+  // unambiguous). Optimistically removes the row locally before the
+  // server confirms so the click feels instant.
+  const cancelChallenge = async (c) => {
+    const ok = await confirmDialog(dispatch, {
+      icon: "🚫",
+      title: "Cancel this challenge?",
+      message: c.wager > 0
+        ? `Your ${c.wager}-coin wager will be refunded. ${c.receiver_username} won't be able to play it anymore.`
+        : `${c.receiver_username} won't be able to play it anymore.`,
+      confirmText: "Cancel challenge",
+      cancelText: "Keep it",
+    });
+    if (!ok) return;
+    setChallenges((prev) => prev.filter((x) => x.id !== c.id)); // optimistic
+    try {
+      const r = await api.post(`/challenges/${c.id}/cancel`);
+      if (r.data?.refunded > 0) {
+        dispatch(pushToast({ icon: "🪙", title: "Wager refunded", text: `+${r.data.refunded} coins back.` }));
+      } else {
+        dispatch(pushToast({ icon: "🚫", title: "Challenge cancelled" }));
+      }
+      dispatch(fetchStats());
+      loadAll();
+    } catch (e) {
+      const err = e?.response?.data?.error;
+      // Roll back the optimistic remove if the server rejected.
+      loadAll();
+      dispatch(pushToast({
+        icon: "⚠️",
+        title: "Couldn't cancel",
+        text: err === "receiver_already_played" ? "Your friend already locked in their answer — you're committed."
+            : err === "not_cancellable" ? "This challenge is already resolved."
+            : "Try again.",
+      }));
+    }
+  };
+
+  // Dismiss a single past row from this user's list. Opponent still
+  // sees it; this is purely UI tidying. No confirm — single tap, fully
+  // reversible from the opponent's side (they can rematch you and the
+  // history re-appears via that row anyway).
+  const dismissChallenge = async (c) => {
+    setChallenges((prev) => prev.filter((x) => x.id !== c.id)); // optimistic
+    try {
+      await api.post(`/challenges/${c.id}/dismiss`);
+    } catch (e) {
+      loadAll(); // roll back on failure
+    }
+  };
+
+  // Clear ALL past results for this user. Confirms first — it's a big
+  // action even though it's reversible (we don't undelete, but the
+  // history isn't really "lost", it's just hidden from this view).
+  const clearHistory = async () => {
+    const ok = await confirmDialog(dispatch, {
+      icon: "🧹",
+      title: "Clear past results?",
+      message: "Hides every resolved, expired, and cancelled challenge from your list. Your opponents' lists are not affected, and pending challenges stay.",
+      confirmText: "Clear all",
+      cancelText: "Keep them",
+    });
+    if (!ok) return;
+    try {
+      const r = await api.post("/challenges/clear-history");
+      const n = r.data?.cleared || 0;
+      dispatch(pushToast({
+        icon: "🧹",
+        title: n > 0 ? `Cleared ${n} result${n === 1 ? "" : "s"}` : "Nothing to clear",
+      }));
+      loadAll();
+    } catch (e) {
+      dispatch(pushToast({ icon: "⚠️", title: "Couldn't clear", text: "Try again." }));
+    }
+  };
+
   if (mode === "send") {
     return <SendView friends={friends} h2h={h2h} onSent={() => { setMode("list"); loadAll(); }} onCancel={() => setMode("list")} />;
   }
@@ -764,6 +895,9 @@ export default function FriendChallenges() {
         onOpen={(id) => { setPlayId(id); setMode("play"); }}
         onSend={() => setMode("send")}
         onRematch={rematch}
+        onCancel={cancelChallenge}
+        onDismiss={dismissChallenge}
+        onClearHistory={clearHistory}
         lastChange={lastChange}
         expandedId={expandedId}
         onExpand={setExpandedId}

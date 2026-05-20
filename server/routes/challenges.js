@@ -243,6 +243,11 @@ router.post("/send", requireAuth, (req, res) => {
 // { challenges, h2h } here, but any browser still running the cached
 // old client crashed on .filter() of the object — back-compat is
 // cheap to preserve and the H2H data lives at /challenges/h2h.)
+//
+// Hidden-row filter: each user can independently dismiss a past
+// (non-pending) challenge from their own list view via /:id/dismiss
+// or /clear-history. We exclude those server-side here so the client
+// doesn't have to know about per-user visibility flags.
 router.get("/", requireAuth, (req, res) => {
   sweepExpired(req.user.id);
   const rows = db.prepare(`
@@ -252,7 +257,9 @@ router.get("/", requireAuth, (req, res) => {
     FROM friend_challenges c
     JOIN users us ON us.id = c.sender_id
     JOIN users ur ON ur.id = c.receiver_id
-    WHERE c.sender_id = ? OR c.receiver_id = ?
+    WHERE
+      (c.sender_id = ? AND c.hidden_by_sender = 0)
+      OR (c.receiver_id = ? AND c.hidden_by_receiver = 0)
     ORDER BY c.created_at DESC
     LIMIT 50
   `).all(req.user.id, req.user.id);
@@ -418,6 +425,109 @@ router.post("/:id/submit", requireAuth, (req, res) => {
     } catch (e) { /* notification is best-effort */ }
   }
   res.json({ ok: true, result });
+});
+
+// POST /challenges/:id/cancel — sender-initiated teardown of a still-
+// pending challenge. Refunds the wager and removes the challenge from
+// the receiver's incoming list. Only allowed while the receiver hasn't
+// played yet — once they've locked in their answer, letting the sender
+// bail would be an escape hatch from a likely loss + a wager-grief
+// vector ("send 10 challenges, watch which one they answer first,
+// cancel the rest after seeing their score").
+router.post("/:id/cancel", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "invalid_id" });
+  const row = db.prepare("SELECT * FROM friend_challenges WHERE id = ?").get(id);
+  if (!row) return res.status(404).json({ error: "not_found" });
+  if (row.sender_id !== req.user.id) return res.status(403).json({ error: "not_sender" });
+  if (row.status !== "pending") return res.status(400).json({ error: "not_cancellable" });
+  if (row.receiver_correct !== null) return res.status(400).json({ error: "receiver_already_played" });
+
+  const now = Date.now();
+  try {
+    const tx = db.transaction(() => {
+      // Mark cancelled + auto-hide for the sender (one less row in
+      // their list right away; receiver still sees it briefly before
+      // the realtime push refreshes them too).
+      db.prepare(`
+        UPDATE friend_challenges
+        SET status = 'cancelled', resolved_at = ?, hidden_by_sender = 1
+        WHERE id = ? AND status = 'pending'
+      `).run(now, id);
+      // Refund the wager. The sender locked it at /send time; nothing
+      // else has touched it since (receiver hasn't played).
+      if (row.wager > 0) {
+        db.prepare("UPDATE stats SET coins = coins + ?, updated_at = ? WHERE user_id = ?")
+          .run(row.wager, now, req.user.id);
+      }
+    });
+    tx.immediate();
+  } catch (e) {
+    console.error("[challenges/cancel] failed", e);
+    return res.status(500).json({ error: "cancel_failed" });
+  }
+
+  // Realtime: refresh the receiver's list (the row should drop out of
+  // their incoming) + a soft notification so they know what happened.
+  try {
+    const realtime = require("../realtime");
+    if (realtime.sendToUser) {
+      realtime.sendToUser(row.receiver_id, { type: "challenge_update", subtype: "cancelled", challenge_id: id });
+      // Bell notification only fires for the RECEIVER — the sender
+      // initiated it, they don't need to be reminded.
+      const senderName = db.prepare("SELECT username FROM users WHERE id = ?").get(req.user.id);
+      realtime.sendToUser(row.receiver_id, {
+        type: "notification",
+        notification: {
+          id: `challenge-cancelled-${id}-${now}`,
+          type: "challenge_cancelled",
+          icon: "🚫",
+          title: "Challenge withdrawn",
+          text: `${senderName?.username || "Your friend"} cancelled their challenge.`,
+          at: now,
+          actor: null,
+          challenge_id: id,
+        },
+      });
+    }
+  } catch (e) {}
+
+  res.json({ ok: true, refunded: row.wager });
+});
+
+// POST /challenges/:id/dismiss — hide a SINGLE past (non-pending) row
+// from the caller's list. Doesn't affect the opponent's view or any
+// H2H/stats counters; this is purely UI clutter management.
+router.post("/:id/dismiss", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "invalid_id" });
+  const row = db.prepare("SELECT sender_id, receiver_id, status FROM friend_challenges WHERE id = ?").get(id);
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const isSender = row.sender_id === req.user.id;
+  const isReceiver = row.receiver_id === req.user.id;
+  if (!isSender && !isReceiver) return res.status(403).json({ error: "not_yours" });
+  // Refuse to hide a still-pending row — that would let the user
+  // hide a challenge they sent without resolving it (and the wager
+  // would stay locked forever). They have to /cancel to clear it out.
+  if (row.status === "pending") return res.status(400).json({ error: "still_pending", hint: "Use /cancel instead." });
+  const col = isSender ? "hidden_by_sender" : "hidden_by_receiver";
+  db.prepare(`UPDATE friend_challenges SET ${col} = 1 WHERE id = ?`).run(id);
+  res.json({ ok: true });
+});
+
+// POST /challenges/clear-history — bulk-hide every non-pending
+// challenge from the caller's view in one tap. Useful when the past-
+// results list has gotten long; pending challenges are deliberately
+// excluded (they need to be cancelled or resolved, not dismissed).
+router.post("/clear-history", requireAuth, (req, res) => {
+  const me = req.user.id;
+  const result = db.prepare(`
+    UPDATE friend_challenges
+    SET hidden_by_sender = CASE WHEN sender_id = ? THEN 1 ELSE hidden_by_sender END,
+        hidden_by_receiver = CASE WHEN receiver_id = ? THEN 1 ELSE hidden_by_receiver END
+    WHERE (sender_id = ? OR receiver_id = ?) AND status != 'pending'
+  `).run(me, me, me, me);
+  res.json({ ok: true, cleared: result.changes });
 });
 
 module.exports = router;

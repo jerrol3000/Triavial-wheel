@@ -1,12 +1,14 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v21: Friend Challenges shape fix. The transient {challenges, h2h}
-// response on /challenges/ broke older bundles that did .filter()
-// on the bare array — bumping the cache forces every client onto
-// the fresh JS that handles the back-compat parse + new /h2h side
-// endpoint. Also covers the realtime auto-refresh, side-by-side
-// reveal card, rivalry chips, and VS room-share grace-period fix.
-const CACHE = "trivia-wheel-v21";
+// v22: Friend Challenges queue management. Adds the Cancel button
+// on outgoing pending rows (sender-only, refunds wager, only
+// while receiver hasn't played yet), per-row × dismiss on past
+// results, and a single-tap Clear-all button at the top of the
+// past list. Server-side: /challenges/:id/cancel, /:id/dismiss,
+// /clear-history endpoints + hidden_by_{sender,receiver} columns
+// so each side can independently hide rows from their own view
+// without affecting the opponent's H2H stats.
+const CACHE = "trivia-wheel-v22";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

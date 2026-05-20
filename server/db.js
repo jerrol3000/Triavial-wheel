@@ -405,6 +405,16 @@ ensureColumn("cosmetics", "available_from", "INTEGER");
 ensureColumn("cosmetics", "available_until", "INTEGER");
 ensureColumn("cosmetics", "bundle_contents", "TEXT");
 
+// Per-user "hide this row from my list" flags on friend_challenges.
+// The challenge stays in the DB (opponent still sees it; H2H stats
+// still count it) — but the user who hit Cancel / Clear History
+// no longer sees the row in their /challenges/ response. Two flags
+// because either side can independently clear their own view.
+// Status enum is also widened to allow 'cancelled' (sender-initiated
+// teardown of a pending challenge, with wager refund).
+ensureColumn("friend_challenges", "hidden_by_sender", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("friend_challenges", "hidden_by_receiver", "INTEGER NOT NULL DEFAULT 0");
+
 // 2FA columns on users (admin TOTP).
 ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");

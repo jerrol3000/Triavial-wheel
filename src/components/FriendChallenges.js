@@ -539,11 +539,12 @@ function PlayView({ challengeId, onDone }) {
       try {
         const r = await api.get("/challenges/");
         if (cancelled) return;
-        // Server now returns { challenges, h2h }. Handle both shapes
-        // (back-compat with any older deployed shape).
+        // /challenges/ returns a bare array; tolerate the briefly-deployed
+        // {challenges, h2h} shape too so any in-flight rolling-deploy
+        // window can't crash the reveal.
         const list = Array.isArray(r.data) ? r.data : (r.data?.challenges || []);
-        const me = list.find((c) => c.id === Number(challengeId));
-        if (me && me.status !== "pending") setResolvedRow(me);
+        const meRow = list.find((c) => c.id === Number(challengeId));
+        if (meRow && meRow.status !== "pending") setResolvedRow(meRow);
       } catch (e) {}
     };
     // Immediate poll so if both sides already played (the player was
@@ -647,21 +648,29 @@ export default function FriendChallenges() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [c, f] = await Promise.all([
+      // Three parallel requests: challenges (bare array — back-compat
+      // with any cached old-client expectation), friends, and the
+      // optional H2H side-channel. H2H is a NEW endpoint; if it 404s
+      // against an old server, we just degrade to no rivalry chips —
+      // the rest of the screen still works.
+      const [c, f, hh] = await Promise.all([
         api.get("/challenges/"),
         api.get("/friends/"),
+        api.get("/challenges/h2h").catch(() => ({ data: { h2h: {} } })),
       ]);
-      // Handle BOTH response shapes: the new {challenges, h2h} object
-      // AND the legacy bare-array form, so a transition window where
-      // the client deploys before the server doesn't blank the screen.
+      // Defensive parsing: handle BOTH the bare-array shape AND the
+      // transient {challenges, h2h} shape this endpoint briefly had.
+      // Belt + suspenders so a stale CDN copy of either side can't
+      // crash the screen with "filter is not a function".
       const payload = c.data;
       if (Array.isArray(payload)) {
         setChallenges(payload);
-        setH2h({});
+      } else if (payload && Array.isArray(payload.challenges)) {
+        setChallenges(payload.challenges);
       } else {
-        setChallenges(payload?.challenges || []);
-        setH2h(payload?.h2h || {});
+        setChallenges([]);
       }
+      setH2h((hh && hh.data && hh.data.h2h) || (payload && payload.h2h) || {});
       // /friends returns accepted friends (not pending requests)
       setFriends((f.data?.accepted || f.data || []).filter((x) => x && x.id));
     } catch (e) {}

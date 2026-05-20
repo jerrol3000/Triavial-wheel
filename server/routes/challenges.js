@@ -239,10 +239,10 @@ router.post("/send", requireAuth, (req, res) => {
 // Lazily sweeps stale challenges first so the list never shows a
 // "still pending" row that's actually 25h old.
 //
-// Also returns an `h2h` map of head-to-head records vs each unique
-// opponent the user has played: { [opponentId]: { wins, losses, ties } }.
-// Drives the "you're 3-1 against Alex" rivalry chip on the past-results
-// list — one of the strongest re-engagement hooks in any 1v1 game.
+// Returns a BARE ARRAY of challenge rows. (We had briefly returned
+// { challenges, h2h } here, but any browser still running the cached
+// old client crashed on .filter() of the object — back-compat is
+// cheap to preserve and the H2H data lives at /challenges/h2h.)
 router.get("/", requireAuth, (req, res) => {
   sweepExpired(req.user.id);
   const rows = db.prepare(`
@@ -258,13 +258,21 @@ router.get("/", requireAuth, (req, res) => {
   `).all(req.user.id, req.user.id);
   // Hide questions_json from the response (we only send the questions
   // when the receiver actually plays via /play).
-  const cleaned = rows.map((r) => {
+  res.json(rows.map((r) => {
     const { questions_json, ...rest } = r;
     return rest;
-  });
-  // Compute H2H against every opponent we've EVER played (not just the
-  // 50-row recent window) — one extra aggregated query, cheap on a
-  // moderate friend_challenges table. Excludes still-pending matches.
+  }));
+});
+
+// GET /challenges/h2h — head-to-head records vs every opponent the
+// user has played: { [opponentId]: { wins, losses, ties } }. Drives
+// the "you're 3-1 against Alex" rivalry chip — one of the strongest
+// 1v1 re-engagement hooks in any game. Kept as a separate endpoint
+// (rather than inlined into /challenges/) so a cached older client
+// that only knows the bare-array list response can keep working
+// during a rolling deploy.
+router.get("/h2h", requireAuth, (req, res) => {
+  const me = req.user.id;
   const h2hRows = db.prepare(`
     SELECT
       CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS opp_id,
@@ -274,12 +282,12 @@ router.get("/", requireAuth, (req, res) => {
     FROM friend_challenges
     WHERE (sender_id = ? OR receiver_id = ?) AND status IN ('resolved','expired')
     GROUP BY opp_id
-  `).all(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+  `).all(me, me, me, me, me);
   const h2h = {};
   for (const r of h2hRows) {
     h2h[r.opp_id] = { wins: r.wins | 0, losses: r.losses | 0, ties: r.ties | 0 };
   }
-  res.json({ challenges: cleaned, h2h });
+  res.json({ h2h });
 });
 
 // GET /challenges/:id — fetch the challenge + its questions (only if

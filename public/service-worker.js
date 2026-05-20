@@ -1,9 +1,12 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v20: Home tile icons bumped — hero 56 → 84 px, secondary 44 → 68
-// px — with negative margins on the wrapper so the tiles
-// themselves stay the same size. Bigger glyphs, identical boxes.
-const CACHE = "trivia-wheel-v20";
+// v21: Friend Challenges shape fix. The transient {challenges, h2h}
+// response on /challenges/ broke older bundles that did .filter()
+// on the bare array — bumping the cache forces every client onto
+// the fresh JS that handles the back-compat parse + new /h2h side
+// endpoint. Also covers the realtime auto-refresh, side-by-side
+// reveal card, rivalry chips, and VS room-share grace-period fix.
+const CACHE = "trivia-wheel-v21";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

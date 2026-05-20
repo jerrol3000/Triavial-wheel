@@ -55,6 +55,7 @@ const seasonRoutes = require("./routes/season");
 const challengesRoutes = require("./routes/challenges");
 const hlRoutes = require("./routes/hl");
 const vsRoutes = require("./routes/vs");
+const soloRoutes = require("./routes/solo");
 const { handleWebhook } = require("./routes/pro");
 const { seedFromFile, startBackgroundRefresh, getTotalCount } = require("./questions");
 const { seedCatalog } = require("./cosmetics");
@@ -148,6 +149,7 @@ app.use("/api/season", seasonRoutes);
 app.use("/api/challenges", challengesRoutes);
 app.use("/api/hl", hlRoutes);
 app.use("/api/vs", vsRoutes);
+app.use("/api/solo", soloRoutes);
 
 // Centralized error handler. Distinguishes CLIENT errors (oversized
 // body, malformed JSON, invalid charset) from genuine SERVER errors so

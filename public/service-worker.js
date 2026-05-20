@@ -26,7 +26,19 @@
 //      Multiplier) — old labels still said "see opponent's pick"
 //      which doesn't apply to mini-game rounds. Server IDs kept as
 //      sniper/cut/double for back-compat with deployed clients.
-const CACHE = "trivia-wheel-v28";
+// v29: ENGAGEMENT PACK 1.
+//   • Solo Arena — play any of the 12 mini-games against your own PB,
+//     no opponent needed. Critical fix for the zero-DAU dead-end where
+//     VS Arena would "Find an opponent…" forever. New Home tile +
+//     /solo/play + /solo/submit endpoints. Coins per run = score/max × 25.
+//   • Per-game personal bests — new mini_game_bests table, tracked on
+//     every score submit (VS, Friend Challenge, Solo). PB chip "🏆 best
+//     N" surfaced on each game's intro. "New personal best!" celebration
+//     toast + glow on the result card.
+//   • Per-round breakdown card in MatchEnd — game-by-game receipt
+//     showing who scored what on each mini-game. The natural marketing
+//     screenshot for a mini-game arena.
+const CACHE = "trivia-wheel-v29";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

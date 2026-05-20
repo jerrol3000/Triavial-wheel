@@ -70,6 +70,20 @@ export default function Home() {
       authedOnly: true,
     },
     {
+      // Solo Arena is the primary entry point for new players —
+      // they can play any of the 12 mini-games against their own
+      // PB without needing an opponent online. Critical for
+      // zero-DAU launch since VS Arena requires a matched
+      // opponent. Replaces the prominence the old Wheel tile had.
+      id: "solo", icon: "🎯", iconName: "vs",
+      title: "Solo Arena",
+      subtitle: "Pick a mini-game. Beat your best. Earn coins per run.",
+      bg: "linear-gradient(135deg, rgba(251,191,36,0.18), rgba(245,158,11,0.18))",
+      border: "rgba(251,191,36,0.4)",
+      action: () => dispatch(setView("solo")),
+      authedOnly: true,
+    },
+    {
       id: "wheel", icon: "🎡", iconName: "wheel",
       title: "Spin the Wheel",
       subtitle: "Classic trivia — wheel picks a category, 10 questions.",

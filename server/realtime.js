@@ -138,7 +138,7 @@ const CONTINUE_VOTE_MS = 20 * 1000;
 // trivia rounds with mini-games but kept the same room/match shape,
 // so the rest of the file's match-flow code is largely unchanged —
 // it just sequences whatever publicQuestion() emits.
-const { MINI_GAMES, pickGames, clampScore, compareScores, MATCH_LENGTH } = require("./minigames");
+const { MINI_GAMES, pickGames, clampScore, compareScores, MATCH_LENGTH, recordPlay } = require("./minigames");
 
 function loadQuestions(amount, players, _difficulty) {
   // For VS Arena: pick a deterministic sequence of mini-games from
@@ -400,6 +400,16 @@ function recordAnswer(room, userId, scoreRaw) {
   const timeUsed = QUESTION_TIME_MS - Math.max(0, room.questionEndsAt - Date.now());
   ansMap[userId] = { score, time: timeUsed };
   room.answers[room.index] = ansMap;
+  // Personal-best tracking. Fires for EVERY score submission across
+  // VS, friend challenges, and solo arena — single source of truth
+  // for "your best Bubble Pop ever". The Double multiplier hasn't
+  // been applied yet at this point (it happens below), so the PB is
+  // your RAW skill score, not a buffed one — which is what players
+  // actually want compared across modes.
+  try {
+    const pb = recordPlay(userId, g.type, score);
+    if (pb.isNewBest) sendToUser(userId, { type: "pb_set", game_type: g.type, score: pb.score, prevBest: pb.prevBest });
+  } catch (e) { /* PB tracking is best-effort */ }
   // Power Card: double — applies a 2x multiplier to THIS submitted
   // score for the comparison in revealAndAdvance(). Burned on use.
   const effects = room.questionEffects || (room.questionEffects = { cutFor: new Set(), doubleFor: new Set(), sniperFor: new Set() });
@@ -569,6 +579,24 @@ function endMatch(room, opts = {}) {
   if (room.continueTimeoutId) clearTimeout(room.continueTimeoutId);
   room.continueTimeoutId = setTimeout(() => endRoom(room, "continue_timeout"), CONTINUE_VOTE_MS + 200);
 
+  // Per-round breakdown for the share-able receipt the client renders
+  // on the match-end card: each entry = { game_type, scores: {uid: n} }.
+  // Built from room.questions + room.answers which the match-flow has
+  // been accumulating. Friendly compact array, ordered by play index.
+  const rounds = [];
+  for (let i = 0; i < (room.questions || []).length; i++) {
+    const q = room.questions[i];
+    const a = (room.answers && room.answers[i]) || {};
+    if (!q) continue;
+    rounds.push({
+      idx: i,
+      game_type: q.type,
+      scores: Object.fromEntries(
+        Object.entries(a).map(([uid, payload]) => [uid, payload?.score ?? 0])
+      ),
+    });
+  }
+
   broadcastRoom(room, {
     type: "match_end",
     winnerId: winner ? winner.id : null,
@@ -580,6 +608,7 @@ function endMatch(room, opts = {}) {
     sessionScores: room.sessionScores,
     prevSessionScores,
     roundNumber: room.rounds,
+    rounds,
   });
 }
 

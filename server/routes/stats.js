@@ -90,6 +90,21 @@ router.get("/", requireAuth, (req, res) => {
   res.json(loadStats(req.user.id));
 });
 
+// GET /stats/bests — per-game personal records for the calling user.
+// Returns { [game_type]: { best, plays, at } } across all 12 (or
+// however many) registered mini-games. Empty object for a new user.
+// Drives the "🏆 Best N" chip on each mini-game's intro screen + the
+// Solo Arena game-picker grid. Cheap query (one row per game type).
+router.get("/bests", requireAuth, (req, res) => {
+  try {
+    const { getBests } = require("../minigames");
+    res.json({ bests: getBests(req.user.id) });
+  } catch (e) {
+    console.error("[stats/bests] failed", e);
+    res.status(500).json({ error: "bests_failed" });
+  }
+});
+
 // Daily login bonus — call this on app boot for authed users. Idempotent per UTC date.
 function todayKey() {
   const d = new Date();

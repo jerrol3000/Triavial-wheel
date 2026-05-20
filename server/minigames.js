@@ -214,6 +214,51 @@ function compareScores(gameType, s1, s2) {
   return s1 < s2 ? 1 : -1;
 }
 
+// Personal-best upsert. Called on every score-submitting code path
+// (VS recordAnswer, friend challenge /submit, /solo/submit). Returns
+// { isNewBest, prevBest, newBest, plays }. isNewBest=true → caller
+// should fire a PB celebration push or include it in their response
+// for the client to toast.
+//
+// Schema: mini_game_bests (user_id, game_type, best_score, plays_count,
+// updated_at). Created in db.js. The MAX/+1 happen in one SQL upsert
+// so a concurrent submit can't race itself into a wrong total. We
+// always clamp the incoming score first so a tampered client can't
+// inflate the PB beyond the game's registered max.
+const db = require("./db");
+function recordPlay(userId, gameType, rawScore) {
+  if (!MINI_GAMES[gameType]) return { isNewBest: false, prevBest: 0, newBest: 0, plays: 0 };
+  const score = clampScore(gameType, rawScore);
+  const now = Date.now();
+  const existing = db.prepare(
+    "SELECT best_score, plays_count FROM mini_game_bests WHERE user_id = ? AND game_type = ?"
+  ).get(userId, gameType);
+  const prevBest = existing ? existing.best_score : 0;
+  const newBest = Math.max(prevBest, score);
+  const plays = (existing ? existing.plays_count : 0) + 1;
+  db.prepare(`
+    INSERT INTO mini_game_bests (user_id, game_type, best_score, plays_count, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, game_type) DO UPDATE SET
+      best_score = MAX(mini_game_bests.best_score, excluded.best_score),
+      plays_count = mini_game_bests.plays_count + 1,
+      updated_at = CASE
+        WHEN mini_game_bests.best_score < excluded.best_score THEN excluded.updated_at
+        ELSE mini_game_bests.updated_at
+      END
+  `).run(userId, gameType, score, plays, now);
+  return { isNewBest: score > prevBest && score > 0, prevBest, newBest, plays, score };
+}
+
+function getBests(userId) {
+  const rows = db.prepare(
+    "SELECT game_type, best_score, plays_count, updated_at FROM mini_game_bests WHERE user_id = ?"
+  ).all(userId);
+  const out = {};
+  for (const r of rows) out[r.game_type] = { best: r.best_score, plays: r.plays_count, at: r.updated_at };
+  return out;
+}
+
 module.exports = {
   MINI_GAMES,
   GAME_IDS,
@@ -221,4 +266,6 @@ module.exports = {
   pickGames,
   clampScore,
   compareScores,
+  recordPlay,
+  getBests,
 };

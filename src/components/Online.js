@@ -1506,6 +1506,52 @@ function MatchEnd() {
           </div>
         </div>
 
+        {/* Per-round breakdown. The shareable receipt: which mini-games
+            were played, who scored what, who won each round. Drives
+            "look how badly I lost at Memory" screenshots, which are
+            the natural marketing artifact for a mini-game arena. */}
+        {Array.isArray(matchEnd.rounds) && matchEnd.rounds.length > 0 && (
+          <div style={{
+            marginTop: 16, padding: "10px 8px", borderRadius: 12,
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}>
+            <div style={{
+              fontSize: 11, color: "var(--text-dim)", fontWeight: 700,
+              letterSpacing: 1, marginBottom: 8, textAlign: "center",
+            }}>ROUND BY ROUND</div>
+            {matchEnd.rounds.map((r) => {
+              const myS = me && r.scores[me.id] !== undefined ? r.scores[me.id] : 0;
+              const oppS = opp && r.scores[opp.id] !== undefined ? r.scores[opp.id] : 0;
+              const wonRound = myS > oppS;
+              const tieRound = myS === oppS;
+              const meta = gameMeta(r.game_type);
+              return (
+                <div key={r.idx} className="tw-row" style={{
+                  justifyContent: "space-between", padding: "6px 10px",
+                  borderRadius: 8, marginBottom: 4,
+                  background: wonRound ? "rgba(16,185,129,0.10)"
+                            : tieRound ? "rgba(245,158,11,0.08)"
+                                       : "rgba(239,68,68,0.08)",
+                  fontSize: 13,
+                }}>
+                  <span style={{ flex: 1, textAlign: "left" }}>
+                    {meta.icon} {meta.name}
+                  </span>
+                  <span style={{ fontFamily: "Fredoka", fontWeight: 700, minWidth: 80, textAlign: "right" }}>
+                    <span style={{ color: wonRound ? "var(--good)" : "var(--text)" }}>{myS}</span>
+                    <span style={{ color: "var(--text-dim)", margin: "0 4px" }}>vs</span>
+                    <span style={{ color: !wonRound && !tieRound ? "var(--bad)" : "var(--text)" }}>{oppS}</span>
+                  </span>
+                  <span style={{ minWidth: 22, textAlign: "center", fontSize: 14 }}>
+                    {wonRound ? "✓" : tieRound ? "—" : "✗"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* Session-level scoreboard — running W/L tally across rematches
             in this room. Hidden on round 1 (no history yet). */}
         {roundNumber >= 1 && sessionScores && (

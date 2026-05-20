@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../auth");
-const { pickGames, clampScore, MATCH_LENGTH } = require("../minigames");
+const { pickGames, clampScore, MATCH_LENGTH, recordPlay } = require("../minigames");
 
 const router = express.Router();
 
@@ -363,11 +363,23 @@ router.post("/:id/submit", requireAuth, (req, res) => {
   // Clamp the per-round scores to each game's registered max_score
   // BEFORE storing — defense against a tampered client posting
   // 99999 for a tap_race. The minigames module owns the cap table.
+  // Also run each cleaned score through recordPlay() to update the
+  // submitter's PB. Collect any PB hits so we can echo them back in
+  // the HTTP response, which the client then turns into a toast.
   let cleanedScores = null;
+  const pbHits = [];
   if (rawScores) {
     let games = [];
     try { games = JSON.parse(row.questions_json || "[]"); } catch (e) {}
     cleanedScores = rawScores.slice(0, games.length).map((s, i) => clampScore(games[i]?.type, s));
+    for (let i = 0; i < cleanedScores.length; i++) {
+      const gType = games[i]?.type;
+      if (!gType) continue;
+      try {
+        const pb = recordPlay(req.user.id, gType, cleanedScores[i]);
+        if (pb.isNewBest) pbHits.push({ game_type: gType, score: pb.score, prevBest: pb.prevBest });
+      } catch (e) {}
+    }
   }
   const scoresJson = cleanedScores ? JSON.stringify(cleanedScores) : null;
 
@@ -432,7 +444,7 @@ router.post("/:id/submit", requireAuth, (req, res) => {
       }
     } catch (e) { /* notification is best-effort */ }
   }
-  res.json({ ok: true, result });
+  res.json({ ok: true, result, pb_hits: pbHits });
 });
 
 // POST /challenges/:id/cancel — sender-initiated teardown of a still-

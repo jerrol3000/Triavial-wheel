@@ -13,6 +13,7 @@ import Multiplayer from "./Multiplayer";
 import Shop from "./Shop";
 import Profile from "./Profile";
 import Online from "./Online";
+import SoloArena from "./SoloArena";
 import Settings from "./Settings";
 import AuthModal from "./AuthModal";
 import DailyBonusModal from "./DailyBonusModal";
@@ -35,7 +36,7 @@ import { setModal, pushToast } from "../store/uiSlice";
 import { logout } from "../store/authSlice";
 import { rt } from "../realtime/client";
 
-const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings, higherlower: HigherLower, season: SeasonPass, challenges: FriendChallenges, wheel: WheelView };
+const VIEWS = { home: Home, play: Play, daily: Daily, online: Online, multi: Multiplayer, shop: Shop, profile: Profile, settings: Settings, higherlower: HigherLower, season: SeasonPass, challenges: FriendChallenges, wheel: WheelView, solo: SoloArena };
 
 export default function App() {
   const dispatch = useDispatch();

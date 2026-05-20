@@ -141,6 +141,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_hl_dataset_score ON hl_scores(dataset, best_streak DESC);
 
+  -- Per-user, per-mini-game personal best. Updated on every submit
+  -- (VS, friend challenge, solo arena) via mini_game_bests.upsert().
+  -- Drives the "🏆 Best N" chip on each game's intro screen and the
+  -- celebration toast when a new PB lands. plays_count is tracked
+  -- alongside so we can also surface "you've played Bubble Pop 17
+  -- times" — useful for solo-mode milestone rewards later.
+  CREATE TABLE IF NOT EXISTS mini_game_bests (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    game_type TEXT NOT NULL,
+    best_score INTEGER NOT NULL DEFAULT 0,
+    plays_count INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, game_type)
+  );
+  CREATE INDEX IF NOT EXISTS idx_mgb_game_score ON mini_game_bests(game_type, best_score DESC);
+
   -- Daily VS leaderboard tally. One row per (user, UTC date) counting
   -- ranked match wins for the day. Resolved at day-end (or lazily on
   -- first read after the date rolls over) into cosmetic + coin prizes

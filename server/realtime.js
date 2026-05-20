@@ -93,26 +93,28 @@ function publicRoom(room) {
   };
 }
 
-function publicQuestion(q) {
-  if (!q) return null;
-  // Pre-shuffle answers per-room so both players see same order.
+// publicQuestion → still named "publicQuestion" for back-compat with
+// every caller that still references room.questions[i] / publicQuestion(q),
+// but the payload it returns is now a MINI-GAME descriptor:
+//   { type: "tap_race" | "reaction" | ..., seed: int, idx: int }
+// The client renders the matching mini-game React component, runs
+// the round's timer locally, and submits its final score.
+function publicQuestion(g) {
+  if (!g) return null;
   return {
-    id: q.id,
-    category: q.category,
-    difficulty: q.difficulty,
-    question: q.question,
-    answers: q.shuffled || q.answers || [],
+    type: g.type,
+    seed: g.seed,
+    idx: g.idx,
+    // Surface the meta the client needs to render its header/intro
+    // (icon, name, tagline) — keeps the client decoupled from the
+    // server's minigames module.
+    meta: MINI_GAMES[g.type] ? {
+      name: MINI_GAMES[g.type].name,
+      icon: MINI_GAMES[g.type].icon,
+      tagline: MINI_GAMES[g.type].tagline,
+      duration_ms: MINI_GAMES[g.type].duration_ms,
+    } : null,
   };
-}
-
-// ─── Match flow ─────────────────────────────────────────────────────────────
-function shuffleAnswers(q) {
-  const arr = [...q.incorrect_answers, q.correct_answer];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
 }
 
 const DIFFICULTIES = new Set(["easy", "medium", "hard"]);
@@ -124,15 +126,21 @@ const DIFFICULTY_MULT = { easy: 0.7, medium: 1.0, hard: 1.6 };
 // torn down cleanly (no penalty).
 const CONTINUE_VOTE_MS = 20 * 1000;
 
-function loadQuestions(amount, players, difficulty) {
-  // For multiplayer matches: exclude questions either player has already
-  // seen. The same set is served to both — if pool is too small, the
-  // picker falls back to repeats and cycles their seen history.
-  const userIds = (players || []).filter((p) => p && p.id).map((p) => p.id);
-  const diff = DIFFICULTIES.has(difficulty) ? difficulty : "medium";
-  const rows = getRandomQuestions({ difficulty: diff, amount, userIds });
-  // Add a stable shuffled order so both players see same.
-  return rows.map((r) => ({ ...r, shuffled: shuffleAnswers(r) }));
+// Pull in the mini-game registry + picker. The Arena pivot replaced
+// trivia rounds with mini-games but kept the same room/match shape,
+// so the rest of the file's match-flow code is largely unchanged —
+// it just sequences whatever publicQuestion() emits.
+const { MINI_GAMES, pickGames, clampScore, compareScores, MATCH_LENGTH } = require("./minigames");
+
+function loadQuestions(amount, players, _difficulty) {
+  // For VS Arena: pick a deterministic sequence of mini-games from
+  // a per-match seed (room code + timestamp). Both players see the
+  // SAME games in the SAME order with the SAME content seeds, so
+  // it's a fair race. `_difficulty` is kept in the signature for
+  // call-site stability but is unused — mini-game difficulty is
+  // implicit in the game design.
+  const seed = `arena|${players.map((p) => p?.id).join(",")}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
+  return pickGames(seed, Math.min(amount, MATCH_LENGTH));
 }
 
 function makeRoom({ kind, code, difficulty = "medium", hostId = null }) {
@@ -283,25 +291,29 @@ function startMatch(room) {
 function advanceQuestion(room, first = false) {
   if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
   if (room.index >= room.questions.length) return endMatch(room);
-  // Carry over the "double" effect (applies until the player gets a
-  // correct answer); reset the "cut" effect each question since the
-  // cut card stipulates "next question" only. cutFor stays around
-  // through this advanceQuestion call so the duration can use it,
-  // then we clear it after the broadcast.
+  // Mini-game duration comes from the registry — each game has its
+  // own duration_ms (tap_race = 5s, color_match = 12s, memory = 60s
+  // cap, ...). We use this as the SERVER safety timeout to ensure
+  // no round can hang forever. Clients run their own per-game
+  // timers and submit when they finish; the server timer is a
+  // backstop only.
+  const currentGame = room.questions[room.index];
+  const baseDuration = (MINI_GAMES[currentGame?.type]?.duration_ms) || QUESTION_TIME_MS;
+  const safetyBuffer = 3000; // 3 sec extra so a player who just finished can submit
   const effects = room.questionEffects || { cutFor: new Set(), doubleFor: new Set() };
-  // Per-player question duration. Players in cutFor get 8s instead
-  // of the standard 15s. Stored as a map so the client knows which
-  // side's timer to render shorter without leaking other state.
-  const cutDuration = 8000;
+  // Power Card "cut" reduces the affected player's window by 30%.
+  // Applied per-player so the client renders the shorter timer for
+  // the targeted player only.
   const perPlayerDuration = {};
-  let maxDuration = QUESTION_TIME_MS;
+  let maxDuration = baseDuration;
   for (const p of room.players) {
     if (!p) continue;
-    const dur = effects.cutFor.has(p.id) ? cutDuration : QUESTION_TIME_MS;
+    const cut = effects.cutFor.has(p.id);
+    const dur = cut ? Math.round(baseDuration * 0.7) : baseDuration;
     perPlayerDuration[p.id] = dur;
     if (dur > maxDuration) maxDuration = dur;
   }
-  room.questionEndsAt = Date.now() + maxDuration;
+  room.questionEndsAt = Date.now() + maxDuration + safetyBuffer;
   room.perPlayerDuration = perPlayerDuration;
   broadcastRoom(room, {
     type: "room_state",
@@ -312,35 +324,50 @@ function advanceQuestion(room, first = false) {
       doubleFor: Array.from(effects.doubleFor || []),
     },
   });
-  // Clear cut for next round (single-use, this-question-only effect).
-  // Also clear sniper that didn't fire — sniper is question-scoped
-  // ("peek THIS question's opponent pick"); persisting it across
-  // questions would silently fire on the next round and confuse
-  // both players (sniper-armer thinks they wasted the card; sniped
-  // user gets revealed without warning). Double stays because it's
-  // "next CORRECT answer", not "next question".
+  // Clear cut for next round (single-use, this-game-only effect).
+  // Also clear spy/sniper that didn't fire — game-scoped, persisting
+  // it across rounds would silently fire on the next game.
   effects.cutFor = new Set();
   effects.sniperFor = new Set();
   room.timeoutId = setTimeout(() => {
-    // Anyone who didn't answer gets recorded as wrong.
+    // Anyone who didn't submit a score gets 0 for this round.
     const idxAns = room.answers[room.index] || {};
     for (const p of room.players) {
       if (p && !idxAns[p.id]) {
-        idxAns[p.id] = { answer: null, time: QUESTION_TIME_MS, correct: false };
+        idxAns[p.id] = { score: 0, time: maxDuration };
       }
     }
     room.answers[room.index] = idxAns;
     revealAndAdvance(room);
-  }, maxDuration + 50);
+  }, maxDuration + safetyBuffer + 100);
 }
 
 function revealAndAdvance(room) {
-  // Reveal the right answer to both clients, then move to next question after a short pause.
-  const q = room.questions[room.index];
+  // Reveal the round result to both clients. For mini-games we
+  // compare the two players' submitted scores using the game's
+  // higher_wins flag (via compareScores), and convert "round won"
+  // into a point + a player.correct tick — so the rest of the
+  // match-flow (best-of-3 series, end-match resolver, leaderboards)
+  // doesn't care that this is now an arena instead of trivia.
+  const g = room.questions[room.index];
+  const results = room.answers[room.index] || {};
+  const players = room.players.filter(Boolean);
+  if (g && players.length === 2) {
+    const [p1, p2] = players;
+    const s1 = results[p1.id]?.score ?? 0;
+    const s2 = results[p2.id]?.score ?? 0;
+    const cmp = compareScores(g.type, s1, s2);
+    if (cmp > 0) { p1.score += 100; p1.correct += 1; }
+    else if (cmp < 0) { p2.score += 100; p2.correct += 1; }
+    // Ties give nothing — same behavior as a trivia round where both
+    // answered correctly at the same instant.
+  }
   broadcastRoom(room, {
     type: "round_reveal",
-    correct: q.correct_answer,
-    results: room.answers[room.index] || {},
+    game_type: g?.type,
+    // Echo the per-player score so the client can render "47 vs 39"
+    // alongside the round result. Replaces the trivia "correct: X" field.
+    results,
     scores: room.players.map((p) => p ? { id: p.id, username: p.username, score: p.score, correct: p.correct } : null),
   });
   room.index += 1;
@@ -350,72 +377,45 @@ function revealAndAdvance(room) {
   }, 2200);
 }
 
-function recordAnswer(room, userId, answer) {
+// recordAnswer is now recordScore in spirit — accepts a numeric score
+// (clamped to the game's max) instead of a string answer. Kept the
+// function name + WS message type "answer" so the call sites in
+// handleMessage and the Power Cards don't have to change. The `answer`
+// payload field is now coerced to a number.
+function recordAnswer(room, userId, scoreRaw) {
   if (!room.started || room.finished) return;
   if (room.index >= room.questions.length) return;
-  const q = room.questions[room.index];
+  const g = room.questions[room.index];
   const ansMap = room.answers[room.index] || {};
-  if (ansMap[userId]) return; // already answered
-  // Validate the answer is one of the shuffled options for THIS question.
-  // Prevents a client from sending arbitrary strings (e.g. an attempt to
-  // submit the correct_answer text directly from a scraped questions
-  // endpoint) instead of one of the four they were shown.
-  const validOptions = q.shuffled || q.answers || [];
-  if (!validOptions.includes(answer)) return;
-  const isRight = answer === q.correct_answer;
+  if (ansMap[userId]) return; // already submitted this round
+  const score = clampScore(g.type, scoreRaw);
   const timeUsed = QUESTION_TIME_MS - Math.max(0, room.questionEndsAt - Date.now());
-  ansMap[userId] = { answer, time: timeUsed, correct: isRight };
+  ansMap[userId] = { score, time: timeUsed };
   room.answers[room.index] = ansMap;
-  if (isRight) {
-    const player = room.players.find((p) => p && p.id === userId);
-    if (player) {
-      const speedBonus = Math.max(0, Math.round(((QUESTION_TIME_MS - timeUsed) / QUESTION_TIME_MS) * 50));
-      let points = 100 + speedBonus;
-      // Power Card: double — next correct answer is worth 2x.
-      // Burns the flag as soon as it lands on a correct answer
-      // (correct=false answers don't consume the buff).
-      const effects = room.questionEffects || (room.questionEffects = { cutFor: new Set(), doubleFor: new Set() });
-      if (effects.doubleFor && effects.doubleFor.has(userId)) {
-        points *= 2;
-        effects.doubleFor.delete(userId);
-        // Tell both players the double actually triggered so the UI
-        // can fire a celebration on the user's side + a "burned"
-        // marker on the opponent's side.
-        broadcastRoom(room, { type: "card_resolved", userId, card: "double", payload: { points } });
-      }
-      player.score += points;
-      player.correct += 1;
-    }
+  // Power Card: double — applies a 2x multiplier to THIS submitted
+  // score for the comparison in revealAndAdvance(). Burned on use.
+  const effects = room.questionEffects || (room.questionEffects = { cutFor: new Set(), doubleFor: new Set(), sniperFor: new Set() });
+  if (effects.doubleFor && effects.doubleFor.has(userId)) {
+    ansMap[userId].score = clampScore(g.type, score * 2);
+    effects.doubleFor.delete(userId);
+    broadcastRoom(room, { type: "card_resolved", userId, card: "double", payload: { score: ansMap[userId].score } });
   }
-  // Power Card: sniper — if the OPPONENT armed sniper this question,
-  // they get to peek at this user's pick the moment it's submitted.
-  // We DM the sniped reveal to whichever opponent has the sniper
-  // flag active, not the broadcaster, so the sniped user doesn't
-  // know they were sniped until match-end recap.
-  //
-  // BUG-FIX (was clearing the entire sniperFor set whenever ANYONE
-  // answered, including the sniper-armer themselves): a sniper who
-  // armed-then-answered-first would lose their sniper before the
-  // opponent's answer ever landed. Now we only delete the snipers
-  // that ACTUALLY fired (i.e., where sniperUserId !== userId).
-  // Snipers that didn't fire (skipped by the can't-snipe-yourself
-  // continue) survive to the next answer in this question — which
-  // is the opponent's pick we're trying to capture.
-  const effects = room.questionEffects;
-  if (effects && effects.sniperFor && effects.sniperFor.size > 0) {
+  // Power Card: spy (was "sniper") — DM the opponent's score to the
+  // player who armed it the moment the opponent submits.
+  effects.sniperFor = effects.sniperFor || new Set();
+  if (effects.sniperFor.size > 0) {
     const consumed = [];
     for (const sniperUserId of effects.sniperFor) {
-      if (sniperUserId === userId) continue; // can't snipe yourself
-      sendToUser(sniperUserId, { type: "sniper_reveal", userId, answer, correct: isRight });
+      if (sniperUserId === userId) continue;
+      sendToUser(sniperUserId, { type: "sniper_reveal", userId, score: ansMap[userId].score, game_type: g.type });
       consumed.push(sniperUserId);
     }
     for (const id of consumed) effects.sniperFor.delete(id);
   }
-  // If both players answered, advance early.
+  // If both players submitted, advance early.
   const playerIds = room.players.filter(Boolean).map((p) => p.id);
   if (playerIds.every((id) => ansMap[id])) {
     if (room.timeoutId) { clearTimeout(room.timeoutId); room.timeoutId = null; }
-    // small pause so both players can see the other answered
     setTimeout(() => revealAndAdvance(room), 400);
   } else {
     broadcastRoom(room, { type: "opponent_answered", userId });
@@ -1044,9 +1044,14 @@ function handleMessage(ws, user, msg) {
     }
 
     case "answer": {
+      // In the Arena pivot, "answer" carries a mini-game's final score
+      // (numeric), not a chosen-option string. Coerce to Number; the
+      // recordAnswer helper clamps via the minigames registry, so a
+      // tampered client posting 999999 just lands at the game's
+      // registered max_score.
       const room = findRoomForUser(user.id);
       if (!room || !room.started || room.finished) return;
-      recordAnswer(room, user.id, String(msg.answer || ""));
+      recordAnswer(room, user.id, Number(msg.score ?? msg.answer ?? 0));
       return;
     }
 

@@ -1,54 +1,24 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../auth");
-const { pickDailyQuestions } = require("../questions");
+const { pickGames, clampScore, MATCH_LENGTH } = require("../minigames");
 
 const router = express.Router();
 
-const CHALLENGE_QUESTION_COUNT = 5;
+const CHALLENGE_QUESTION_COUNT = MATCH_LENGTH; // legacy name; now = mini-game count
 const CHALLENGE_TTL_MS = 24 * 60 * 60 * 1000;
 const MIN_WAGER = 0;
 const MAX_WAGER = 500;
 
-// Pick 5 questions for a new challenge. Deterministic per (sender,
-// timestamp) so both players see the exact same questions in the
-// exact same order — comparable scores require comparable inputs.
-// We reuse the daily picker's seed mechanism by passing a synthetic
-// date string built from sender + epoch ms; pickDailyQuestions
-// hashes the string for entropy so any unique seed gives a unique
-// 5-question pull from the pool.
-function pickQuestionsForChallenge(senderId) {
+// Pick 5 mini-games for a new challenge. Deterministic per (sender,
+// timestamp + random) so both players in the challenge see the EXACT
+// same sequence of mini-games — comparable scores require comparable
+// inputs. The legacy `questions_json` column stores the [{type, seed, idx}]
+// array (we keep the column name to avoid a destructive migration;
+// the content is now games, not questions).
+function pickGamesForChallenge(senderId) {
   const seed = `chal|${senderId}|${Date.now()}|${Math.random().toString(36).slice(2)}`;
-  // pickDailyQuestions caches in daily_questions by `date` string —
-  // we don't want to pollute that table. Sample directly from the
-  // questions pool instead.
-  const candidates = db.prepare(
-    `SELECT * FROM questions WHERE difficulty IN ('easy','medium') ORDER BY id ASC`
-  ).all();
-  if (candidates.length < CHALLENGE_QUESTION_COUNT) return [];
-  // Same xorshift hash + LCG mix as the daily picker.
-  let s = 0;
-  for (let i = 0; i < seed.length; i++) s = (Math.imul(s, 31) + seed.charCodeAt(i)) >>> 0;
-  const picks = [];
-  const used = new Set();
-  while (picks.length < CHALLENGE_QUESTION_COUNT) {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    const i = s % candidates.length;
-    if (!used.has(i)) { used.add(i); picks.push(candidates[i]); }
-    if (used.size === candidates.length) break;
-  }
-  return picks.map((r) => {
-    let incorrect = [];
-    try { incorrect = JSON.parse(r.incorrect_answers || "[]"); } catch (e) {}
-    return {
-      id: r.id,
-      category: r.category,
-      difficulty: r.difficulty,
-      question: r.question,
-      correct_answer: r.correct_answer,
-      incorrect_answers: incorrect,
-    };
-  });
+  return pickGames(seed, CHALLENGE_QUESTION_COUNT);
 }
 
 // Resolve a challenge once both players have played (or the receiver
@@ -186,13 +156,13 @@ router.post("/send", requireAuth, (req, res) => {
         ).run(wager, Date.now(), req.user.id, wager);
         if (dec.changes !== 1) { response = { status: 400, body: { error: "insufficient_funds" } }; return; }
       }
-      const questions = pickQuestionsForChallenge(req.user.id);
-      if (questions.length < CHALLENGE_QUESTION_COUNT) {
+      const games = pickGamesForChallenge(req.user.id);
+      if (games.length < CHALLENGE_QUESTION_COUNT) {
         // Rollback the wager debit by re-adding (we're inside the tx).
         if (wager > 0) {
           db.prepare("UPDATE stats SET coins = coins + ? WHERE user_id = ?").run(wager, req.user.id);
         }
-        response = { status: 500, body: { error: "question_pool_too_small" } };
+        response = { status: 500, body: { error: "game_pool_too_small" } };
         return;
       }
       const now = Date.now();
@@ -200,7 +170,7 @@ router.post("/send", requireAuth, (req, res) => {
         INSERT INTO friend_challenges
           (sender_id, receiver_id, questions_json, wager, created_at, expires_at, status)
         VALUES (?, ?, ?, ?, ?, ?, 'pending')
-      `).run(req.user.id, friendId, JSON.stringify(questions), wager, now, now + CHALLENGE_TTL_MS);
+      `).run(req.user.id, friendId, JSON.stringify(games), wager, now, now + CHALLENGE_TTL_MS);
       response = { status: 200, body: { ok: true, challenge_id: ins.lastInsertRowid } };
     });
     tx.immediate();
@@ -311,25 +281,63 @@ router.get("/:id/play", requireAuth, (req, res) => {
   if (Date.now() > row.expires_at) return res.status(400).json({ error: "expired" });
   if (isSender && row.sender_correct !== null) return res.status(400).json({ error: "already_played" });
   if (isReceiver && row.receiver_correct !== null) return res.status(400).json({ error: "already_played" });
-  let questions = [];
-  try { questions = JSON.parse(row.questions_json); } catch (e) {}
+  let games = [];
+  try { games = JSON.parse(row.questions_json); } catch (e) {}
+  // Receiver sees the sender's per-round scores (if the sender has
+  // already played) so the client can compute round-by-round
+  // round_wins on submit. Sender doesn't get receiver's scores
+  // because the sender plays first by construction — and even if
+  // the order ever flipped, leaking the receiver's scores to the
+  // still-unplayed sender would let them pace themselves.
+  let senderScores = null;
+  if (isReceiver && row.sender_scores_json) {
+    try { senderScores = JSON.parse(row.sender_scores_json); } catch (e) {}
+  }
   res.json({
     id: row.id,
     sender_id: row.sender_id,
     receiver_id: row.receiver_id,
     wager: row.wager,
-    questions,
+    // Keep both keys so an old client that reads `questions` doesn't
+    // hard-crash before the new bundle deploys.
+    games,
+    questions: games,
+    match_length: games.length,
+    sender_scores: senderScores,
   });
 });
 
-// POST /challenges/:id/submit — submit this player's result. Body:
-// { correct: int, time_ms: int }. Triggers resolution if both sides
-// have played.
+// POST /challenges/:id/submit — submit this player's mini-game result.
+// Body shape for the Arena (mini-games):
+//   { round_wins: int (0..5), scores: [int, int, int, int, int], time_ms: int }
+// Back-compat: the original trivia client posted { correct, time_ms }
+// where `correct` was the count of correct trivia answers; we still
+// accept that as a `round_wins` proxy so an old bundle in flight
+// doesn't 400.
+//
+// `round_wins` is the number of mini-game rounds this player WON
+// against the opposing player's score for that game (computed by the
+// CLIENT after both sides finish, since the receiver plays AFTER the
+// sender and has the sender's scores visible). For the first player
+// to submit, round_wins is 0 (they haven't compared yet) and the
+// scores array is what actually drives the comparison later.
+//
+// The stored column `sender_correct` / `receiver_correct` now means
+// "round_wins" rather than "trivia correct count". Schema didn't
+// change — the semantics did. resolveChallenge() already compares
+// the two values numerically with the higher one winning, which is
+// the right behavior for round_wins too.
 router.post("/:id/submit", requireAuth, (req, res) => {
   const id = Number(req.params.id);
   const body = req.body || {};
-  const correct = Math.max(0, Math.min(CHALLENGE_QUESTION_COUNT, Number(body.correct) | 0));
+  const rawRoundWins = body.round_wins !== undefined ? body.round_wins : body.correct;
+  const roundWins = Math.max(0, Math.min(CHALLENGE_QUESTION_COUNT, Number(rawRoundWins) | 0));
   const timeMs = Math.max(1000, Math.min(15 * 60 * 1000, Number(body.time_ms) | 0));
+  // Persist per-round scores too (separately from round_wins) so the
+  // receiver can compare round-by-round against the sender's scores
+  // when they play. Stored in the legacy time_ms is just the cumulative
+  // time; the per-round scores live in a new JSON column added below.
+  const rawScores = Array.isArray(body.scores) ? body.scores : null;
 
   const row = db.prepare("SELECT * FROM friend_challenges WHERE id = ?").get(id);
   if (!row) return res.status(404).json({ error: "not_found" });
@@ -338,18 +346,13 @@ router.post("/:id/submit", requireAuth, (req, res) => {
   if (!isSender && !isReceiver) return res.status(403).json({ error: "not_yours" });
   if (row.status !== "pending") return res.status(400).json({ error: "already_resolved" });
 
-  // BUG-FIX: previously this endpoint didn't check whether the player
-  // had already submitted their side of the challenge. That let a
-  // player submit MULTIPLE times — they could submit a low score
-  // first, peek at the response, then re-submit a higher score to
-  // overwrite. Worse, an unguarded re-submit would also re-trigger
-  // the receiver's wager debit below, double-charging coins.
-  // /play already had the same guard; bring /submit into parity.
+  // Already-submitted guard (covered separately in this file's
+  // SECURITY: Friend Challenge /submit allowed score manipulation
+  // commit). Stays unchanged.
   if (isSender && row.sender_correct !== null) return res.status(400).json({ error: "already_played" });
   if (isReceiver && row.receiver_correct !== null) return res.status(400).json({ error: "already_played" });
 
-  // If receiver is submitting, lock their wager from coins now (we
-  // didn't lock at challenge-creation because they hadn't accepted yet).
+  // If receiver is submitting, lock their wager from coins now.
   if (isReceiver && row.wager > 0) {
     const dec = db.prepare(
       "UPDATE stats SET coins = coins - ?, updated_at = ? WHERE user_id = ? AND coins >= ?"
@@ -357,18 +360,23 @@ router.post("/:id/submit", requireAuth, (req, res) => {
     if (dec.changes !== 1) return res.status(400).json({ error: "insufficient_funds" });
   }
 
-  // Persist this side's result. Server is the source of truth — the
-  // /play endpoint returned the correct_answer field, but the client
-  // could lie about how many they got right. We accept the client's
-  // count for now (matches the rest of the app's trust model);
-  // tighten later by replaying the answers server-side if abuse
-  // becomes a problem.
+  // Clamp the per-round scores to each game's registered max_score
+  // BEFORE storing — defense against a tampered client posting
+  // 99999 for a tap_race. The minigames module owns the cap table.
+  let cleanedScores = null;
+  if (rawScores) {
+    let games = [];
+    try { games = JSON.parse(row.questions_json || "[]"); } catch (e) {}
+    cleanedScores = rawScores.slice(0, games.length).map((s, i) => clampScore(games[i]?.type, s));
+  }
+  const scoresJson = cleanedScores ? JSON.stringify(cleanedScores) : null;
+
   if (isSender) {
-    db.prepare("UPDATE friend_challenges SET sender_correct = ?, sender_time_ms = ? WHERE id = ?")
-      .run(correct, timeMs, id);
+    db.prepare("UPDATE friend_challenges SET sender_correct = ?, sender_time_ms = ?, sender_scores_json = ? WHERE id = ?")
+      .run(roundWins, timeMs, scoresJson, id);
   } else {
-    db.prepare("UPDATE friend_challenges SET receiver_correct = ?, receiver_time_ms = ? WHERE id = ?")
-      .run(correct, timeMs, id);
+    db.prepare("UPDATE friend_challenges SET receiver_correct = ?, receiver_time_ms = ?, receiver_scores_json = ? WHERE id = ?")
+      .run(roundWins, timeMs, scoresJson, id);
   }
 
   const after = db.prepare("SELECT * FROM friend_challenges WHERE id = ?").get(id);

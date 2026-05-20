@@ -8,6 +8,7 @@ import { fetchStats } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
 import { snarkForAnswer, snarkForRound } from "../utils/snark";
 import { confirmDialog } from "../utils/confirm";
+import { MiniGameRunner, gameMeta } from "../minigames";
 
 // FriendChallenges — list + play UI for the head-to-head challenge feature.
 //
@@ -182,7 +183,7 @@ function ResultRevealCard({ c, me, onClose, onRematch }) {
                    : outcome === "tied" ? "🤝 Tie"
                    : outcome === "cancelled" ? "🚫 Withdrawn"
                    : "⏰ Expired";
-  const shareText = `⚔️ Spinlore Challenge\nMe:  ${youGrid}  ${youCorrect ?? "—"}/5\n${oppName}: ${oppGrid}  ${oppCorrect ?? "—"}/5\n${outcomeTag}\nhttps://triviawheel.app`;
+  const shareText = `⚔️ Spinlore Arena · 5 mini-games\nMe:  ${youGrid}  ${youCorrect ?? "—"}/5\n${oppName}: ${oppGrid}  ${oppCorrect ?? "—"}/5\n${outcomeTag}\nhttps://triviawheel.app`;
 
   const doShare = async () => {
     try {
@@ -279,9 +280,9 @@ function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onC
       <div className="tw-card">
         <div className="tw-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700 }}>⚔️ Friend Challenges</div>
+            <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700 }}>⚔️ Friend Arena</div>
             <div style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 4 }}>
-              Send a 5-question challenge. They have 24h to beat your score.
+              Send a 5-mini-game duel. They have 24h to beat your scores.
             </div>
           </div>
         </div>
@@ -527,8 +528,8 @@ function SendView({ friends, h2h, onSent, onCancel }) {
       <button className="tw-pill" style={{ alignSelf: "flex-start", cursor: "pointer" }} onClick={onCancel}>← Cancel</button>
 
       <div className="tw-card">
-        <div style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: 700, marginBottom: 4 }}>New challenge</div>
-        <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 12 }}>Pick a friend. Both play the same 5 questions. Higher score wins the pot.</div>
+        <div style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: 700, marginBottom: 4 }}>New duel</div>
+        <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 12 }}>Pick a friend. Both play the same 5 mini-games. Higher score per round wins.</div>
 
         {friends.length === 0 ? (
           <div className="tw-card" style={{ textAlign: "center", color: "var(--text-dim)", background: "rgba(255,255,255,0.02)" }}>
@@ -661,15 +662,38 @@ function PlayView({ challengeId, onDone }) {
     return () => { cancelled = true; off(); };
   }, [phase, challengeId]);
 
-  const onAnswer = ({ correct, timedOut }) => {
-    const next = [...results, timedOut ? null : correct];
+  // Mini-game completion handler — each game submits { score: int }.
+  // For receiver, we compare against sender's already-stored scores
+  // (returned by /play) and tally round_wins; for sender, we submit
+  // round_wins = 0 (the receiver computes the H2H comparison later).
+  const onGameComplete = ({ score }) => {
+    const games = (data && (data.games || data.questions)) || [];
+    const senderScores = (data && data.sender_scores) || []; // populated below by server
+    const youAreReceiver = data && data.receiver_id === me?.id;
+    const next = [...results, Number(score) || 0];
     setResults(next);
-    if (index + 1 < (data?.questions?.length || 0)) {
+    if (index + 1 < games.length) {
       setIndex(index + 1);
     } else {
-      const correctCount = next.filter((x) => x === true).length;
+      // Tally round wins client-side. If the sender is submitting first
+      // (no sender_scores known yet), round_wins = 0 — server will
+      // re-resolve on the receiver's submit. If the receiver is
+      // submitting and has the sender's per-round scores, compare
+      // each round.
+      let roundWins = 0;
+      if (youAreReceiver && senderScores.length === games.length) {
+        for (let i = 0; i < games.length; i++) {
+          if (next[i] > senderScores[i]) roundWins += 1;
+        }
+      }
       const timeMs = Date.now() - startMsRef.current;
-      api.post(`/challenges/${challengeId}/submit`, { correct: correctCount, time_ms: timeMs })
+      api.post(`/challenges/${challengeId}/submit`, {
+        round_wins: roundWins,
+        scores: next,
+        // legacy field for any in-flight old server; harmless either way
+        correct: roundWins,
+        time_ms: timeMs,
+      })
         .then((r) => {
           dispatch(fetchStats());
           setPhase("submitted");
@@ -712,9 +736,23 @@ function PlayView({ challengeId, onDone }) {
   if (phase === "loading") return <div className="tw-card" style={{ textAlign: "center", padding: 30 }}><div className="tw-spinner" style={{ margin: "0 auto" }} /></div>;
   if (phase === "error") return <button className="tw-btn block" onClick={onDone}>Back</button>;
   if (phase === "submitted") {
-    const correctCount = results.filter((x) => x === true).length;
-    const total = data?.questions?.length || 5;
-    const grid = results.map((r) => r === true ? "🟩" : r === false ? "🟥" : "🟨").join(" ");
+    // For mini-game arena: convert numeric per-round scores to a
+    // green/red grid by comparing against sender_scores when known.
+    // Falls back to a yellow grid if we can't compare (sender plays
+    // first, hasn't seen the receiver's scores yet).
+    const games = (data && (data.games || data.questions)) || [];
+    const total = games.length || 5;
+    const senderScores = (data && data.sender_scores) || [];
+    const youAreReceiver = data && data.receiver_id === me?.id;
+    let correctCount = 0;
+    const grid = results.map((r, i) => {
+      if (!youAreReceiver || senderScores.length !== games.length) return "🟨";
+      const won = r > senderScores[i];
+      const tie = r === senderScores[i];
+      if (won) { correctCount += 1; return "🟩"; }
+      if (tie) return "🟨";
+      return "🟥";
+    }).join(" ");
     const snark = snarkForRound({ correct: correctCount, total });
     // If both players have now played and we've fetched the row, jump
     // straight to the rich side-by-side reveal — no "wait" interstitial.
@@ -741,16 +779,40 @@ function PlayView({ challengeId, onDone }) {
       </div>
     );
   }
-  const q = data.questions[index];
+  // Mini-game render path. The PlayView is now generic — it sequences
+  // whatever the server gave us in `games`/`questions`, identifying
+  // each by type + seed and delegating to the runner. The runner picks
+  // the matching React component from src/minigames/.
+  const games = (data && (data.games || data.questions)) || [];
+  const g = games[index];
+  const meta = g ? gameMeta(g.type) : null;
   return (
     <div className="tw-col">
       <div style={{ textAlign: "center", marginBottom: 4 }}>
         <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700 }}>⚔️ Friend Challenge</div>
         <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
-          {data.wager > 0 ? `Wager: ${data.wager} coins · ` : ""}5 questions · 15s each
+          {data.wager > 0 ? `Wager: ${data.wager} coins · ` : ""}{games.length} mini-games · best score wins each
         </div>
+        <div className="tw-row" style={{ justifyContent: "center", gap: 4, marginTop: 8 }}>
+          {games.map((gg, i) => (
+            <span key={i} className="tw-pill" style={{
+              fontSize: 11,
+              background: i < index ? "rgba(16,185,129,0.18)" : i === index ? "linear-gradient(135deg, #f59e0b, #ef4444)" : undefined,
+              color: i === index ? "#fff" : undefined,
+              border: i === index ? "none" : undefined,
+              fontWeight: i === index ? 700 : 500,
+            }}>
+              {gameMeta(gg.type).icon} {i + 1}
+            </span>
+          ))}
+        </div>
+        {meta && (
+          <div style={{ fontFamily: "Fredoka", fontSize: 15, fontWeight: 700, marginTop: 10 }}>
+            Round {index + 1} / {games.length}: {meta.icon} {meta.name}
+          </div>
+        )}
       </div>
-      <Question key={index} q={q} index={index} total={data.questions.length} onAnswer={onAnswer} />
+      {g && <MiniGameRunner key={`${index}-${g.type}`} game={g} onComplete={onGameComplete} />}
     </div>
   );
 }

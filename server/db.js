@@ -415,6 +415,16 @@ ensureColumn("cosmetics", "bundle_contents", "TEXT");
 ensureColumn("friend_challenges", "hidden_by_sender", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("friend_challenges", "hidden_by_receiver", "INTEGER NOT NULL DEFAULT 0");
 
+// Per-round mini-game scores. The legacy {sender,receiver}_correct
+// columns now mean "round_wins" (count of mini-games this player
+// won head-to-head against the opponent on that game). The actual
+// per-game raw scores get stored as a JSON array here so the
+// receiver can compute round_wins by comparing each of their scores
+// to the sender's, and so a result-reveal card can show the full
+// score sheet ("Tap Race: 47 vs 39 — You won").
+ensureColumn("friend_challenges", "sender_scores_json", "TEXT");
+ensureColumn("friend_challenges", "receiver_scores_json", "TEXT");
+
 // 2FA columns on users (admin TOTP).
 ensureColumn("users", "totp_secret_enc", "TEXT");
 ensureColumn("users", "totp_enabled", "INTEGER NOT NULL DEFAULT 0");

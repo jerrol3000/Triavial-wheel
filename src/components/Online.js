@@ -16,6 +16,7 @@ import { PlayerFlair } from "./PlayerFlair";
 import OtherAvatar from "./OtherAvatar";
 import { sfx } from "../utils/sound";
 import { safeNavigate } from "../utils/navigate";
+import { MiniGameRunner, gameMeta } from "../minigames";
 
 export default function Online() {
   const dispatch = useDispatch();
@@ -465,11 +466,16 @@ function LiveMatch() {
     dispatch(safeNavigate("home"));
   };
 
-  const answer = (a) => {
-    if (picked) return;
-    setPicked(a);
-    sfx.click();
-    rt.send({ type: "answer", answer: a });
+  // Arena pivot: submitMiniGameScore is the per-round commit. The
+  // mini-game component runs its own timer, computes a numeric score
+  // when it finishes, and calls this. The server's `answer` handler
+  // (still named that for back-compat) now reads msg.score and
+  // clamps via the minigames registry.
+  const submitMiniGameScore = ({ score }) => {
+    if (picked) return; // already submitted this round
+    setPicked({ score });
+    sfx.click?.();
+    rt.send({ type: "answer", score: Number(score) || 0 });
   };
 
   // Pre-game lobby / waiting for opponent. The code-sharing UI is gated
@@ -635,31 +641,56 @@ function LiveMatch() {
           disabled={!!picked || !!reveal}
         />
 
-        {room.question && (
+        {/* Arena pivot: render the current mini-game. room.question is
+            now a mini-game descriptor ({type, seed, idx, meta}). The
+            runner picks the right component, runs the round's timer,
+            and submits a score on completion. Reveal phase shows the
+            per-player scores for the just-finished round. */}
+        {room.question && !reveal && (
           <>
-            <div style={{ fontFamily: "Fredoka", fontSize: 20, fontWeight: 600, margin: "14px 0" }}>
-              {decode(String(room.question.question))}
+            <div style={{ fontFamily: "Fredoka", fontSize: 16, fontWeight: 700, margin: "14px 0 6px", textAlign: "center" }}>
+              {(room.question.meta?.icon || gameMeta(room.question.type).icon)} {(room.question.meta?.name || gameMeta(room.question.type).name)}
             </div>
-            {room.question.answers.map((a) => {
-              let cls = "tw-answer";
-              if (reveal && reveal.results) {
-                if (a === reveal.correct) cls += " correct";
-                else if (picked === a) cls += " wrong";
-              } else if (picked === a) {
-                cls += " correct";
-              }
-              return (
-                <button key={a} className={cls} disabled={!!picked || !!reveal} onClick={() => answer(a)}>
-                  {decode(String(a))}
-                </button>
-              );
-            })}
+            {room.question.meta?.tagline && (
+              <div style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", marginBottom: 10 }}>
+                {room.question.meta.tagline}
+              </div>
+            )}
+            <MiniGameRunner
+              key={`${room.code}-${room.index}`}
+              game={room.question}
+              onComplete={submitMiniGameScore}
+            />
+            {picked && (
+              <div style={{ marginTop: 10, textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
+                Score locked: <strong style={{ color: "var(--text)" }}>{picked.score}</strong>
+                {!opponentAnswered && " · waiting for opponent…"}
+              </div>
+            )}
           </>
         )}
 
-        {reveal && (
-          <div style={{ textAlign: "center", color: "var(--text-dim)", marginTop: 10 }}>
-            Answer was <strong style={{ color: "var(--good)" }}>{decode(String(reveal.correct))}</strong>. Next question in a moment…
+        {reveal && reveal.results && (
+          <div className="tw-card" style={{ textAlign: "center", marginTop: 10, background: "rgba(255,255,255,0.04)" }}>
+            <div style={{ fontFamily: "Fredoka", fontWeight: 700, marginBottom: 8 }}>
+              Round result — {gameMeta(reveal.game_type).icon} {gameMeta(reveal.game_type).name}
+            </div>
+            <div className="tw-row" style={{ justifyContent: "space-around", gap: 12 }}>
+              {[meSlot, opponent].filter(Boolean).map((p) => {
+                const r = reveal.results[p.id];
+                const sc = r ? r.score : 0;
+                const isMe = meSlot && p.id === meSlot.id;
+                return (
+                  <div key={p.id} style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 700 }}>
+                      {isMe ? "YOU" : (p.username || "OPPONENT").toUpperCase()}
+                    </div>
+                    <div style={{ fontFamily: "Fredoka", fontSize: 28, fontWeight: 800 }}>{sc}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ color: "var(--text-dim)", fontSize: 12, marginTop: 8 }}>Next round in a moment…</div>
           </div>
         )}
       </div>

@@ -1,17 +1,17 @@
 // Minimal offline-first cache for shell assets.
 // Cache name is versioned — bump it to force-evict old caches on the next deploy.
-// v25: VS "Still trying to connect…" stuck card fix. Classic
-// late-subscriber race: App.js eagerly calls rt.connect() on boot,
-// the WebSocket opens, and rt.emit({type:"open"}) fires before
-// Online.js mounts. By the time Online's useEffect subscribes via
-// rt.on(...), the open event is gone and redux `connected` stays
-// false forever — ConnectionStatus stuck on "still trying to
-// connect…" even though the live debug line shows WS state OPEN.
-// Fix: Online's subscribe handler now reads rt.state().readyState
-// immediately after attaching and dispatches setConnected to match,
-// so the listener doesn't need a future open event to learn the
-// truth.
-const CACHE = "trivia-wheel-v25";
+// v26: ARENA PIVOT. The product is no longer a trivia game — it's a
+// 1v1 mini-game arena. Trivia questions are gone from VS and Friend
+// Challenges; both flows now sequence 5 mini-games per match:
+//   👆 Tap Race · ⚡ Reaction · 🎨 Color Match · 🧠 Memory · 🔢 Quick Math
+// Each round is 5-15 seconds. Per-round score (number of taps,
+// reaction ms, correct count, memory level) is clamped server-side
+// against a registered max so a tampered client can't post nonsense.
+// Score-comparison resolution uses the game's higher_wins flag.
+// Power Cards re-skinned to work for mini-games: Spy (peek opponent
+// score in real time), Sabotage (cut 30% of opponent's round timer),
+// Multiplier (2x your next round's score).
+const CACHE = "trivia-wheel-v26";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

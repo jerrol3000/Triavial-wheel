@@ -62,8 +62,8 @@ export default function Home() {
     },
     {
       id: "challenges", icon: "⚔️", iconName: "friend_challenges",
-      title: "Friend Challenges",
-      subtitle: "Send a 5-q duel. Wager coins. Winner takes the pot.",
+      title: "Friend Arena",
+      subtitle: "5 mini-game duel. Best score per round. Wager coins.",
       bg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(236,72,153,0.18))",
       border: "rgba(245,158,11,0.4)",
       action: () => dispatch(setView("challenges")),
@@ -81,8 +81,8 @@ export default function Home() {
     },
     {
       id: "online", icon: "🆚", iconName: "vs",
-      title: "VS Online",
-      subtitle: "Real-time 1v1 against a stranger or a friend.",
+      title: "VS Arena",
+      subtitle: "Live 5-round 1v1. Mini-games picked at random. Beat the score.",
       bg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(34,211,238,0.18))",
       border: "rgba(16,185,129,0.4)",
       // PRE-WARM the WS + server health BEFORE navigating to the

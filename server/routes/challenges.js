@@ -120,6 +120,14 @@ function resolveChallenge(cid) {
       };
       realtime.sendToUser(row.sender_id, note);
       realtime.sendToUser(row.receiver_id, note);
+      // Also send the lightweight `challenge_update` so any open
+      // FriendChallenges screen re-fetches and animates the new
+      // resolved card into view. Decoupled from the bell payload so
+      // the screen can react instantly even if the user's bell is
+      // already open (which suppresses the live shake handler).
+      const update = { type: "challenge_update", subtype: "resolved", challenge_id: cid };
+      realtime.sendToUser(row.sender_id, update);
+      realtime.sendToUser(row.receiver_id, update);
     }
   } catch (e) {}
 
@@ -230,6 +238,11 @@ router.post("/send", requireAuth, (req, res) => {
 // the FriendChallenges screen to render incoming / outgoing / past.
 // Lazily sweeps stale challenges first so the list never shows a
 // "still pending" row that's actually 25h old.
+//
+// Also returns an `h2h` map of head-to-head records vs each unique
+// opponent the user has played: { [opponentId]: { wins, losses, ties } }.
+// Drives the "you're 3-1 against Alex" rivalry chip on the past-results
+// list — one of the strongest re-engagement hooks in any 1v1 game.
 router.get("/", requireAuth, (req, res) => {
   sweepExpired(req.user.id);
   const rows = db.prepare(`
@@ -245,10 +258,28 @@ router.get("/", requireAuth, (req, res) => {
   `).all(req.user.id, req.user.id);
   // Hide questions_json from the response (we only send the questions
   // when the receiver actually plays via /play).
-  res.json(rows.map((r) => {
+  const cleaned = rows.map((r) => {
     const { questions_json, ...rest } = r;
     return rest;
-  }));
+  });
+  // Compute H2H against every opponent we've EVER played (not just the
+  // 50-row recent window) — one extra aggregated query, cheap on a
+  // moderate friend_challenges table. Excludes still-pending matches.
+  const h2hRows = db.prepare(`
+    SELECT
+      CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS opp_id,
+      SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
+      SUM(CASE WHEN winner_id IS NOT NULL AND winner_id != ? AND status = 'resolved' THEN 1 ELSE 0 END) AS losses,
+      SUM(CASE WHEN winner_id IS NULL AND status = 'resolved' THEN 1 ELSE 0 END) AS ties
+    FROM friend_challenges
+    WHERE (sender_id = ? OR receiver_id = ?) AND status IN ('resolved','expired')
+    GROUP BY opp_id
+  `).all(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id);
+  const h2h = {};
+  for (const r of h2hRows) {
+    h2h[r.opp_id] = { wins: r.wins | 0, losses: r.losses | 0, ties: r.ties | 0 };
+  }
+  res.json({ challenges: cleaned, h2h });
 });
 
 // GET /challenges/:id — fetch the challenge + its questions (only if
@@ -329,6 +360,54 @@ router.post("/:id/submit", requireAuth, (req, res) => {
   let result = null;
   if (after.sender_correct !== null && after.receiver_correct !== null) {
     result = resolveChallenge(id);
+  } else {
+    // Only ONE side has played so far — push a "challenge_played" event
+    // to the WAITING side so their UI doesn't sit on "pending" until
+    // they manually refresh. This was the root cause of the dead-feeling
+    // friend-challenge flow: A sent, B played, A's screen stayed
+    // "pending" because no event was sent until full resolution.
+    // The waiting side also learns the opponent's score immediately so
+    // anticipation builds ("they got 4/5 — can I beat that?").
+    try {
+      const realtime = require("../realtime");
+      if (realtime.sendToUser) {
+        const playerName = db.prepare("SELECT username FROM users WHERE id = ?").get(req.user.id);
+        const waitingFor = isSender ? after.receiver_id : after.sender_id;
+        const playerScore = isSender ? after.sender_correct : after.receiver_correct;
+        // Two-track delivery:
+        //   1. `challenge_update`: a lightweight "something changed,
+        //      refresh your list" signal for any open FriendChallenges
+        //      screen. Cheap to consume — the client just refetches.
+        //   2. `notification`: the canonical bell-shake event so the
+        //      waiting player sees a badge even if they're on a
+        //      different screen. Persists into the bell list.
+        realtime.sendToUser(waitingFor, {
+          type: "challenge_update",
+          subtype: "played",
+          challenge_id: id,
+          played_by: req.user.id,
+          their_correct: playerScore,
+        });
+        realtime.sendToUser(waitingFor, {
+          type: "notification",
+          notification: {
+            id: `challenge-played-${id}-${Date.now()}`,
+            type: "challenge_played",
+            icon: isSender ? "📬" : "🎯",
+            title: isSender
+              ? `${playerName?.username || "Your friend"} is playing your challenge…`
+              : `${playerName?.username || "Your friend"} answered`,
+            text: isSender
+              ? `They just locked in their score — full result lands when you play.`
+              : `They scored ${playerScore}/${CHALLENGE_QUESTION_COUNT} — your turn to beat it.`,
+            at: Date.now(),
+            actor: null,
+            challenge_id: id,
+            actionType: "view_friends",
+          },
+        });
+      }
+    } catch (e) { /* notification is best-effort */ }
   }
   res.json({ ok: true, result });
 });

@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { decode } from "html-entities";
 import { api } from "../api/client";
+import { rt } from "../realtime/client";
 import { setView, pushToast } from "../store/uiSlice";
 import { fetchStats } from "../store/statsSlice";
 import { sfx } from "../utils/sound";
@@ -9,23 +10,25 @@ import { snarkForAnswer, snarkForRound } from "../utils/snark";
 
 // FriendChallenges — list + play UI for the head-to-head challenge feature.
 //
-// Two screens:
-//   1. List: incoming (someone challenged you, your move), outgoing
-//      (waiting for them), past (resolved).
-//   2. Play: when you tap "Play" on an incoming challenge or "Replay
-//      against me" on an outgoing one, you land here — same 5 questions
-//      both players see, locked-in 15s per question, snark after each.
-//
-// Result is submitted server-side; resolution fires whenever both
-// sides have played (or the receiver timed out). Live notification
-// arrives via the realtime channel.
+// What makes this feature work as a hook (not just a feature):
+//   - Realtime push from server → list auto-refreshes the SECOND the
+//     opponent plays or the result resolves. No "pull to refresh"
+//     ritual, no stale "pending" zombie rows. That bug ("they finished
+//     but my screen still says pending") killed engagement; fixed.
+//   - Wordle-style side-by-side reveal card after resolution. Both
+//     players see green/red grid of who got what — instantly shareable.
+//   - Head-to-head rivalry chip ("3-1 vs Alex this month") on every
+//     past result. Builds persistent feuds, the strongest 1v1 hook.
+//   - "Playing right now" + "Just answered" live state on outgoing
+//     row turns the wait into part of the show.
+//   - One-tap rematch from any past row + double-or-nothing on a loss.
 
 // ── Per-question card (shared with public daily — light copy here to
 //    keep this file self-contained; not worth a generic abstraction yet).
 function Question({ q, index, total, onAnswer }) {
   const [picked, setPicked] = useState(null);
   const [snark, setSnark] = useState(null);
-  const startMs = React.useRef(Date.now());
+  const startMs = useRef(Date.now());
   const correct = q.correct_answer;
   const [remaining, setRemaining] = useState(15);
 
@@ -101,9 +104,148 @@ function Question({ q, index, total, onAnswer }) {
   );
 }
 
+// ── H2H rivalry chip — "3-1 vs Alex" inline pill. Returns null if no
+//    history yet (don't show "0-0" zero state — it's just noise).
+function RivalryChip({ h2h, oppId }) {
+  const r = h2h && h2h[oppId];
+  if (!r || (r.wins + r.losses + r.ties) === 0) return null;
+  const dominant = r.wins > r.losses;
+  const even = r.wins === r.losses;
+  const bg = dominant ? "linear-gradient(135deg, rgba(16,185,129,0.25), rgba(34,197,94,0.2))"
+           : even     ? "linear-gradient(135deg, rgba(245,158,11,0.25), rgba(234,179,8,0.2))"
+                      : "linear-gradient(135deg, rgba(239,68,68,0.25), rgba(244,63,94,0.2))";
+  const label = `${r.wins}-${r.losses}${r.ties > 0 ? `-${r.ties}` : ""}`;
+  return (
+    <span className="tw-pill" style={{ background: bg, border: "1px solid rgba(255,255,255,0.15)", fontWeight: 700, fontSize: 11 }} title="Wins–losses–ties">
+      {dominant ? "📈" : even ? "⚖️" : "📉"} {label}
+    </span>
+  );
+}
+
+// ── Wordle-style result reveal — both players' answer grids side by
+//    side, with a clear win/loss/tie banner and a one-tap share. This
+//    is the share-able artifact that turns a private match into social
+//    proof. Used both on the play-screen end (after the LAST player
+//    submits) and as the expanded view of past results.
+function ResultRevealCard({ c, me, onClose, onRematch }) {
+  const dispatch = useDispatch();
+  const youSent = c.sender_id === me.id;
+  const youCorrect  = youSent ? c.sender_correct   : c.receiver_correct;
+  const oppCorrect  = youSent ? c.receiver_correct : c.sender_correct;
+  const youTime     = youSent ? c.sender_time_ms   : c.receiver_time_ms;
+  const oppTime     = youSent ? c.receiver_time_ms : c.sender_time_ms;
+  const oppName     = youSent ? c.receiver_username : c.sender_username;
+  const outcome = c.status === "expired" ? "expired"
+                : c.winner_id === me.id ? "won"
+                : c.winner_id ? "lost"
+                : "tied";
+  // Per-question grid isn't stored server-side (only totals), so we
+  // approximate using the score: render `youCorrect` greens followed
+  // by reds to fill the row. Not the actual question-by-question
+  // breakdown, but visually communicates the result. (Real per-Q grid
+  // would require storing each player's per-Q result on submit —
+  // future enhancement when the backend stores it.)
+  const gridFor = (n) => {
+    const total = 5;
+    const greens = "🟩".repeat(Math.max(0, Math.min(total, n | 0)));
+    const reds = "🟥".repeat(Math.max(0, total - (n | 0)));
+    return greens + reds;
+  };
+  const youGrid = youCorrect !== null ? gridFor(youCorrect) : "⬛⬛⬛⬛⬛";
+  const oppGrid = oppCorrect !== null ? gridFor(oppCorrect) : "⬛⬛⬛⬛⬛";
+
+  const banner = outcome === "won" ? { icon: "🏆", title: `You beat ${oppName}!`, glow: "rgba(16,185,129,0.55)" }
+               : outcome === "lost" ? { icon: "💔", title: `${oppName} won this one.`, glow: "rgba(239,68,68,0.55)" }
+               : outcome === "tied" ? { icon: "🤝", title: "Dead heat — both refunded.", glow: "rgba(245,158,11,0.55)" }
+               : { icon: "⏰", title: `${oppName} didn't play in time.`, glow: "rgba(148,163,184,0.5)" };
+
+  // Snark for the score margin — same generator as solo end-cards.
+  const flavor = snarkForRound({ correct: youCorrect || 0, total: 5 });
+
+  const shareText = `⚔️ Spinlore Challenge\nMe:  ${youGrid}  ${youCorrect ?? "—"}/5\n${oppName}: ${oppGrid}  ${oppCorrect ?? "—"}/5\n${outcome === "won" ? "🏆 W" : outcome === "lost" ? "💔 L" : outcome === "tied" ? "🤝 Tie" : "⏰ Expired"}\nhttps://triviawheel.app`;
+
+  const doShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Spinlore Challenge", text: shareText });
+      } else {
+        await navigator.clipboard.writeText(shareText);
+        dispatch(pushToast({ icon: "📋", title: "Result copied", text: "Paste it wherever." }));
+      }
+    } catch (e) { /* share cancelled */ }
+  };
+
+  return (
+    <div className="tw-card" style={{ position: "relative", overflow: "hidden" }}>
+      {/* Soft outcome-tinted glow behind everything — outcome shouts
+          before the user even reads the text. */}
+      <div style={{
+        position: "absolute", inset: -40, background: `radial-gradient(circle at top, ${banner.glow}, transparent 60%)`,
+        pointerEvents: "none",
+      }} />
+      <div style={{ position: "relative", textAlign: "center" }}>
+        <div style={{ fontSize: 56, lineHeight: 1, animation: "tw-bounce-in 0.6s ease-out" }}>{banner.icon}</div>
+        <div style={{ fontFamily: "Fredoka", fontSize: 24, fontWeight: 700, marginTop: 8 }}>{banner.title}</div>
+        {c.wager > 0 && (
+          <div style={{ color: "var(--text-dim)", fontSize: 13, marginTop: 4 }}>
+            {outcome === "won"     ? `+${c.wager * 2} coins`
+             : outcome === "lost"  ? `−${c.wager} coins`
+                                   : `${c.wager} coins refunded`}
+          </div>
+        )}
+
+        <div className="tw-row" style={{ justifyContent: "space-around", marginTop: 18, gap: 14, alignItems: "stretch" }}>
+          <div style={{ flex: 1, padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 700, letterSpacing: 1 }}>YOU</div>
+            <div style={{ fontSize: 22, letterSpacing: 2, margin: "8px 0" }}>{youGrid}</div>
+            <div style={{ fontFamily: "Fredoka", fontWeight: 700 }}>{youCorrect ?? "—"}/5</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{youTime ? `${(youTime / 1000).toFixed(1)}s` : "—"}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", fontFamily: "Fredoka", fontWeight: 700, fontSize: 18, color: "var(--text-dim)" }}>VS</div>
+          <div style={{ flex: 1, padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 700, letterSpacing: 1 }}>{(oppName || "").toUpperCase()}</div>
+            <div style={{ fontSize: 22, letterSpacing: 2, margin: "8px 0" }}>{oppGrid}</div>
+            <div style={{ fontFamily: "Fredoka", fontWeight: 700 }}>{oppCorrect ?? "—"}/5</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{oppTime ? `${(oppTime / 1000).toFixed(1)}s` : "—"}</div>
+          </div>
+        </div>
+
+        {flavor && outcome !== "expired" && (
+          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 12, background: "rgba(124,58,237,0.16)", border: "1px solid rgba(124,58,237,0.4)", fontFamily: "Fredoka", fontWeight: 600 }}>
+            {flavor}
+          </div>
+        )}
+
+        <div className="tw-row" style={{ justifyContent: "center", marginTop: 14, gap: 8, flexWrap: "wrap" }}>
+          <button className="tw-btn" onClick={doShare} title="Share result">📤 Share</button>
+          {/* Double-or-nothing only after a loss — that's the natural
+              "one more shot to claw it back" hook. After a win, plain
+              rematch (same wager) keeps the streak going. */}
+          {onRematch && outcome === "lost" && c.wager > 0 && (
+            <button
+              className="tw-btn"
+              style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none", fontWeight: 700 }}
+              onClick={() => onRematch(youSent ? c.receiver_id : c.sender_id, c.wager * 2)}
+              title="Send a rematch with double the wager"
+            >
+              🔥 Double or nothing
+            </button>
+          )}
+          {onRematch && outcome !== "lost" && (
+            <button className="tw-btn ghost" onClick={() => onRematch(youSent ? c.receiver_id : c.sender_id, c.wager || 0)}>
+              ⚔️ Rematch
+            </button>
+          )}
+          {onClose && <button className="tw-btn ghost" onClick={onClose}>Done</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Per-screen logic ─────────────────────────────────────────────
 
-function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
+function ListView({ challenges, h2h, me, onOpen, onSend, friends, onRematch, onPlayedAnnounce, onResolvedAnnounce, lastChange, expandedId, onExpand }) {
   const dispatch = useDispatch();
 
   const incoming = challenges.filter((c) => c.receiver_id === me.id && c.status === "pending" && c.receiver_correct === null);
@@ -134,9 +276,17 @@ function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
             const hoursLeft = Math.max(0, Math.floor((c.expires_at - Date.now()) / (60 * 60 * 1000)));
             return (
               <button key={c.id} className="tw-row" style={{ justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", width: "100%", background: "transparent", border: "none", cursor: "pointer", color: "var(--text)" }} onClick={() => onOpen(c.id)}>
-                <div style={{ textAlign: "left" }}>
-                  <div style={{ fontWeight: 700 }}>{c.sender_username}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{hoursLeft}h left · wager {c.wager}</div>
+                <div style={{ textAlign: "left", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                    {c.sender_username}
+                    <RivalryChip h2h={h2h} oppId={c.sender_id} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    {hoursLeft}h left · wager {c.wager}
+                    {c.sender_correct !== null && (
+                      <> · <span style={{ color: "var(--good)", fontWeight: 700 }}>they scored {c.sender_correct}/5 — beat it</span></>
+                    )}
+                  </div>
                 </div>
                 <span className="tw-pill" style={{ background: "linear-gradient(135deg, #f59e0b, #ef4444)", color: "#fff", border: "none", fontWeight: 700 }}>Play →</span>
               </button>
@@ -148,17 +298,48 @@ function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
       {outgoing.length > 0 && (
         <div className="tw-card">
           <div style={{ fontFamily: "Fredoka", fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Waiting on them</div>
-          {outgoing.map((c) => (
-            <div key={c.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-              <div>
-                <div style={{ fontWeight: 700 }}>{c.receiver_username}</div>
-                <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                  You: {c.sender_correct ?? "—"}/5 · wager {c.wager}
+          {outgoing.map((c) => {
+            // Live state, computed off the row + the last realtime
+            // change ping. If the receiver has scored, we already have
+            // their score — show it as "they got 4/5, eyes on you".
+            // Otherwise stay on "pending".
+            const opponentScored = c.receiver_correct !== null;
+            // Spotlight the most-recently-updated row when a realtime
+            // event lands — a subtle glow draws the eye without
+            // shouting.
+            const isFresh = lastChange && lastChange.challenge_id === c.id && (Date.now() - lastChange.at) < 6000;
+            return (
+              <div key={c.id} className="tw-row" style={{
+                justifyContent: "space-between", padding: "10px 12px", marginLeft: -12, marginRight: -12,
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: isFresh ? 10 : 0,
+                background: isFresh ? "rgba(245,158,11,0.10)" : "transparent",
+                transition: "background 0.5s ease, border-radius 0.5s ease",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                    {c.receiver_username}
+                    <RivalryChip h2h={h2h} oppId={c.receiver_id} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                    You: {c.sender_correct ?? "—"}/5 · wager {c.wager}
+                    {opponentScored && (
+                      <> · <span style={{ color: "var(--good)", fontWeight: 700 }}>they scored {c.receiver_correct}/5</span></>
+                    )}
+                  </div>
                 </div>
+                <span className="tw-pill" style={{
+                  fontSize: 11,
+                  background: opponentScored ? "linear-gradient(135deg, rgba(245,158,11,0.4), rgba(239,68,68,0.4))" : undefined,
+                  color: opponentScored ? "#fff" : undefined,
+                  fontWeight: opponentScored ? 700 : 600,
+                  border: opponentScored ? "none" : undefined,
+                }}>
+                  {opponentScored ? "📬 just played" : "⏳ pending"}
+                </span>
               </div>
-              <span className="tw-pill" style={{ fontSize: 11 }}>⏳ pending</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -170,6 +351,7 @@ function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
             const oppName = youSent ? c.receiver_username : c.sender_username;
             const yourScore = youSent ? c.sender_correct : c.receiver_correct;
             const oppScore  = youSent ? c.receiver_correct : c.sender_correct;
+            const oppId     = youSent ? c.receiver_id : c.sender_id;
             const outcome = c.status === "expired" ? "expired"
                           : c.winner_id === me.id ? "won"
                           : c.winner_id ? "lost"
@@ -181,31 +363,42 @@ function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
                        : outcome === "lost" ? "💔"
                        : outcome === "tied" ? "🤝"
                        : "⏰";
-            const oppId = youSent ? c.receiver_id : c.sender_id;
+            // Spotlight the most-recently-resolved row — same fresh
+            // highlight used on the outgoing list, so the player's eye
+            // follows the action.
+            const isFresh = lastChange && lastChange.challenge_id === c.id && (Date.now() - lastChange.at) < 8000;
+            const isExpanded = expandedId === c.id;
             return (
-              <div key={c.id} className="tw-row" style={{ justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.06)", gap: 8 }}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{icon} vs {oppName}</div>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-                    {yourScore ?? "—"} – {oppScore ?? "—"}
+              <div key={c.id} style={{
+                padding: isExpanded ? "10px 12px" : "8px 12px",
+                marginLeft: -12, marginRight: -12,
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                background: isFresh ? "rgba(16,185,129,0.10)" : "transparent",
+                transition: "background 0.5s ease",
+              }}>
+                <button onClick={() => onExpand(isExpanded ? null : c.id)} className="tw-row" style={{
+                  justifyContent: "space-between", gap: 8, width: "100%",
+                  background: "transparent", border: "none", padding: 0, cursor: "pointer", color: "var(--text)",
+                }}>
+                  <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+                    <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                      {icon} vs {oppName}
+                      <RivalryChip h2h={h2h} oppId={oppId} />
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                      {yourScore ?? "—"} – {oppScore ?? "—"}
+                    </div>
                   </div>
-                </div>
-                <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color }}>{outcome.toUpperCase()}</span>
-                  {/* Rematch button — one-tap "challenge them back".
-                      Most natural follow-up to a resolved match, vs
-                      forcing the player to navigate New Challenge →
-                      pick the same friend → pick wager. Re-uses the
-                      previous wager amount as a sensible default. */}
-                  <button
-                    className="tw-pill"
-                    style={{ cursor: "pointer", fontSize: 11, background: "linear-gradient(135deg, rgba(245,158,11,0.3), rgba(239,68,68,0.3))", border: "1px solid rgba(245,158,11,0.5)", color: "#fff", fontWeight: 700 }}
-                    onClick={() => onRematch && onRematch(oppId, c.wager)}
-                    title="Rematch with same wager"
-                  >
-                    ⚔️ Rematch
-                  </button>
-                </div>
+                  <div className="tw-row" style={{ gap: 6, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color }}>{outcome.toUpperCase()}</span>
+                    <span style={{ fontSize: 14, color: "var(--text-dim)" }}>{isExpanded ? "▴" : "▾"}</span>
+                  </div>
+                </button>
+                {isExpanded && (
+                  <div style={{ marginTop: 10 }}>
+                    <ResultRevealCard c={c} me={me} onRematch={onRematch} onClose={() => onExpand(null)} />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -221,7 +414,7 @@ function ListView({ challenges, me, onOpen, onSend, friends, onRematch }) {
   );
 }
 
-function SendView({ friends, onSent, onCancel }) {
+function SendView({ friends, h2h, onSent, onCancel }) {
   const dispatch = useDispatch();
   const [friendId, setFriendId] = useState(null);
   const [wager, setWager] = useState(50);
@@ -274,8 +467,10 @@ function SendView({ friends, onSent, onCancel }) {
                   border: friendId === f.id ? "1px solid rgba(236,72,153,0.6)" : "1px solid rgba(255,255,255,0.1)",
                   background: friendId === f.id ? "rgba(236,72,153,0.18)" : "rgba(255,255,255,0.04)",
                   color: "var(--text)", textAlign: "left", cursor: "pointer", fontWeight: 600,
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
                 }} onClick={() => setFriendId(f.id)}>
-                  {f.username}
+                  <span>{f.username}</span>
+                  <RivalryChip h2h={h2h} oppId={f.id} />
                 </button>
               ))}
             </div>
@@ -307,11 +502,13 @@ function SendView({ friends, onSent, onCancel }) {
 
 function PlayView({ challengeId, onDone }) {
   const dispatch = useDispatch();
+  const me = useSelector((s) => s.auth.user);
   const [phase, setPhase] = useState("loading");
   const [data, setData] = useState(null);
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState([]);
-  const startMsRef = React.useRef(0);
+  const [resolvedRow, setResolvedRow] = useState(null); // populated if both sides done → reveal
+  const startMsRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,6 +528,36 @@ function PlayView({ challengeId, onDone }) {
     return () => { cancelled = true; };
   }, [challengeId, dispatch]);
 
+  // After submitting, listen for the realtime `challenge_update` push.
+  // If the OTHER side had already played, this is when we transition
+  // from "submitted, waiting" → full reveal card. Without this, the
+  // player had to leave + re-enter to see the result.
+  useEffect(() => {
+    if (phase !== "submitted") return;
+    let cancelled = false;
+    const fetchAndReveal = async () => {
+      try {
+        const r = await api.get("/challenges/");
+        if (cancelled) return;
+        // Server now returns { challenges, h2h }. Handle both shapes
+        // (back-compat with any older deployed shape).
+        const list = Array.isArray(r.data) ? r.data : (r.data?.challenges || []);
+        const me = list.find((c) => c.id === Number(challengeId));
+        if (me && me.status !== "pending") setResolvedRow(me);
+      } catch (e) {}
+    };
+    // Immediate poll so if both sides already played (the player was
+    // the SECOND to submit), the reveal lands without waiting for an
+    // event we'll never get.
+    fetchAndReveal();
+    const off = rt.on((msg) => {
+      if (msg?.type === "challenge_update" && Number(msg.challenge_id) === Number(challengeId)) {
+        fetchAndReveal();
+      }
+    });
+    return () => { cancelled = true; off(); };
+  }, [phase, challengeId]);
+
   const onAnswer = ({ correct, timedOut }) => {
     const next = [...results, timedOut ? null : correct];
     setResults(next);
@@ -340,9 +567,18 @@ function PlayView({ challengeId, onDone }) {
       const correctCount = next.filter((x) => x === true).length;
       const timeMs = Date.now() - startMsRef.current;
       api.post(`/challenges/${challengeId}/submit`, { correct: correctCount, time_ms: timeMs })
-        .then(() => {
+        .then((r) => {
           dispatch(fetchStats());
           setPhase("submitted");
+          // If the server resolved on this submit (we were the second
+          // player), it returns result; fetch the row to render reveal.
+          if (r?.data?.result) {
+            api.get("/challenges/").then((res) => {
+              const list = Array.isArray(res.data) ? res.data : (res.data?.challenges || []);
+              const meRow = list.find((c) => c.id === Number(challengeId));
+              if (meRow) setResolvedRow(meRow);
+            }).catch(() => {});
+          }
         })
         .catch(() => setPhase("submitted"));
     }
@@ -355,6 +591,16 @@ function PlayView({ challengeId, onDone }) {
     const total = data?.questions?.length || 5;
     const grid = results.map((r) => r === true ? "🟩" : r === false ? "🟥" : "🟨").join(" ");
     const snark = snarkForRound({ correct: correctCount, total });
+    // If both players have now played and we've fetched the row, jump
+    // straight to the rich side-by-side reveal — no "wait" interstitial.
+    if (resolvedRow && me) {
+      return (
+        <div className="tw-col">
+          <ResultRevealCard c={resolvedRow} me={me} onClose={onDone} onRematch={null} />
+          <button className="tw-btn block" onClick={onDone}>Back to challenges</button>
+        </div>
+      );
+    }
     return (
       <div className="tw-card" style={{ textAlign: "center" }}>
         <div style={{ fontFamily: "Fredoka", fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
@@ -364,7 +610,7 @@ function PlayView({ challengeId, onDone }) {
         <div style={{ fontFamily: "Fredoka", fontSize: 18, fontWeight: 700 }}>{correctCount}/{total}</div>
         <div style={{ marginTop: 10, fontStyle: "italic", color: "var(--text)" }}>{snark}</div>
         <div style={{ marginTop: 10, color: "var(--text-dim)", fontSize: 13 }}>
-          Result will land when your opponent plays (or in 24h).
+          Waiting for your opponent. We'll auto-reveal the moment they play.
         </div>
         <button className="tw-btn block" style={{ marginTop: 14 }} onClick={onDone}>Back to challenges</button>
       </div>
@@ -390,22 +636,67 @@ export default function FriendChallenges() {
   const dispatch = useDispatch();
   const user = useSelector((s) => s.auth.user);
   const [challenges, setChallenges] = useState([]);
+  const [h2h, setH2h] = useState({});
   const [friends, setFriends] = useState([]);
-  const [mode, setMode] = useState("list"); // list | send | play:<id>
+  const [mode, setMode] = useState("list"); // list | send | play
   const [playId, setPlayId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  // Tracks the most recent realtime change so the list can spotlight
+  // the affected row with a subtle highlight. { challenge_id, at }.
+  const [lastChange, setLastChange] = useState(null);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     try {
       const [c, f] = await Promise.all([
         api.get("/challenges/"),
         api.get("/friends/"),
       ]);
-      setChallenges(c.data || []);
+      // Handle BOTH response shapes: the new {challenges, h2h} object
+      // AND the legacy bare-array form, so a transition window where
+      // the client deploys before the server doesn't blank the screen.
+      const payload = c.data;
+      if (Array.isArray(payload)) {
+        setChallenges(payload);
+        setH2h({});
+      } else {
+        setChallenges(payload?.challenges || []);
+        setH2h(payload?.h2h || {});
+      }
       // /friends returns accepted friends (not pending requests)
       setFriends((f.data?.accepted || f.data || []).filter((x) => x && x.id));
     } catch (e) {}
-  };
-  useEffect(() => { if (user) loadAll(); }, [user]);
+  }, []);
+
+  useEffect(() => { if (user) loadAll(); }, [user, loadAll]);
+
+  // ── REALTIME SUBSCRIPTION ──
+  // Server pushes `challenge_update` whenever a state-changing event
+  // happens (opponent played, both sides resolved, expiry timeout fired).
+  // Auto-refresh on each → the list is always current without the user
+  // pulling. This is the fix for the original "shows pending forever
+  // after friend already played" bug.
+  useEffect(() => {
+    if (!user) return;
+    rt.connect();
+    const off = rt.on((msg) => {
+      if (!msg || msg.type !== "challenge_update") return;
+      // Re-fetch so we get the canonical state (including new H2H tallies
+      // if this was a resolution).
+      loadAll();
+      // Flash the affected row for ~6s after a 'played' update,
+      // ~8s after a 'resolved' update.
+      if (msg.challenge_id) {
+        setLastChange({ challenge_id: Number(msg.challenge_id), at: Date.now(), subtype: msg.subtype });
+        // If we just got a 'resolved' ping, auto-expand the result card
+        // so the user lands on the dramatic reveal without an extra tap.
+        if (msg.subtype === "resolved") setExpandedId(Number(msg.challenge_id));
+      }
+      // Subtle sound for the resolve — feels like a slot-machine
+      // payout cue. 'played' stays silent to avoid spam.
+      if (msg.subtype === "resolved") sfx.win?.();
+    });
+    return () => { off(); };
+  }, [user, loadAll]);
 
   if (!user) {
     return (
@@ -432,27 +723,42 @@ export default function FriendChallenges() {
       const err = e?.response?.data?.error;
       if (err === "challenge_already_open") {
         dispatch(pushToast({ icon: "⏳", title: "Pending challenge", text: "You already have one open with them." }));
+      } else if (err === "insufficient_funds") {
+        dispatch(pushToast({ icon: "🪙", title: "Not enough coins", text: "You need more coins for the double-or-nothing wager." }));
       } else {
-        // Fall back to the explicit picker so the player can adjust wager.
         setMode("send");
       }
     }
   };
 
   if (mode === "send") {
-    return <SendView friends={friends} onSent={() => { setMode("list"); loadAll(); }} onCancel={() => setMode("list")} />;
+    return <SendView friends={friends} h2h={h2h} onSent={() => { setMode("list"); loadAll(); }} onCancel={() => setMode("list")} />;
   }
   if (mode.startsWith("play")) {
     return <PlayView challengeId={playId} onDone={() => { setMode("list"); loadAll(); }} />;
   }
   return (
-    <ListView
-      challenges={challenges}
-      me={user}
-      friends={friends}
-      onOpen={(id) => { setPlayId(id); setMode("play"); }}
-      onSend={() => setMode("send")}
-      onRematch={rematch}
-    />
+    <>
+      <style>{`
+        @keyframes tw-bounce-in {
+          0%   { transform: scale(0.3); opacity: 0; }
+          60%  { transform: scale(1.18); opacity: 1; }
+          80%  { transform: scale(0.94); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+      <ListView
+        challenges={challenges}
+        h2h={h2h}
+        me={user}
+        friends={friends}
+        onOpen={(id) => { setPlayId(id); setMode("play"); }}
+        onSend={() => setMode("send")}
+        onRematch={rematch}
+        lastChange={lastChange}
+        expandedId={expandedId}
+        onExpand={setExpandedId}
+      />
+    </>
   );
 }

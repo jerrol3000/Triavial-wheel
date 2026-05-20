@@ -137,6 +137,14 @@ export default function NotificationBell() {
   const handleClick = (n) => {
     if (n.actionType === "join_invite") return; // handled by inline buttons
     setOpen(false);
+    // Challenge-related notifications deep-link straight to the
+    // challenges screen — the new realtime bug-fix relies on this so
+    // the user can tap "they just played" and land on the live list
+    // (instead of bouncing through Profile → Friends).
+    if (n.type === "challenge_resolved" || n.type === "challenge_played" || n.type === "challenge_received") {
+      dispatch(setView("challenges"));
+      return;
+    }
     if (n.actionType === "view_friends") {
       dispatch(setProfileTab("friends"));
       dispatch(setView("profile"));

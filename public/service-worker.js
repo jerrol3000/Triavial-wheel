@@ -251,6 +251,40 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v47: REAL-WORLD GUN DESIGNS. User showed a reference photo of six
+// actual firearms and asked: "i want the these guns design". Each
+// of the 7 weapons now mirrors a recognizable real-world firearm
+// instead of the generic stylized shapes from v45-v46:
+//
+//   PLASMA   — AKS-74: warm wood furniture, side-folding stock,
+//              curved 5.45 magazine, gas tube with vent holes above
+//              the barrel, distinctive Russian muzzle brake.
+//   PULSE-SMG — B&T MP9 / HK UMP: all-black polymer, full top
+//              picatinny rail with deployable iron sights, vertical
+//              magazine, ergonomic grip, M-LOK forend, suppressor.
+//   PULSE-12 — Remington 870: chrome receiver, wood pump grip with
+//              vertical ribs, walnut stock with recoil pad, magazine
+//              tube under barrel, brass front sight bead.
+//   Q-SNIPER — AWP / L96A1: OD-green chassis, skeletonized stock
+//              with thumbhole + ventilation holes, "048" stencil,
+//              cheek piece, massive scope (front + rear bells +
+//              turrets), bipod legs, muzzle brake with slots.
+//   RAILGUN  — L85A2 / SA80 bullpup: tan/khaki furniture, magazine
+//              BEHIND the grip (bullpup signature), carrying handle
+//              with integrated SUSAT-style optic, vented handguard,
+//              "017" stencil.
+//   G-LAUNCH — standalone 40mm launcher: chunky body, digital ammo
+//              counter, ribbed pump grip, MASSIVE bore aperture.
+//   SIDEKICK — Makarov PM: short slide with serrations, wood grip
+//              panels with "N" medallion, hammer at the rear,
+//              classic DA/SA silhouette.
+//
+// Real gunmetal / chrome / wood / OD-green / khaki gradient palettes
+// replace the previous all-purple cyber-tinted shading. Each weapon
+// keeps ONE small neon accent (muzzle glow, optic reticle, sight
+// dot) so the Neon Strike aesthetic is still present but the body
+// reads as a real firearm.
+//
 // v46: FIRST-PERSON VIEW for the weapon. Up to v45 the gun was a
 // side-profile illustration centered at the bottom of the screen.
 // v46 transforms it into proper FPS pose:
@@ -451,7 +485,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v46";
+const CACHE = "trivia-wheel-v47";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

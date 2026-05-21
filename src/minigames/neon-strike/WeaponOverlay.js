@@ -1,18 +1,30 @@
-// WeaponOverlay — DOM-only stylized gun illustrations.
+// WeaponOverlay — first-person SVG weapon viewmodel.
 //
-// Each weapon is a custom SVG drawn to look like the actual firearm
-// type it represents (assault rifle, SMG, pump shotgun, sniper, etc).
-// Uses real gun proportions: grip behind the magazine, body/receiver
-// horizontal, barrel forward, sights on top, stock to the rear.
-// Realistic shading via multi-stop linear gradients on each major
-// part (body, barrel, mag, grip) so the weapon reads as a 3D object
-// not a flat icon.
+// Each gun is drawn to match a real-world reference:
 //
-// Animations:
-//   • Subtle vertical bob (idle sway)
-//   • Recoil kick on fire (downward shift + slight rotation)
-//   • Muzzle flash at barrel tip (radial gradient flash)
-//   • Reload spin (gun rotates during reload)
+//   PLASMA   — AKS-74 / AK-74 (wood furniture, side-folding stock,
+//              curved 5.45 mag, gas tube above barrel)
+//   PULSE-SMG — B&T MP9 / HK UMP-style compact SMG (all-black polymer,
+//              top picatinny rail, vertical mag, folding stock)
+//   PULSE-12 — Remington 870-style pump shotgun (chrome receiver,
+//              wooden pump grip + stock, mag tube under barrel)
+//   Q-SNIPER — AWP / L96A1 (OD-green chassis, thumbhole stock with
+//              vent holes, massive black scope, long thin barrel,
+//              muzzle brake)
+//   RAILGUN  — L85A2 / SA80 bullpup (tan furniture, carrying handle
+//              with iron sights, vented handguard, mag behind grip)
+//   G-LAUNCH — M203 / standalone grenade launcher with chunky body
+//              and wide bore
+//   SIDEKICK — Makarov PM (compact frame, wood grip panels, short
+//              slide)
+//
+// Each weapon retains a small neon accent (rail dot, scope reticle,
+// muzzle glow) so it still fits the Neon Strike aesthetic — the body
+// is realistic but the energy elements glow.
+//
+// Rendering: wrapper applies CSS 3D perspective for FPS pose. Inner
+// SVG handles the gun's anatomy. A separate hand SVG layer renders
+// the player's right hand wrapping the grip.
 
 import React, { useEffect, useRef, useState } from "react";
 
@@ -21,7 +33,6 @@ export default function WeaponOverlay({ hud }) {
   const reloading = hud?.reloading;
   const ammo = hud?.ammo ?? 24;
 
-  // Restart the recoil animation on each shot by bumping a key.
   const [recoilKey, setRecoilKey] = useState(0);
   const [muzzleKey, setMuzzleKey] = useState(0);
   const lastAmmoRef = useRef(ammo);
@@ -35,35 +46,21 @@ export default function WeaponOverlay({ hud }) {
 
   const WeaponSVG = WEAPON_RENDERERS[weaponId] || WEAPON_RENDERERS.plasma;
 
-  // FIRST-PERSON VIEW: the gun is anchored to the bottom-right
-  // (right-handed shooter), the SVG itself is rotated and skewed
-  // via CSS 3D perspective so the BACK of the gun (grip/stock)
-  // appears closer to the camera and the muzzle vanishes into the
-  // distance. The wrapper applies the FPS pose, and an inner layer
-  // handles the idle bob + recoil so they compose cleanly.
   return (
     <div style={{
       position: "absolute",
       left: 0, right: 0, top: 0, bottom: 0,
       pointerEvents: "none",
       zIndex: 5,
-      // CSS 3D context needed so the inner perspective transform reads
-      // as actual depth, not just an affine skew.
       perspective: "900px",
       perspectiveOrigin: "50% 100%",
       overflow: "hidden",
     }}>
-      {/* FPS anchor: bottom-right of the screen, rotated so the
-          gun appears held in the player's right hand. */}
       <div style={{
         position: "absolute",
         right: "-3%", bottom: "-8%",
-        width: 560, height: 360,
-        // The FPS pose: yaw rotates the gun so the muzzle points
-        // away from the camera (into the upper-left vanishing point),
-        // pitch tilts the top toward us so we see the receiver
-        // surface, roll adds a slight natural cant.
-        transform: "rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px)",
+        width: 600, height: 380,
+        transform: "rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px)",
         transformOrigin: "85% 85%",
         animation: reloading
           ? "wo-reload 1s linear infinite"
@@ -79,15 +76,12 @@ export default function WeaponOverlay({ hud }) {
         <MuzzleFlash key={muzzleKey} flashColor={MUZZLE_COLORS[weaponId] || "#fff7d6"} />
       </div>
 
-      {/* First-person HAND wrapping around the grip — a separate
-          DOM layer so it's not rotated with the gun and always
-          reads as "your hand" from the camera POV. */}
       <FirstPersonHand reloading={reloading} />
 
       <style>{`
         @keyframes wo-bob {
-          0%, 100% { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) translateY(0); }
-          50%      { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) translateY(-5px); }
+          0%, 100% { transform: rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px) translateY(0); }
+          50%      { transform: rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px) translateY(-5px); }
         }
         @keyframes wo-recoil {
           0%   { transform: translateY(0)    translateZ(0) rotateZ(0); }
@@ -96,9 +90,9 @@ export default function WeaponOverlay({ hud }) {
           100% { transform: translateY(0)    translateZ(0) rotateZ(0); }
         }
         @keyframes wo-reload {
-          0%   { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(0); }
-          50%  { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(180deg); }
-          100% { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(360deg); }
+          0%   { transform: rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px) rotate(0); }
+          50%  { transform: rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px) rotate(180deg); }
+          100% { transform: rotateY(-28deg) rotateX(18deg) rotateZ(-5deg) translateZ(-30px) rotate(360deg); }
         }
         @keyframes wo-muzzle {
           0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
@@ -111,82 +105,21 @@ export default function WeaponOverlay({ hud }) {
   );
 }
 
-// First-person hand — drawn as a separate SVG layer in the bottom-
-// right, NOT rotated with the gun. Represents the player's right hand
-// wrapping around the pistol grip, fingers visible on the side.
-function FirstPersonHand({ reloading }) {
-  if (reloading) return null;
-  return (
-    <div style={{
-      position: "absolute",
-      right: 30, bottom: -10,
-      width: 200, height: 240,
-      pointerEvents: "none",
-      filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))",
-    }}>
-      <svg viewBox="0 0 200 240" width="100%" height="100%">
-        <defs>
-          <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#7d5c42" />
-            <stop offset="0.5" stopColor="#5a4030" />
-            <stop offset="1" stopColor="#2e1f18" />
-          </linearGradient>
-          <linearGradient id="glove" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#3a322a" />
-            <stop offset="1" stopColor="#15110d" />
-          </linearGradient>
-        </defs>
-        {/* Forearm — angled in from the lower-right corner */}
-        <polygon points="120,240 200,240 200,140 140,120"
-          fill="url(#glove)" stroke="#000" strokeWidth="1.5" />
-        {/* Sleeve / cyber-glove cuff */}
-        <polygon points="120,160 200,140 200,168 130,186"
-          fill="#1a1410" stroke="#a78bfa" strokeWidth="1.5" opacity="0.95" />
-        {/* Glow band on the cuff */}
-        <polygon points="120,170 200,150 200,156 122,176"
-          fill="#a78bfa" opacity="0.85" />
-
-        {/* The HAND wrapping around the grip — knuckles toward viewer */}
-        <ellipse cx="105" cy="125" rx="38" ry="28"
-          fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
-        {/* Thumb wrapping around the front of the grip */}
-        <path d="M 75 110 Q 60 112 58 130 Q 60 146 78 144"
-          fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
-        {/* Fingers — knuckle bumps visible on the back of hand */}
-        {[
-          [88, 100, 95, 96],
-          [98, 96, 105, 92],
-          [108, 96, 115, 92],
-          [118, 98, 125, 94],
-        ].map(([x1, y1, x2, y2], i) => (
-          <g key={i}>
-            <ellipse cx={x1 + 3} cy={y1 + 4} rx="8" ry="10"
-              fill="url(#skin)" stroke="#000" strokeWidth="1" />
-          </g>
-        ))}
-        {/* Thumbnail / detail */}
-        <ellipse cx="64" cy="124" rx="3" ry="5" fill="#3a2818" />
-      </svg>
-    </div>
-  );
-}
-
 const MUZZLE_COLORS = {
-  plasma: "#d8c8ff",
-  smg: "#a5e8c8",
-  shotgun: "#ffb4d8",
-  sniper: "#e8c8ff",
+  plasma: "#ffcc66",
+  smg: "#ffcc66",
+  shotgun: "#ffb366",
+  sniper: "#fff2a8",
   railgun: "#a5e8ff",
   gravity: "#b8d4ff",
-  pistol: "#ffe8a5",
+  pistol: "#ffcc66",
 };
 
-// Shared gradient defs — used by every gun so we don't repeat them.
+// ── Shared gradient defs reused by every gun ────────────────────────
 function SharedDefs() {
   return (
     <defs>
-      {/* Gunmetal — top to bottom, with a bright top highlight + dark bottom shadow.
-          Standard gunmetal black-grey palette so every gun reads as metallic. */}
+      {/* Generic gunmetal blue-black */}
       <linearGradient id="gunmetal" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor="#5a5e68" />
         <stop offset="0.3" stopColor="#3a3e48" />
@@ -202,480 +135,605 @@ function SharedDefs() {
         <stop offset="0.5" stopColor="#5a5e68" />
         <stop offset="1" stopColor="#2a2e34" />
       </linearGradient>
-      {/* Polymer grip texture — slightly more brown for contrast */}
-      <linearGradient id="polymer" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#3a322a" />
-        <stop offset="1" stopColor="#15110d" />
+      {/* Chrome / polished steel — for the shotgun receiver */}
+      <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#d8dadd" />
+        <stop offset="0.3" stopColor="#9da0a5" />
+        <stop offset="0.65" stopColor="#6a6e74" />
+        <stop offset="1" stopColor="#3a3e44" />
       </linearGradient>
-      {/* Barrel — slightly bluer steel */}
+      {/* OD green for the AWP */}
+      <linearGradient id="odGreen" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#6b7855" />
+        <stop offset="0.5" stopColor="#4a5340" />
+        <stop offset="1" stopColor="#2a301f" />
+      </linearGradient>
+      {/* Tan/khaki for the L85 bullpup */}
+      <linearGradient id="khaki" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#d4b885" />
+        <stop offset="0.5" stopColor="#a78858" />
+        <stop offset="1" stopColor="#6a5230" />
+      </linearGradient>
+      {/* Warm reddish-brown wood for AK + Makarov grips */}
+      <linearGradient id="woodWarm" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#a85838" />
+        <stop offset="0.4" stopColor="#7a3e20" />
+        <stop offset="1" stopColor="#3a1a0a" />
+      </linearGradient>
+      {/* Light wood for shotgun stock */}
+      <linearGradient id="woodLight" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#9a5a2a" />
+        <stop offset="0.5" stopColor="#6a3e1a" />
+        <stop offset="1" stopColor="#2a1a08" />
+      </linearGradient>
+      {/* Barrel steel — slightly bluer */}
       <linearGradient id="barrelSteel" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor="#6a6e7a" />
         <stop offset="0.5" stopColor="#3a3e48" />
         <stop offset="1" stopColor="#1a1e24" />
       </linearGradient>
-      {/* Neon accent gradients per weapon — sets the energy-weapon vibe */}
-      <linearGradient id="accentPurple" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#e0d4ff" />
-        <stop offset="0.5" stopColor="#a78bfa" />
-        <stop offset="1" stopColor="#6d28d9" />
+      {/* Black polymer */}
+      <linearGradient id="polymerBlack" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#34383e" />
+        <stop offset="0.5" stopColor="#1c1e22" />
+        <stop offset="1" stopColor="#0a0c10" />
       </linearGradient>
-      <linearGradient id="accentGreen" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#a5e8c8" />
-        <stop offset="0.5" stopColor="#34d399" />
-        <stop offset="1" stopColor="#047857" />
-      </linearGradient>
-      <linearGradient id="accentPink" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#ffb4d8" />
-        <stop offset="0.5" stopColor="#f472b6" />
-        <stop offset="1" stopColor="#9d174d" />
-      </linearGradient>
-      <linearGradient id="accentLilac" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#e8c8ff" />
-        <stop offset="0.5" stopColor="#c084fc" />
-        <stop offset="1" stopColor="#7e22ce" />
-      </linearGradient>
-      <linearGradient id="accentCyan" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#a5e8ff" />
-        <stop offset="0.5" stopColor="#22d3ee" />
-        <stop offset="1" stopColor="#0e7490" />
-      </linearGradient>
-      <linearGradient id="accentBlue" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#b8d4ff" />
-        <stop offset="0.5" stopColor="#60a5fa" />
-        <stop offset="1" stopColor="#1d4ed8" />
-      </linearGradient>
-      <linearGradient id="accentAmber" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#ffe8a5" />
-        <stop offset="0.5" stopColor="#fbbf24" />
-        <stop offset="1" stopColor="#b45309" />
-      </linearGradient>
+      {/* Neon accents — single subtle dot per weapon */}
+      <radialGradient id="neonPurple">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#a78bfa" />
+        <stop offset="1" stopColor="#6d28d9" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonGreen">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#34d399" />
+        <stop offset="1" stopColor="#047857" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonCyan">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#22d3ee" />
+        <stop offset="1" stopColor="#0e7490" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonPink">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#f472b6" />
+        <stop offset="1" stopColor="#9d174d" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonLilac">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#c084fc" />
+        <stop offset="1" stopColor="#7e22ce" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonAmber">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#fbbf24" />
+        <stop offset="1" stopColor="#b45309" stopOpacity="0" />
+      </radialGradient>
+      <radialGradient id="neonBlue">
+        <stop offset="0" stopColor="#fff" />
+        <stop offset="0.4" stopColor="#60a5fa" />
+        <stop offset="1" stopColor="#1d4ed8" stopOpacity="0" />
+      </radialGradient>
     </defs>
   );
 }
 
-// Each weapon is its own function so the silhouette can be uniquely
-// tuned. Coordinates use a 380×220 viewBox.
-
 // ═══════════════════════════════════════════════════════════════════
-// PLASMA RIFLE — assault rifle silhouette: receiver + handguard +
-// barrel + mag + pistol grip + scope rail. Purple energy accent.
+// PLASMA — AKS-74 (warm wood furniture, side-folding stock, curved
+// 5.45 magazine, gas tube above barrel, classic AK silhouette)
 // ═══════════════════════════════════════════════════════════════════
 function PlasmaSVG() {
   return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
       <SharedDefs />
 
-      {/* Stock — extends behind grip */}
-      <polygon points="20,118 70,118 75,150 25,150" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="25" y="124" width="45" height="3" fill="url(#accentPurple)" opacity="0.6" />
+      {/* Side-folding skeleton stock (visible past the receiver) */}
+      <path d="M 30 165 L 80 158 L 80 168 L 32 174 Z" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <path d="M 30 195 L 80 188 L 80 198 L 32 204 Z" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <rect x="76" y="158" width="6" height="48" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
 
       {/* Receiver — main body */}
-      <rect x="70" y="100" width="160" height="44" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      {/* Receiver top accent rail */}
-      <rect x="78" y="96" width="148" height="6" fill="url(#gunmetalDark)" />
-      <rect x="78" y="98" width="148" height="2" fill="url(#accentPurple)" />
-
-      {/* Pistol grip — angled */}
-      <polygon points="135,140 160,140 168,196 145,196" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="140" y="155" width="22" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="140" y="165" width="22" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="140" y="175" width="22" height="3" fill="#2a2422" opacity="0.8" />
-
-      {/* Trigger guard */}
-      <path d="M 168 144 Q 168 162 182 162 L 195 162 Q 200 162 200 156 L 200 144 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      {/* Trigger */}
-      <line x1="185" y1="147" x2="185" y2="158" stroke="#000" strokeWidth="2.5" />
-
-      {/* Magazine — curved STANAG-style */}
-      <path d="M 90 144 L 90 200 Q 90 208 95 208 L 122 208 Q 128 208 128 200 L 122 144 Z"
-        fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <line x1="95" y1="155" x2="120" y2="155" stroke="#2a2422" strokeWidth="1" />
-      <line x1="95" y1="170" x2="121" y2="170" stroke="#2a2422" strokeWidth="1" />
-      <line x1="95" y1="185" x2="123" y2="185" stroke="#2a2422" strokeWidth="1" />
-
-      {/* Charging handle / bolt area */}
-      <rect x="200" y="106" width="22" height="6" rx="2" fill="url(#accentPurple)" />
-      <circle cx="211" cy="109" r="2" fill="#fff" opacity="0.7" />
-
-      {/* Handguard — runs from receiver to barrel */}
-      <rect x="230" y="106" width="80" height="32" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
-      {/* Handguard vent slots */}
-      <rect x="238" y="113" width="40" height="3" fill="#000" />
-      <rect x="238" y="120" width="40" height="3" fill="#000" />
-      <rect x="238" y="127" width="40" height="3" fill="#000" />
-      <rect x="284" y="113" width="20" height="17" fill="url(#accentPurple)" opacity="0.85" />
-      <rect x="287" y="115" width="14" height="2" fill="#fff" opacity="0.6" />
-
-      {/* Barrel — extends forward */}
-      <rect x="310" y="115" width="50" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      {/* Muzzle device / flash hider */}
-      <rect x="358" y="111" width="14" height="22" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <rect x="361" y="115" width="2" height="14" fill="#000" />
-      <rect x="365" y="115" width="2" height="14" fill="#000" />
-      <rect x="369" y="115" width="2" height="14" fill="#000" />
-      {/* Muzzle hole */}
-      <ellipse cx="365" cy="122" rx="4" ry="6" fill="#000" />
-      <ellipse cx="365" cy="122" rx="2" ry="3" fill="url(#accentPurple)" opacity="0.8" />
-
-      {/* Sight rail on top */}
-      <rect x="120" y="90" width="80" height="8" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="0.5" />
-      {[124, 132, 140, 148, 156, 164, 172, 180, 188, 196].map((x) => (
-        <rect key={x} x={x} y="92" width="2" height="4" fill="#000" />
+      <rect x="80" y="155" width="180" height="60" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Top dust cover */}
+      <rect x="86" y="148" width="170" height="10" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      {/* Ribbed cover detail */}
+      {[100, 115, 130, 145, 160, 175, 190, 205, 220, 235].map((x) => (
+        <line key={x} x1={x} y1="150" x2={x} y2="155" stroke="#000" strokeWidth="0.5" />
       ))}
 
-      {/* Holographic sight */}
-      <rect x="148" y="78" width="32" height="14" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <rect x="153" y="82" width="22" height="6" fill="url(#accentPurple)" opacity="0.9" />
-      <circle cx="164" cy="85" r="2" fill="#fff" />
+      {/* Selector lever on right side */}
+      <rect x="218" y="160" width="22" height="6" rx="1" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      <rect x="220" y="161" width="18" height="2" fill="#000" />
+
+      {/* Wood pistol grip */}
+      <path d="M 178 215 Q 175 222 178 232 L 192 290 Q 196 296 204 296 L 218 296 Q 228 294 230 286 L 220 215 Z"
+        fill="url(#woodWarm)" stroke="#000" strokeWidth="1.5" />
+      {/* Grip checkering */}
+      {[230, 245, 260].map((y) => (
+        <line key={y} x1="186" y1={y} x2="226" y2={y - 6} stroke="#3a1808" strokeWidth="0.8" opacity="0.7" />
+      ))}
+
+      {/* Trigger guard */}
+      <path d="M 220 215 L 220 230 Q 220 248 244 248 L 268 248 Q 280 248 280 238 L 280 215 Z"
+        fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      {/* Trigger */}
+      <path d="M 252 230 Q 252 246 256 246 L 260 244 Q 260 235 256 230 Z" fill="#000" stroke="#1a1a1a" />
+
+      {/* Curved AK-74 magazine (5.45mm) — extends down + curves forward */}
+      <path d="M 116 215 L 122 220 L 132 280 Q 134 296 144 298 L 188 304 Q 200 302 198 292 L 188 220 L 178 213 Z"
+        fill="url(#woodWarm)" stroke="#000" strokeWidth="1.5" />
+      {/* Mag ribbing */}
+      <path d="M 122 234 Q 145 244 188 246" fill="none" stroke="#3a1808" strokeWidth="0.8" opacity="0.65" />
+      <path d="M 125 260 Q 148 270 190 270" fill="none" stroke="#3a1808" strokeWidth="0.8" opacity="0.65" />
+      <path d="M 128 286 Q 152 294 192 294" fill="none" stroke="#3a1808" strokeWidth="0.8" opacity="0.65" />
+
+      {/* Gas tube (above barrel, signature AK feature) */}
+      <rect x="260" y="140" width="120" height="14" fill="url(#woodWarm)" stroke="#000" strokeWidth="1.2" />
+      {/* Gas tube vent holes */}
+      {[272, 290, 308, 326, 344, 362].map((x) => (
+        <ellipse key={x} cx={x} cy="147" rx="3" ry="2.5" fill="#1a1008" />
+      ))}
+
+      {/* Lower handguard (wood forend) */}
+      <rect x="260" y="174" width="120" height="34" fill="url(#woodWarm)" stroke="#000" strokeWidth="1.2" />
+      {/* Handguard finger grooves */}
+      <path d="M 268 184 Q 320 178 372 184" fill="none" stroke="#3a1808" strokeWidth="0.8" opacity="0.6" />
+      <path d="M 268 196 Q 320 192 372 196" fill="none" stroke="#3a1808" strokeWidth="0.8" opacity="0.6" />
+
+      {/* Front sight base + tower */}
+      <rect x="380" y="148" width="20" height="62" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <rect x="383" y="130" width="14" height="20" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      {/* Front sight post */}
+      <rect x="389" y="126" width="2" height="8" fill="#000" />
+      {/* Front sight protective ears */}
+      <line x1="383" y1="142" x2="383" y2="128" stroke="url(#gunmetal)" strokeWidth="3" />
+      <line x1="397" y1="142" x2="397" y2="128" stroke="url(#gunmetal)" strokeWidth="3" />
+
+      {/* Cleaning rod under barrel */}
+      <rect x="265" y="208" width="115" height="3" fill="url(#barrelSteel)" />
+
+      {/* Barrel */}
+      <rect x="400" y="172" width="120" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1.2" />
+      {/* AK-74 distinctive muzzle brake */}
+      <rect x="520" y="166" width="32" height="26" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
+      <ellipse cx="528" cy="179" rx="2" ry="6" fill="#000" />
+      <ellipse cx="540" cy="179" rx="3" ry="7" fill="#000" />
+      {/* Muzzle hole */}
+      <ellipse cx="546" cy="179" rx="5" ry="8" fill="#0a0a0a" />
+      <ellipse cx="546" cy="179" rx="2" ry="4" fill="url(#neonPurple)" opacity="0.7" />
+
+      {/* Small purple accent — energy core peeking from receiver vent */}
+      <rect x="106" y="174" width="6" height="22" fill="url(#neonPurple)" opacity="0.85" />
     </svg>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// PULSE-SMG — compact SMG silhouette: short barrel, magazine forward
-// of trigger, folding stock. Green energy accent.
+// PULSE-SMG — B&T MP9 / UMP-style compact SMG: all-black polymer,
+// top picatinny rail, vertical mag, side-folding stock
 // ═══════════════════════════════════════════════════════════════════
 function SmgSVG() {
   return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
       <SharedDefs />
 
-      {/* Folding stock — compact */}
-      <rect x="40" y="108" width="40" height="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="0.8" />
-      <rect x="40" y="118" width="40" height="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="0.8" />
-      <rect x="40" y="128" width="40" height="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="0.8" />
+      {/* Side-folding stock — visible behind receiver */}
+      <rect x="20" y="160" width="50" height="8" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1" />
+      <rect x="20" y="180" width="50" height="8" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1" />
+      <rect x="20" y="200" width="50" height="8" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1" />
+      {/* Stock attachment hinge */}
+      <circle cx="80" cy="184" r="8" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
+      <circle cx="80" cy="184" r="4" fill="#000" />
 
-      {/* Receiver — shorter than rifle */}
-      <rect x="80" y="100" width="120" height="42" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <rect x="88" y="96" width="108" height="6" fill="url(#gunmetalDark)" />
-      <rect x="88" y="98" width="108" height="2" fill="url(#accentGreen)" />
+      {/* Receiver — boxy polymer body */}
+      <rect x="90" y="152" width="200" height="74" rx="6" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
 
-      {/* Pistol grip */}
-      <polygon points="125,138 152,138 158,194 138,194" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="132" y="152" width="20" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="132" y="162" width="20" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="132" y="172" width="20" height="3" fill="#2a2422" opacity="0.8" />
-
-      {/* Trigger guard */}
-      <path d="M 158 142 Q 158 158 170 158 L 182 158 Q 188 158 188 152 L 188 142 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      <line x1="175" y1="145" x2="175" y2="156" stroke="#000" strokeWidth="2.5" />
-
-      {/* Magazine — extended, vertical */}
-      <path d="M 100 142 L 100 200 Q 100 208 105 208 L 132 208 Q 138 208 138 200 L 132 142 Z"
-        fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <line x1="105" y1="155" x2="132" y2="155" stroke="#2a2422" strokeWidth="1" />
-      <line x1="105" y1="170" x2="133" y2="170" stroke="#2a2422" strokeWidth="1" />
-      <line x1="105" y1="185" x2="134" y2="185" stroke="#2a2422" strokeWidth="1" />
-
-      {/* Charging handle */}
-      <rect x="178" y="106" width="18" height="5" rx="2" fill="url(#accentGreen)" />
-
-      {/* Front handguard */}
-      <rect x="200" y="108" width="56" height="28" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
-      <rect x="208" y="114" width="30" height="3" fill="#000" />
-      <rect x="208" y="121" width="30" height="3" fill="#000" />
-      <rect x="208" y="128" width="30" height="3" fill="#000" />
-      <rect x="240" y="114" width="14" height="18" fill="url(#accentGreen)" opacity="0.85" />
-
-      {/* Short barrel */}
-      <rect x="256" y="116" width="42" height="12" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      {/* Flash suppressor */}
-      <rect x="296" y="112" width="14" height="20" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <ellipse cx="303" cy="122" rx="4" ry="6" fill="#000" />
-      <ellipse cx="303" cy="122" rx="2" ry="3" fill="url(#accentGreen)" opacity="0.8" />
-
-      {/* Iron sights */}
-      <rect x="100" y="92" width="6" height="8" fill="url(#gunmetal)" />
-      <rect x="188" y="92" width="6" height="8" fill="url(#gunmetal)" />
-    </svg>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// PULSE-12 SHOTGUN — tactical pump-action: shorter receiver, large
-// pump grip, wide barrel. Pink accent.
-// ═══════════════════════════════════════════════════════════════════
-function ShotgunSVG() {
-  return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
-      <SharedDefs />
-
-      {/* Stock */}
-      <polygon points="15,108 80,108 88,158 22,158" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="25" y="118" width="55" height="4" fill="#2a1a22" opacity="0.85" />
-      <rect x="25" y="130" width="55" height="4" fill="#2a1a22" opacity="0.85" />
-
-      {/* Receiver — thicker than rifle */}
-      <rect x="80" y="98" width="100" height="50" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <rect x="86" y="94" width="88" height="6" fill="url(#gunmetalDark)" />
-      <rect x="86" y="96" width="88" height="2" fill="url(#accentPink)" />
-
-      {/* Trigger group */}
-      <rect x="120" y="148" width="40" height="14" rx="2" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <path d="M 130 162 Q 130 175 142 175 L 152 175 Q 158 175 158 168 L 158 162 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      <line x1="146" y1="165" x2="146" y2="174" stroke="#000" strokeWidth="2.5" />
-
-      {/* Pump grip — large, ribbed */}
-      <rect x="190" y="124" width="80" height="28" rx="4" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      {/* Pump ribs */}
-      {[197, 207, 217, 227, 237, 247, 257].map((x) => (
-        <rect key={x} x={x} y="128" width="3" height="20" fill="#2a1a22" />
+      {/* Top picatinny rail */}
+      <rect x="100" y="142" width="200" height="12" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+      {[105, 115, 125, 135, 145, 155, 165, 175, 185, 195, 205, 215, 225, 235, 245, 255, 265, 275, 285].map((x) => (
+        <rect key={x} x={x} y="144" width="2" height="8" fill="#000" />
       ))}
 
-      {/* Barrel — wide tube (12-gauge) */}
-      <rect x="270" y="116" width="80" height="20" rx="2" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      {/* Front sight bead */}
-      <circle cx="345" cy="113" r="3" fill="url(#accentPink)" />
-      <circle cx="345" cy="113" r="1.5" fill="#fff" />
-      {/* Wide muzzle */}
-      <rect x="346" y="112" width="14" height="28" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <ellipse cx="353" cy="126" rx="6" ry="10" fill="#000" />
-      <ellipse cx="353" cy="126" rx="3" ry="5" fill="url(#accentPink)" opacity="0.7" />
+      {/* Iron sights (deployable, on the rail) */}
+      <rect x="118" y="130" width="10" height="14" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      <rect x="270" y="132" width="8" height="12" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
 
-      {/* Magazine tube under barrel */}
-      <rect x="200" y="148" width="120" height="10" rx="3" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      <circle cx="316" cy="153" r="3" fill="url(#accentPink)" />
-
-      {/* Ejection port */}
-      <rect x="115" y="108" width="34" height="14" rx="1" fill="#000" />
-      <rect x="118" y="111" width="28" height="3" fill="url(#accentPink)" opacity="0.6" />
-    </svg>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Q-SNIPER — long bolt-action with massive scope. Lilac accent.
-// ═══════════════════════════════════════════════════════════════════
-function SniperSVG() {
-  return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
-      <SharedDefs />
-
-      {/* Stock — long sniper stock with cheek riser */}
-      <polygon points="10,118 60,118 65,134 65,158 12,158" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="20" y="124" width="40" height="4" fill="url(#accentLilac)" opacity="0.5" />
-      {/* Cheek riser */}
-      <rect x="58" y="108" width="40" height="14" rx="2" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-
-      {/* Receiver */}
-      <rect x="65" y="122" width="100" height="32" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <rect x="72" y="118" width="86" height="6" fill="url(#gunmetalDark)" />
-
-      {/* Bolt handle */}
-      <rect x="148" y="106" width="14" height="20" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <circle cx="155" cy="106" r="6" fill="url(#gunmetalLight)" stroke="#000" strokeWidth="1" />
-
-      {/* Pistol grip */}
-      <polygon points="98,150 124,150 130,200 105,200" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="105" y="162" width="20" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="105" y="172" width="20" height="3" fill="#2a2422" opacity="0.8" />
-
-      {/* Trigger guard */}
-      <path d="M 130 154 Q 130 170 144 170 L 156 170 Q 162 170 162 164 L 162 154 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      <line x1="148" y1="157" x2="148" y2="168" stroke="#000" strokeWidth="2.5" />
-
-      {/* Detachable magazine */}
-      <rect x="78" y="154" width="22" height="32" rx="2" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-
-      {/* Long barrel */}
-      <rect x="165" y="130" width="180" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      {/* Barrel taper */}
-      <polygon points="335,130 345,128 345,146 335,144" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
-      {/* Muzzle brake */}
-      <rect x="345" y="126" width="18" height="22" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <rect x="349" y="130" width="2" height="14" fill="#000" />
-      <rect x="353" y="130" width="2" height="14" fill="#000" />
-      <rect x="357" y="130" width="2" height="14" fill="#000" />
-      <ellipse cx="352" cy="137" rx="4" ry="6" fill="#000" />
-      <ellipse cx="352" cy="137" rx="2" ry="3" fill="url(#accentLilac)" opacity="0.7" />
-
-      {/* MASSIVE SCOPE — defining sniper feature */}
-      <rect x="80" y="74" width="100" height="20" rx="4" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      {/* Scope front bell */}
-      <ellipse cx="180" cy="84" rx="14" ry="14" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <ellipse cx="180" cy="84" rx="9" ry="9" fill="#0a0a14" />
-      <ellipse cx="183" cy="81" rx="3" ry="3" fill="url(#accentLilac)" />
-      {/* Scope rear bell */}
-      <ellipse cx="80" cy="84" rx="10" ry="11" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      {/* Turrets on top of scope */}
-      <rect x="120" y="64" width="14" height="12" rx="2" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <circle cx="127" cy="65" r="3" fill="url(#accentLilac)" />
-      <rect x="140" y="68" width="10" height="8" rx="1" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-
-      {/* Bipod attached to barrel */}
-      <line x1="200" y1="144" x2="180" y2="200" stroke="url(#gunmetal)" strokeWidth="3" />
-      <line x1="220" y1="144" x2="240" y2="200" stroke="url(#gunmetal)" strokeWidth="3" />
-    </svg>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// RAILGUN — sci-fi heavy weapon with energy coils along the barrel.
-// Cyan accent.
-// ═══════════════════════════════════════════════════════════════════
-function RailgunSVG() {
-  return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
-      <SharedDefs />
-
-      {/* Cyber stock */}
-      <polygon points="10,108 70,108 76,164 16,164" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <rect x="20" y="116" width="48" height="6" fill="url(#accentCyan)" opacity="0.7" />
-      <rect x="20" y="148" width="48" height="6" fill="url(#accentCyan)" opacity="0.4" />
-
-      {/* Bulky receiver */}
-      <rect x="70" y="96" width="120" height="60" rx="4" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <rect x="78" y="92" width="106" height="6" fill="url(#gunmetalDark)" />
-      <rect x="78" y="94" width="106" height="3" fill="url(#accentCyan)" />
-      {/* Energy core display */}
-      <rect x="86" y="108" width="40" height="20" rx="2" fill="#0a0a14" stroke="url(#accentCyan)" strokeWidth="1.5" />
-      <rect x="90" y="114" width="32" height="3" fill="url(#accentCyan)" />
-      <rect x="90" y="120" width="22" height="3" fill="url(#accentCyan)" opacity="0.7" />
-      {/* Power gauge */}
-      <circle cx="160" cy="118" r="14" fill="#0a0a14" stroke="url(#accentCyan)" strokeWidth="1.5" />
-      <circle cx="160" cy="118" r="10" fill="none" stroke="url(#accentCyan)" strokeWidth="2" opacity="0.8" />
-      <circle cx="160" cy="118" r="5" fill="url(#accentCyan)" />
-
-      {/* Pistol grip */}
-      <polygon points="120,156 148,156 156,206 126,206" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="128" y="168" width="22" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="128" y="178" width="22" height="3" fill="#2a2422" opacity="0.8" />
-
-      {/* Trigger guard */}
-      <path d="M 156 160 Q 156 178 172 178 L 184 178 Q 190 178 190 172 L 190 160 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      <line x1="178" y1="163" x2="178" y2="176" stroke="#000" strokeWidth="2.5" />
-
-      {/* Rail accelerator — main barrel */}
-      <rect x="190" y="118" width="160" height="18" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
-      {/* Top rail */}
-      <rect x="190" y="112" width="160" height="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="0.8" />
-      {/* Bottom rail */}
-      <rect x="190" y="136" width="160" height="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="0.8" />
-
-      {/* Energy coils wrapping the barrel — signature railgun look */}
-      {[210, 234, 258, 282, 306, 330].map((x) => (
-        <g key={x}>
-          <ellipse cx={x} cy="127" rx="6" ry="14" fill="none" stroke="url(#accentCyan)" strokeWidth="3" />
-          <ellipse cx={x} cy="127" rx="4" ry="10" fill="none" stroke="#fff" strokeWidth="1" opacity="0.5" />
+      {/* Ergonomic pistol grip */}
+      <path d="M 196 226 L 198 232 L 208 290 Q 212 296 220 296 L 234 296 Q 244 294 246 286 L 240 226 Z"
+        fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
+      {/* Grip stippling */}
+      {[244, 254, 264, 274].map((y) => (
+        <g key={y}>
+          <line x1="204" y1={y} x2="240" y2={y - 4} stroke="#000" strokeWidth="0.6" opacity="0.6" />
         </g>
       ))}
 
-      {/* Muzzle aperture */}
-      <rect x="350" y="108" width="18" height="38" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
-      <ellipse cx="359" cy="127" rx="6" ry="14" fill="#000" />
-      <ellipse cx="359" cy="127" rx="3" ry="9" fill="url(#accentCyan)" opacity="0.85" />
+      {/* Trigger guard */}
+      <path d="M 240 226 L 240 238 Q 240 256 256 256 L 280 256 Q 290 256 290 246 L 290 226 Z"
+        fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
+      <line x1="264" y1="238" x2="264" y2="254" stroke="#000" strokeWidth="2.5" />
+
+      {/* Vertical magazine — extends down from receiver */}
+      <rect x="130" y="226" width="40" height="80" rx="3" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
+      {/* Magazine witness lines */}
+      <line x1="135" y1="240" x2="165" y2="240" stroke="#1a1a1a" strokeWidth="1" />
+      <line x1="135" y1="258" x2="165" y2="258" stroke="#1a1a1a" strokeWidth="1" />
+      <line x1="135" y1="276" x2="165" y2="276" stroke="#1a1a1a" strokeWidth="1" />
+      <line x1="135" y1="294" x2="165" y2="294" stroke="#1a1a1a" strokeWidth="1" />
+
+      {/* Charging handle — left side */}
+      <rect x="270" y="160" width="22" height="8" rx="2" fill="url(#gunmetalLight)" stroke="#000" strokeWidth="1" />
+
+      {/* Front handguard with attachment points */}
+      <rect x="290" y="166" width="80" height="48" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
+      {/* M-LOK / KeyMod slots */}
+      <rect x="298" y="178" width="14" height="6" rx="1" fill="#000" />
+      <rect x="318" y="178" width="14" height="6" rx="1" fill="#000" />
+      <rect x="338" y="178" width="14" height="6" rx="1" fill="#000" />
+      <rect x="298" y="198" width="14" height="6" rx="1" fill="#000" />
+      <rect x="318" y="198" width="14" height="6" rx="1" fill="#000" />
+      <rect x="338" y="198" width="14" height="6" rx="1" fill="#000" />
+
+      {/* Barrel */}
+      <rect x="370" y="180" width="80" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
+      {/* Suppressor / muzzle device */}
+      <rect x="450" y="172" width="60" height="30" rx="3" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      {/* Suppressor ridges */}
+      {[460, 472, 484, 496].map((x) => (
+        <line key={x} x1={x} y1="174" x2={x} y2="200" stroke="#000" strokeWidth="0.8" />
+      ))}
+      <ellipse cx="506" cy="187" rx="4" ry="11" fill="#000" />
+      <ellipse cx="506" cy="187" rx="2" ry="6" fill="url(#neonGreen)" opacity="0.6" />
+
+      {/* Subtle green accent — energy indicator on receiver */}
+      <circle cx="108" cy="190" r="4" fill="url(#neonGreen)" />
+      <circle cx="108" cy="190" r="2" fill="#fff" />
     </svg>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// G-LAUNCH — grenade launcher: thick body with large bore aperture.
-// Blue accent.
+// PULSE-12 — Remington 870-style pump shotgun: chrome/silver receiver,
+// wood pump grip + stock, magazine tube under barrel
+// ═══════════════════════════════════════════════════════════════════
+function ShotgunSVG() {
+  return (
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
+      <SharedDefs />
+
+      {/* Wood stock with characteristic curved butt */}
+      <path d="M 30 158 Q 28 152 36 148 L 90 142 L 100 200 L 100 230 L 40 234 Q 32 232 30 224 Z"
+        fill="url(#woodLight)" stroke="#000" strokeWidth="1.5" />
+      {/* Wood grain highlights */}
+      <path d="M 38 162 Q 60 158 90 156" fill="none" stroke="#3a1f08" strokeWidth="0.8" opacity="0.5" />
+      <path d="M 40 200 Q 60 200 90 200" fill="none" stroke="#3a1f08" strokeWidth="0.8" opacity="0.5" />
+      {/* Recoil pad */}
+      <path d="M 28 156 Q 26 152 30 148 L 38 146 L 40 232 L 32 232 Q 26 230 28 224 Z"
+        fill="#1a0a05" stroke="#000" strokeWidth="1" />
+
+      {/* Chrome receiver — distinctive shotgun look */}
+      <rect x="100" y="158" width="120" height="58" fill="url(#chrome)" stroke="#000" strokeWidth="1.5" />
+      {/* Top sight rail */}
+      <rect x="106" y="152" width="108" height="6" fill="url(#gunmetalDark)" />
+      {/* Ejection port (right side) */}
+      <rect x="140" y="166" width="50" height="18" rx="2" fill="#000" />
+      <rect x="144" y="170" width="42" height="10" fill="url(#gunmetalDark)" />
+
+      {/* Trigger guard */}
+      <rect x="158" y="216" width="42" height="22" rx="2" fill="url(#chrome)" stroke="#000" strokeWidth="1.2" />
+      <path d="M 168 230 Q 168 244 178 244 L 192 244 Q 198 244 198 238 L 198 230 Z"
+        fill="none" stroke="url(#gunmetalDark)" strokeWidth="2.5" />
+      <line x1="184" y1="232" x2="184" y2="244" stroke="#000" strokeWidth="2.5" />
+
+      {/* Wood pistol grip / wrist of stock */}
+      <path d="M 96 216 L 96 238 Q 96 248 100 248 L 158 248 L 158 216 Z"
+        fill="url(#woodLight)" stroke="#000" strokeWidth="1.2" />
+
+      {/* Wooden pump grip — ribbed/checkered, slides on the action bars */}
+      <rect x="240" y="186" width="100" height="42" rx="3" fill="url(#woodLight)" stroke="#000" strokeWidth="1.5" />
+      {/* Pump ribs (distinctive vertical lines) */}
+      {[248, 258, 268, 278, 288, 298, 308, 318, 328].map((x) => (
+        <rect key={x} x={x} y="190" width="2" height="34" fill="#2a1408" opacity="0.9" />
+      ))}
+
+      {/* Magazine tube under barrel */}
+      <rect x="220" y="226" width="240" height="14" fill="url(#chrome)" stroke="#000" strokeWidth="1" />
+      <rect x="220" y="226" width="240" height="4" fill="url(#gunmetalLight)" />
+      {/* Mag cap at front */}
+      <ellipse cx="460" cy="233" rx="4" ry="9" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+
+      {/* Barrel — wide 12-gauge tube */}
+      <rect x="220" y="174" width="240" height="14" fill="url(#chrome)" stroke="#000" strokeWidth="1.2" />
+      <rect x="220" y="174" width="240" height="3" fill="url(#gunmetalLight)" opacity="0.8" />
+      {/* Front sight bead */}
+      <circle cx="450" cy="170" r="3" fill="url(#neonPink)" />
+      <circle cx="450" cy="170" r="1.5" fill="#fff" />
+
+      {/* Wide muzzle */}
+      <rect x="460" y="170" width="14" height="22" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+      <ellipse cx="467" cy="181" rx="5" ry="9" fill="#000" />
+      <ellipse cx="467" cy="181" rx="2.5" ry="5" fill="url(#neonPink)" opacity="0.5" />
+    </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Q-SNIPER — AWP / L96A1: OD-green chassis with thumbhole stock,
+// massive scope, long thin barrel with muzzle brake
+// ═══════════════════════════════════════════════════════════════════
+function SniperSVG() {
+  return (
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
+      <SharedDefs />
+
+      {/* Skeletonized OD-green stock with thumbhole */}
+      <path d="M 20 168 Q 16 162 22 156 L 80 150 L 88 165 L 88 220 L 80 232 L 22 232 Q 16 226 20 220 Z"
+        fill="url(#odGreen)" stroke="#000" strokeWidth="1.5" />
+      {/* Thumbhole (cutout) */}
+      <ellipse cx="65" cy="192" rx="14" ry="12" fill="#0a0a08" stroke="#000" strokeWidth="1" />
+      {/* Ventilation holes in stock */}
+      <ellipse cx="42" cy="172" rx="5" ry="4" fill="#1a1a14" />
+      <ellipse cx="42" cy="186" rx="5" ry="4" fill="#1a1a14" />
+      <ellipse cx="42" cy="200" rx="5" ry="4" fill="#1a1a14" />
+      <ellipse cx="42" cy="214" rx="5" ry="4" fill="#1a1a14" />
+      {/* Number stencil "048" */}
+      <text x="30" y="156" fontFamily="JetBrains Mono, monospace" fontSize="9" fontWeight="800" fill="#d8d4c0" opacity="0.85" letterSpacing="1">048</text>
+      {/* Cheek piece */}
+      <rect x="76" y="142" width="50" height="14" rx="2" fill="url(#odGreen)" stroke="#000" strokeWidth="1.2" />
+
+      {/* Receiver / action — OD green */}
+      <rect x="88" y="158" width="140" height="50" fill="url(#odGreen)" stroke="#000" strokeWidth="1.5" />
+      {/* Bolt action */}
+      <rect x="160" y="148" width="50" height="14" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <circle cx="206" cy="155" r="9" fill="url(#gunmetalLight)" stroke="#000" strokeWidth="1" />
+
+      {/* Trigger guard */}
+      <path d="M 128 208 L 128 234 Q 128 248 144 248 L 162 248 Q 170 248 170 240 L 170 208 Z"
+        fill="url(#odGreen)" stroke="#000" strokeWidth="1.2" />
+      <line x1="152" y1="222" x2="152" y2="246" stroke="#000" strokeWidth="2.5" />
+
+      {/* Detachable box magazine */}
+      <rect x="100" y="208" width="30" height="42" rx="2" fill="url(#odGreen)" stroke="#000" strokeWidth="1.2" />
+      <line x1="105" y1="220" x2="125" y2="220" stroke="#1a1f10" strokeWidth="1" opacity="0.8" />
+      <line x1="105" y1="232" x2="125" y2="232" stroke="#1a1f10" strokeWidth="1" opacity="0.8" />
+
+      {/* Long thin barrel */}
+      <rect x="228" y="178" width="280" height="10" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
+      {/* Tapered profile darker section */}
+      <rect x="228" y="184" width="280" height="3" fill="url(#gunmetalDark)" />
+      {/* Muzzle brake */}
+      <rect x="508" y="172" width="30" height="22" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <ellipse cx="514" cy="183" rx="2" ry="6" fill="#000" />
+      <ellipse cx="522" cy="183" rx="2.5" ry="7" fill="#000" />
+      <ellipse cx="532" cy="183" rx="3.5" ry="8" fill="#000" />
+      <ellipse cx="532" cy="183" rx="2" ry="4" fill="url(#neonLilac)" opacity="0.7" />
+
+      {/* HUGE SCOPE — the defining sniper feature */}
+      {/* Scope tube */}
+      <rect x="106" y="98" width="140" height="22" rx="4" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Scope rings (mounts) */}
+      <rect x="120" y="118" width="18" height="14" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
+      <rect x="212" y="118" width="18" height="14" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
+      {/* Adjustment turrets */}
+      <rect x="158" y="80" width="22" height="18" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <circle cx="169" cy="84" r="6" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      <rect x="185" y="92" width="14" height="8" rx="1" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+
+      {/* Front objective bell */}
+      <ellipse cx="252" cy="109" rx="18" ry="18" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      <ellipse cx="252" cy="109" rx="13" ry="13" fill="#0a0a14" />
+      <ellipse cx="256" cy="105" rx="5" ry="5" fill="url(#neonLilac)" opacity="0.9" />
+      <ellipse cx="258" cy="103" rx="2" ry="2" fill="#fff" />
+
+      {/* Rear eyepiece bell */}
+      <ellipse cx="100" cy="109" rx="12" ry="13" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      <ellipse cx="100" cy="109" rx="7" ry="8" fill="#000" />
+
+      {/* Bipod legs under handguard */}
+      <line x1="280" y1="190" x2="260" y2="270" stroke="url(#gunmetalDark)" strokeWidth="4" strokeLinecap="round" />
+      <line x1="300" y1="190" x2="320" y2="270" stroke="url(#gunmetalDark)" strokeWidth="4" strokeLinecap="round" />
+      <ellipse cx="260" cy="272" rx="6" ry="2" fill="#000" />
+      <ellipse cx="320" cy="272" rx="6" ry="2" fill="#000" />
+    </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RAILGUN — L85A2 / SA80 bullpup: tan/khaki furniture, carrying handle
+// with iron sights, mag BEHIND grip (bullpup), short OAL
+// ═══════════════════════════════════════════════════════════════════
+function RailgunSVG() {
+  return (
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
+      <SharedDefs />
+
+      {/* Stock cap / butt plate */}
+      <path d="M 25 168 Q 22 162 28 158 L 56 156 L 56 232 L 28 232 Q 22 230 25 224 Z"
+        fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Cheek pad (tan) */}
+      <rect x="56" y="156" width="60" height="18" fill="url(#khaki)" stroke="#000" strokeWidth="1.2" />
+
+      {/* Receiver — runs full length (bullpup = receiver behind grip) */}
+      <rect x="56" y="174" width="280" height="58" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Tan upper handguard panel covering rear half of receiver */}
+      <rect x="60" y="178" width="160" height="50" fill="url(#khaki)" stroke="#000" strokeWidth="1.2" />
+      {/* "017" stencil on the tan panel */}
+      <text x="180" y="218" fontFamily="JetBrains Mono, monospace" fontSize="11" fontWeight="800" fill="#3a2818" opacity="0.9" letterSpacing="1.5">017</text>
+
+      {/* Magazine — BEHIND the grip (bullpup signature) */}
+      <rect x="80" y="232" width="44" height="64" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      <line x1="86" y1="248" x2="118" y2="248" stroke="#1a1a1a" strokeWidth="1" />
+      <line x1="86" y1="266" x2="118" y2="266" stroke="#1a1a1a" strokeWidth="1" />
+      <line x1="86" y1="284" x2="118" y2="284" stroke="#1a1a1a" strokeWidth="1" />
+
+      {/* Ejection port on the side */}
+      <rect x="140" y="186" width="40" height="14" rx="1" fill="#000" />
+      <rect x="143" y="189" width="34" height="8" fill="url(#gunmetalLight)" opacity="0.4" />
+
+      {/* Pistol grip (tan) — positioned in front of magazine */}
+      <path d="M 200 232 L 204 240 L 214 286 Q 218 292 224 292 L 238 292 Q 248 290 250 282 L 246 232 Z"
+        fill="url(#khaki)" stroke="#000" strokeWidth="1.5" />
+      {/* Grip ridges */}
+      {[244, 256, 268].map((y) => (
+        <line key={y} x1="208" y1={y} x2="246" y2={y - 4} stroke="#5a4220" strokeWidth="0.6" opacity="0.7" />
+      ))}
+
+      {/* Trigger guard — winter trigger style (loops down further) */}
+      <path d="M 246 232 L 250 248 Q 250 262 264 262 L 286 262 Q 296 262 296 252 L 296 232 Z"
+        fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <line x1="278" y1="244" x2="278" y2="260" stroke="#000" strokeWidth="2.5" />
+
+      {/* Carrying handle with integrated optic (SUSAT-style or rail) */}
+      <rect x="120" y="140" width="120" height="20" rx="3" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Optic housing on the carry handle */}
+      <rect x="135" y="120" width="80" height="22" rx="3" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      <ellipse cx="148" cy="131" rx="6" ry="8" fill="#000" stroke="url(#gunmetal)" strokeWidth="1" />
+      <ellipse cx="148" cy="131" rx="3" ry="4" fill="url(#neonCyan)" opacity="0.8" />
+      <ellipse cx="202" cy="131" rx="9" ry="11" fill="#000" stroke="url(#gunmetal)" strokeWidth="1" />
+      <ellipse cx="202" cy="131" rx="5" ry="6" fill="url(#neonCyan)" opacity="0.6" />
+
+      {/* Front handguard with vent slots */}
+      <rect x="336" y="174" width="120" height="58" fill="url(#khaki)" stroke="#000" strokeWidth="1.5" />
+      {/* Cooling vents */}
+      {[180, 192, 204, 216].map((y) => (
+        <rect key={y} x="346" y={y} width="40" height="3" fill="#3a2818" opacity="0.85" />
+      ))}
+      {/* M-LOK slots on the side */}
+      {[180, 196, 212].map((y) => (
+        <rect key={y} x="400" y={y} width="44" height="4" rx="1" fill="#1a1208" />
+      ))}
+
+      {/* Front sight tower */}
+      <rect x="456" y="148" width="14" height="62" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <rect x="458" y="140" width="10" height="14" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
+      {/* Sight post */}
+      <rect x="462" y="136" width="2" height="6" fill="#000" />
+
+      {/* Short barrel + muzzle */}
+      <rect x="470" y="190" width="50" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
+      <rect x="520" y="184" width="22" height="26" rx="2" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <ellipse cx="528" cy="197" rx="5" ry="9" fill="#000" />
+      <ellipse cx="528" cy="197" rx="2.5" ry="5" fill="url(#neonCyan)" opacity="0.7" />
+    </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// G-LAUNCH — standalone grenade launcher: chunky frame, large bore,
+// pump-style fore-end, simple iron sights
 // ═══════════════════════════════════════════════════════════════════
 function LauncherSVG() {
   return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
       <SharedDefs />
 
       {/* Stock */}
-      <polygon points="20,108 75,108 80,158 25,158" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="30" y="118" width="46" height="3" fill="url(#accentBlue)" opacity="0.5" />
+      <path d="M 25 156 Q 22 150 28 146 L 90 144 L 100 226 L 32 232 Q 22 230 25 222 Z"
+        fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
 
-      {/* Receiver — chunky */}
-      <rect x="75" y="98" width="110" height="52" rx="4" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      <rect x="82" y="94" width="96" height="6" fill="url(#gunmetalDark)" />
-      <rect x="82" y="96" width="96" height="2" fill="url(#accentBlue)" />
+      {/* Receiver — chunky body */}
+      <rect x="98" y="146" width="160" height="86" rx="4" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.5" />
+      <rect x="104" y="140" width="148" height="8" fill="url(#gunmetalDark)" />
 
-      {/* Ammo counter display */}
-      <rect x="90" y="106" width="30" height="14" rx="2" fill="#0a0a14" stroke="url(#accentBlue)" strokeWidth="1.2" />
-      <text x="105" y="118" textAnchor="middle" fontSize="11" fontWeight="800" fontFamily="JetBrains Mono, monospace" fill="url(#accentBlue)">06</text>
+      {/* Ammo counter LCD */}
+      <rect x="112" y="156" width="44" height="22" rx="2" fill="#0a0a14" stroke="url(#neonBlue)" strokeWidth="1.5" />
+      <text x="134" y="172" textAnchor="middle" fontSize="14" fontWeight="800"
+        fontFamily="JetBrains Mono, monospace" fill="url(#neonBlue)" letterSpacing="2">06</text>
 
-      {/* Pistol grip */}
-      <polygon points="120,150 148,150 156,202 128,202" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      <rect x="128" y="162" width="22" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="128" y="172" width="22" height="3" fill="#2a2422" opacity="0.8" />
-
-      {/* Trigger guard */}
-      <path d="M 156 154 Q 156 172 172 172 L 184 172 Q 190 172 190 166 L 190 154 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.5" />
-      <line x1="178" y1="157" x2="178" y2="170" stroke="#000" strokeWidth="2.5" />
-
-      {/* Heavy barrel with grenade bore */}
-      <rect x="185" y="100" width="130" height="56" rx="4" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
-      {/* Side cooling vents */}
-      <rect x="195" y="106" width="40" height="3" fill="#000" />
-      <rect x="195" y="113" width="40" height="3" fill="#000" />
-      <rect x="195" y="146" width="40" height="3" fill="#000" />
-      <rect x="195" y="139" width="40" height="3" fill="#000" />
-      {/* Pump grip on barrel */}
-      <rect x="246" y="106" width="58" height="44" rx="3" fill="url(#polymer)" stroke="#000" strokeWidth="1" />
-      {[252, 262, 272, 282, 292].map((x) => (
-        <rect key={x} x={x} y="112" width="3" height="32" fill="#2a1a22" />
+      {/* Side rails / cooling */}
+      {[186, 198, 210].map((y) => (
+        <rect key={y} x="170" y={y} width="60" height="4" fill="#000" />
       ))}
 
-      {/* MASSIVE BORE — defining feature */}
-      <ellipse cx="335" cy="128" rx="22" ry="32" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.5" />
-      <ellipse cx="335" cy="128" rx="17" ry="26" fill="#000" />
-      <ellipse cx="335" cy="128" rx="11" ry="18" fill="url(#accentBlue)" opacity="0.55" />
-      <ellipse cx="335" cy="128" rx="6" ry="10" fill="url(#accentBlue)" />
-      <ellipse cx="333" cy="124" rx="2" ry="3" fill="#fff" opacity="0.8" />
+      {/* Pistol grip */}
+      <path d="M 192 232 L 196 240 L 206 296 Q 210 302 218 302 L 230 302 Q 240 300 242 292 L 238 232 Z"
+        fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
+
+      {/* Trigger guard */}
+      <path d="M 238 232 L 242 248 Q 242 264 258 264 L 280 264 Q 290 264 290 254 L 290 232 Z"
+        fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.2" />
+      <line x1="270" y1="246" x2="270" y2="262" stroke="#000" strokeWidth="2.5" />
+
+      {/* Forward grip / pump */}
+      <rect x="260" y="180" width="100" height="60" rx="3" fill="url(#polymerBlack)" stroke="#000" strokeWidth="1.5" />
+      {[270, 286, 302, 318, 334, 350].map((x) => (
+        <rect key={x} x={x} y="190" width="3" height="42" fill="#000" />
+      ))}
+
+      {/* HEAVY BARREL with MASSIVE BORE — defining 40mm look */}
+      <rect x="358" y="166" width="160" height="88" rx="8" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Front sight on top */}
+      <rect x="430" y="156" width="6" height="12" fill="url(#gunmetal)" />
+
+      {/* 40mm bore — concentric circles with depth */}
+      <ellipse cx="510" cy="210" rx="28" ry="38" fill="url(#gunmetal)" stroke="#000" strokeWidth="2" />
+      <ellipse cx="510" cy="210" rx="22" ry="32" fill="#000" />
+      <ellipse cx="510" cy="210" rx="16" ry="24" fill="#0a0a14" />
+      <ellipse cx="510" cy="210" rx="9" ry="14" fill="url(#neonBlue)" opacity="0.5" />
+      <ellipse cx="510" cy="210" rx="4" ry="7" fill="url(#neonBlue)" />
+      <ellipse cx="508" cy="206" rx="2" ry="3" fill="#fff" opacity="0.7" />
     </svg>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// SIDEKICK PISTOL — compact, vertical mag through grip. Amber accent.
+// SIDEKICK — Makarov PM: small frame, wooden grip panels, short slide
 // ═══════════════════════════════════════════════════════════════════
 function PistolSVG() {
   return (
-    <svg viewBox="0 0 380 220" width="100%" height="100%" style={{ filter: "drop-shadow(0 8px 12px rgba(0,0,0,0.6))" }}>
+    <svg viewBox="0 0 600 380" width="100%" height="100%" style={{ filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))" }}>
       <SharedDefs />
 
-      {/* Slide — top of pistol */}
-      <rect x="120" y="106" width="160" height="26" rx="3" fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
-      {/* Slide top rail */}
-      <rect x="126" y="102" width="148" height="6" fill="url(#gunmetalDark)" />
-      <rect x="126" y="104" width="148" height="2" fill="url(#accentAmber)" />
-      {/* Serrations on the back of the slide */}
-      {[128, 134, 140, 146].map((x) => (
-        <line key={x} x1={x} y1="108" x2={x} y2="130" stroke="#000" strokeWidth="1" />
+      {/* Slide — top of pistol, gunmetal */}
+      <rect x="220" y="170" width="160" height="42" rx="3" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1.5" />
+      {/* Slide top */}
+      <rect x="226" y="166" width="148" height="6" fill="url(#gunmetal)" />
+      {/* Front sight blade */}
+      <rect x="370" y="158" width="6" height="12" fill="url(#gunmetal)" />
+      {/* Rear sight notch */}
+      <rect x="232" y="160" width="14" height="10" fill="url(#gunmetal)" />
+      <rect x="236" y="162" width="6" height="6" fill="#000" />
+
+      {/* Slide serrations (rear, classic Makarov style) */}
+      {[230, 238, 246, 254, 262].map((x) => (
+        <line key={x} x1={x} y1="174" x2={x} y2="208" stroke="#000" strokeWidth="1" />
       ))}
+
       {/* Ejection port */}
-      <rect x="200" y="110" width="34" height="10" rx="1" fill="#000" />
-      <rect x="204" y="113" width="26" height="3" fill="url(#accentAmber)" opacity="0.6" />
+      <rect x="290" y="172" width="32" height="14" rx="1" fill="#000" />
+      <rect x="294" y="175" width="24" height="6" fill="url(#gunmetalLight)" opacity="0.4" />
 
-      {/* Front sight */}
-      <rect x="266" y="98" width="6" height="10" fill="url(#gunmetal)" />
-      {/* Rear sight */}
-      <rect x="134" y="98" width="14" height="10" fill="url(#gunmetal)" />
-      <rect x="139" y="100" width="4" height="6" fill="#000" />
+      {/* Short barrel poking out */}
+      <rect x="380" y="178" width="14" height="14" fill="url(#barrelSteel)" stroke="#000" strokeWidth="1" />
+      <ellipse cx="390" cy="185" rx="3" ry="5" fill="#000" />
+      <ellipse cx="390" cy="185" rx="1.5" ry="2.5" fill="url(#neonAmber)" opacity="0.7" />
 
-      {/* Barrel poking out front */}
-      <rect x="282" y="114" width="14" height="10" fill="url(#barrelSteel)" stroke="#000" strokeWidth="0.8" />
-      <ellipse cx="294" cy="119" rx="3" ry="5" fill="#000" />
-      <ellipse cx="294" cy="119" rx="1.5" ry="2.5" fill="url(#accentAmber)" opacity="0.8" />
-
-      {/* Frame / grip — angled */}
-      <polygon points="160,132 234,132 244,200 168,200" fill="url(#polymer)" stroke="#000" strokeWidth="1.2" />
-      {/* Grip stippling pattern */}
-      <rect x="175" y="148" width="50" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="175" y="158" width="50" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="175" y="168" width="50" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="175" y="178" width="50" height="3" fill="#2a2422" opacity="0.8" />
-      <rect x="175" y="188" width="50" height="3" fill="#2a2422" opacity="0.8" />
+      {/* Frame — extends down to grip */}
+      <path d="M 244 212 L 354 212 L 360 232 L 360 246 L 348 246 L 348 240 L 256 240 L 252 246 L 244 246 Z"
+        fill="url(#gunmetal)" stroke="#000" strokeWidth="1.2" />
 
       {/* Trigger guard */}
-      <path d="M 234 132 Q 234 152 220 158 L 196 158 Q 186 158 186 150 L 186 132 Z"
-        fill="none" stroke="url(#gunmetalLight)" strokeWidth="2.8" />
-      <line x1="204" y1="142" x2="204" y2="155" stroke="#000" strokeWidth="2.5" />
+      <path d="M 264 240 L 264 254 Q 264 270 280 270 L 296 270 Q 304 270 304 262 L 304 240 Z"
+        fill="none" stroke="url(#gunmetalDark)" strokeWidth="2.5" />
+      <line x1="286" y1="252" x2="286" y2="268" stroke="#000" strokeWidth="2.5" />
 
-      {/* Magazine base */}
-      <rect x="166" y="198" width="80" height="8" rx="1" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+      {/* Wood grip panels — distinctive Makarov look */}
+      <path d="M 252 240 L 256 246 L 268 320 Q 272 326 280 326 L 320 326 Q 330 324 332 316 L 324 246 L 320 240 Z"
+        fill="url(#woodWarm)" stroke="#000" strokeWidth="1.5" />
+      {/* Wood grain accents */}
+      <path d="M 264 270 Q 290 274 322 270" fill="none" stroke="#3a1808" strokeWidth="0.7" opacity="0.6" />
+      <path d="M 268 296 Q 292 300 322 296" fill="none" stroke="#3a1808" strokeWidth="0.7" opacity="0.6" />
+      <path d="M 270 314 Q 294 318 320 314" fill="none" stroke="#3a1808" strokeWidth="0.7" opacity="0.6" />
+      {/* Grip medallion / decoration */}
+      <circle cx="296" cy="284" r="6" fill="url(#gunmetalDark)" stroke="url(#neonAmber)" strokeWidth="1" />
+      <text x="296" y="288" textAnchor="middle" fontSize="7" fontWeight="800"
+        fontFamily="JetBrains Mono, monospace" fill="url(#neonAmber)">N</text>
+
+      {/* Mag base */}
+      <rect x="266" y="324" width="64" height="8" rx="1" fill="url(#gunmetalDark)" stroke="#000" strokeWidth="1" />
+
+      {/* Hammer at the rear (DA/SA pistol) */}
+      <path d="M 218 174 L 220 158 L 232 158 L 232 174 Z" fill="url(#gunmetal)" stroke="#000" strokeWidth="1" />
     </svg>
   );
 }
@@ -690,14 +748,60 @@ const WEAPON_RENDERERS = {
   pistol: PistolSVG,
 };
 
-function MuzzleFlash({ flashColor }) {
-  // Barrel-tip locations vary slightly per weapon. We pick a position
-  // that lands near the average barrel-tip across the silhouettes.
+// First-person hand wrapping the grip.
+function FirstPersonHand({ reloading }) {
+  if (reloading) return null;
   return (
     <div style={{
       position: "absolute",
-      left: "93%", top: "57%",
-      width: 70, height: 70,
+      right: 30, bottom: -10,
+      width: 220, height: 260,
+      pointerEvents: "none",
+      filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))",
+    }}>
+      <svg viewBox="0 0 220 260" width="100%" height="100%">
+        <defs>
+          <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#7d5c42" />
+            <stop offset="0.5" stopColor="#5a4030" />
+            <stop offset="1" stopColor="#2e1f18" />
+          </linearGradient>
+          <linearGradient id="glove" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#3a322a" />
+            <stop offset="1" stopColor="#15110d" />
+          </linearGradient>
+        </defs>
+        {/* Forearm */}
+        <polygon points="130,260 220,260 220,150 150,128" fill="url(#glove)" stroke="#000" strokeWidth="1.5" />
+        {/* Glove cuff with glow */}
+        <polygon points="130,170 220,150 220,180 138,196" fill="#1a1410" stroke="#a78bfa" strokeWidth="1.5" />
+        <polygon points="130,180 220,160 220,166 132,186" fill="#a78bfa" opacity="0.85" />
+
+        {/* Hand wrapping grip */}
+        <ellipse cx="115" cy="135" rx="42" ry="32" fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
+        {/* Thumb */}
+        <path d="M 80 118 Q 64 122 62 142 Q 65 158 84 156" fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
+        {/* Knuckles */}
+        {[
+          [92, 108],
+          [104, 102],
+          [116, 102],
+          [126, 106],
+        ].map(([x, y], i) => (
+          <ellipse key={i} cx={x} cy={y} rx="9" ry="11" fill="url(#skin)" stroke="#000" strokeWidth="1" />
+        ))}
+        <ellipse cx="66" cy="134" rx="3" ry="5" fill="#3a2818" />
+      </svg>
+    </div>
+  );
+}
+
+function MuzzleFlash({ flashColor }) {
+  return (
+    <div style={{
+      position: "absolute",
+      left: "92%", top: "48%",
+      width: 80, height: 80,
       borderRadius: "50%",
       background: `radial-gradient(circle, ${flashColor} 0%, ${flashColor}aa 30%, ${flashColor}44 55%, transparent 75%)`,
       transform: "translate(-50%, -50%) scale(0)",

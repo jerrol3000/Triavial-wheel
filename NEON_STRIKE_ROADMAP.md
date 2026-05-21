@@ -42,14 +42,14 @@ The FPS foundation that justifies all the work below:
 Goal: the solo experience feels **complete** before adding new content.
 Stable ship point: a polished single-game FPS you'd be proud to demo.
 
-- [ ] **P1-1** Hit markers + floating damage numbers
-- [ ] **P1-2** Per-weapon recoil patterns (visual recoil curves, not just pitch nudge)
-- [ ] **P1-3** Mobile touch controls (virtual joystick + fire/jump/dash/Q buttons)
-- [ ] **P1-4** Pause menu (ESC: resume / settings / quit, pointer unlocks)
-- [ ] **P1-5** Settings panel (mouse sensitivity, FOV, audio volume, perf preset)
-- [ ] **P1-6** Minimap (top-down arena view with player + bot positions)
-- [ ] **P1-7** Scoreboard (TAB-toggle K/D/score table for all combatants)
-- [ ] **P1-8** Animated stylized fragment shader on phase walls (data-noise pattern)
+- [x] **P1-1** Hit markers + floating damage numbers
+- [x] **P1-2** Per-weapon recoil patterns (visual recoil curves, not just pitch nudge)
+- [x] **P1-3** Mobile touch controls (virtual joystick + fire/jump/dash/Q buttons)
+- [x] **P1-4** Pause menu (ESC: resume / settings / quit, pointer unlocks)
+- [x] **P1-5** Settings panel (mouse sensitivity, FOV, audio volume, perf preset)
+- [x] **P1-6** Minimap (top-down arena view with player + bot positions)
+- [x] **P1-7** Scoreboard (TAB-toggle K/D/score table for all combatants)
+- [x] **P1-8** Animated stylized fragment shader on phase walls (data-noise pattern)
 
 ---
 
@@ -58,12 +58,12 @@ Stable ship point: a polished single-game FPS you'd be proud to demo.
 Goal: multiple solo experiences so a player has reasons to keep grinding.
 Stable ship point: 4 distinct solo modes (quick match, aim training, wave survival, tournament).
 
-- [ ] **P2-1** Adjustable difficulty (Easy / Normal / Hard — bot accuracy / count / RoF)
-- [ ] **P2-2** Aim training mode (stationary spawn-able targets, score by hits/time)
-- [ ] **P2-3** Training arena (separate room with target dummies + movement practice)
-- [ ] **P2-4** Wave survival mode (escalating bot waves + intermissions for ammo)
-- [ ] **P2-5** Boss encounter (large bot with shield + AOE attack at wave 5)
-- [ ] **P2-6** Ranked bot tournament (best-of-3 runs with cumulative ranking)
+- [x] **P2-1** Adjustable difficulty (Easy / Normal / Hard — bot accuracy / count / RoF)
+- [x] **P2-2** Aim training mode (stationary spawn-able targets, score by hits/time)
+- [~] **P2-3** Training arena (separate room with target dummies + movement practice) _(folded into P2-2 — Aim mode is the training mode)_
+- [x] **P2-4** Wave survival mode (escalating bot waves + intermissions for ammo)
+- [x] **P2-5** Boss encounter (large bot with shield + AOE attack at wave 5)
+- [ ] **P2-6** Ranked bot tournament (best-of-3 runs with cumulative ranking) _(deferred — overlaps with P5 progression)_
 
 ---
 
@@ -74,16 +74,16 @@ Stable ship point: a real weapon-meta game emerges, every match has loadout deci
 
 > Dependency: P3-1 (refactor) **must** ship before any other P3 task.
 
-- [ ] **P3-1** Weapon system refactor (abstract base + multi-weapon loadout)
-- [ ] **P3-2** Railgun (charge + pierce, instant high-damage, slow RoF)
-- [ ] **P3-3** Energy shotgun (close-range cone, 6 pellets, fast reload)
-- [ ] **P3-4** Smart pistol (light aim-assist, fast fire, low damage)
-- [ ] **P3-5** Gravity launcher (projectile that pulls bots toward impact)
-- [ ] **P3-6** Pulse SMG (full-auto, high RoF, low damage)
-- [ ] **P3-7** Quantum sniper (scoped, charge-up + dimension-pierce alt-fire)
-- [ ] **P3-8** Weapon switching (number keys 1-7 + scroll wheel)
-- [ ] **P3-9** Secondary fire modes per weapon (right-click)
-- [ ] **P3-10** Weapon pickups on arena floor (spawn timer + animation)
+- [x] **P3-1** Weapon system refactor (abstract base + multi-weapon loadout)
+- [x] **P3-2** Railgun (charge + pierce, instant high-damage, slow RoF)
+- [x] **P3-3** Energy shotgun (close-range cone, 6 pellets, fast reload)
+- [x] **P3-4** Smart pistol (light aim-assist, fast fire, low damage)
+- [x] **P3-5** Gravity launcher (projectile that pulls bots toward impact)
+- [x] **P3-6** Pulse SMG (full-auto, high RoF, low damage)
+- [x] **P3-7** Quantum sniper (scoped, charge-up + dimension-pierce alt-fire)
+- [x] **P3-8** Weapon switching (number keys 1-7 + scroll wheel)
+- [x] **P3-9** Secondary fire modes per weapon (right-click)
+- [x] **P3-10** Weapon pickups on arena floor (spawn timer + animation)
 
 ---
 

@@ -20,6 +20,8 @@ import MobileControls from "./MobileControls.js";
 import PauseMenu from "./PauseMenu.js";
 import Minimap from "./Minimap.js";
 import { loadSettings, applySettingsToEngine } from "./settings.js";
+import { MODES } from "./modes/index.js";
+import { WEAPON_ORDER } from "./weapons/index.js";
 
 export default function NeonStrikeArena({ onComplete, seed }) {
   const containerRef = useRef(null);
@@ -29,12 +31,20 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     score: 0, kills: 0, streak: 0, weaponLevel: 1, weaponKills: 0,
     energy: 100, shifting: false, time_remaining_ms: 90000, ended: false,
     reloading: false,
+    // P3: weapon name + alt-fire label populated by the active weapon.
+    weaponId: "plasma", weaponName: "PLASMA", weaponIcon: "✦",
+    altLabel: "BURST",
+    // P2: wave-mode HUD fields. Ignored by other modes.
+    wave: 0, intermission: false,
   });
   const [hud, setHud] = useState(hudRef.current);
   const [feed, setFeed] = useState([]);
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  // P2-1 + P2-6: pre-match mode + difficulty selectors.
+  const [selectedMode, setSelectedMode] = useState("arena");
+  const [selectedDiff, setSelectedDiff] = useState("normal");
   // Surface engine-construction errors instead of silently failing —
   // a blank canvas with no message is the worst possible UX. If
   // WebGL is unsupported or the engine throws, the user gets a
@@ -64,62 +74,18 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     };
   }, []);
 
-  // Mount Engine. Wrapped in try/catch so we always surface errors
-  // to the player — better than a blank screen.
+  // Mount-only effect: WebGL probe + kill-feed/damage-number GC.
+  // Engine construction is DEFERRED to beginMatch() so the player can
+  // freely switch mode/difficulty in the pre-match picker without
+  // thrashing the WebGL context every change.
   useEffect(() => {
-    if (!containerRef.current) return;
-    // Quick WebGL2 / WebGL feature check so an unsupported browser
-    // shows a clear message instead of a silent black canvas.
     try {
       const probe = document.createElement("canvas");
       const gl = probe.getContext("webgl2") || probe.getContext("webgl");
       if (!gl) throw new Error("WebGL not supported by this browser");
     } catch (probeErr) {
       setEngineError(probeErr.message || "WebGL probe failed");
-      return;
     }
-    let engine;
-    try {
-      engine = new Engine(containerRef.current, {
-      durationMs: 90000,
-      onHudUpdate: (s) => { hudRef.current = s; },
-      onKillFeed: (item) => {
-        setFeed((prev) => {
-          const next = [...prev, { ...item, at: Date.now() }];
-          return next.slice(-6);
-        });
-      },
-      onHitConfirmed: (info) => {
-        // P1-1: brief center-screen X reticle flash.
-        setHitFlash({ ...info, at: Date.now() });
-      },
-      onDamageNumber: ({ worldPos, amount, headshot, kill }) => {
-        // Project to screen coords and queue a floating-text entry.
-        const screen = engine.worldToScreen(worldPos);
-        if (!screen) return;
-        const id = dmgIdRef.current++;
-        setDamageNumbers((prev) => [
-          ...prev,
-          { id, x: screen.x, y: screen.y, amount, headshot, kill, born: Date.now() },
-        ].slice(-12)); // cap at 12 simultaneous
-      },
-      onMatchEnd: (final) => {
-        if (submittedRef.current) return;
-        submittedRef.current = true;
-        const score = Math.min(200, final.kills * 10 + final.best_streak * 5);
-        setTimeout(() => onComplete({ score }), 1500);
-      },
-    });
-    } catch (err) {
-      console.error("[NSA] engine construction failed:", err);
-      setEngineError(String(err?.message || err));
-      return;
-    }
-    engineRef.current = engine;
-    // Apply persisted settings on mount.
-    try { applySettingsToEngine(engine, loadSettings()); } catch (e) {}
-
-    // Cleanup of stale kill-feed + damage-number entries.
     const cleanup = setInterval(() => {
       const now = Date.now();
       setFeed((prev) => prev.filter((f) => now - f.at < 4000));
@@ -127,9 +93,10 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     }, 250);
     return () => {
       clearInterval(cleanup);
-      try { engine.destroy(); } catch (e) {}
+      try { engineRef.current?.destroy(); } catch (e) {}
+      engineRef.current = null;
     };
-  }, [onComplete]);
+  }, []);
 
   // P1-1: clear the hit-flash after ~140ms.
   useEffect(() => {
@@ -139,10 +106,51 @@ export default function NeonStrikeArena({ onComplete, seed }) {
   }, [hitFlash]);
 
   const beginMatch = () => {
-    if (!engineRef.current) return;
+    if (engineRef.current || engineError || !containerRef.current) return;
+    let engine;
+    try {
+      engine = new Engine(containerRef.current, {
+        modeId: selectedMode,
+        difficulty: selectedDiff,
+        durationMs: 90000,
+        onHudUpdate: (s) => { hudRef.current = s; },
+        onKillFeed: (item) => {
+          setFeed((prev) => {
+            const next = [...prev, { ...item, at: Date.now() }];
+            return next.slice(-6);
+          });
+        },
+        onHitConfirmed: (info) => {
+          setHitFlash({ ...info, at: Date.now() });
+        },
+        onDamageNumber: ({ worldPos, amount, headshot, kill }) => {
+          const screen = engine.worldToScreen(worldPos);
+          if (!screen) return;
+          const id = dmgIdRef.current++;
+          setDamageNumbers((prev) => [
+            ...prev,
+            { id, x: screen.x, y: screen.y, amount, headshot, kill, born: Date.now() },
+          ].slice(-12));
+        },
+        onMatchEnd: (final) => {
+          if (submittedRef.current) return;
+          submittedRef.current = true;
+          // Per-mode final-score computation (mode.computeFinalScore)
+          // takes precedence over the legacy arena formula.
+          const score = final.finalScore ?? Math.min(200, final.kills * 10 + (final.best_streak || 0) * 5);
+          setTimeout(() => onComplete({ score }), 1500);
+        },
+      });
+    } catch (err) {
+      console.error("[NSA] engine construction failed:", err);
+      setEngineError(String(err?.message || err));
+      return;
+    }
+    engineRef.current = engine;
+    try { applySettingsToEngine(engine, loadSettings()); } catch (e) {}
     setStarted(true);
-    engineRef.current.start();
-    setTimeout(() => engineRef.current.controls.lock(), 50);
+    engine.start();
+    setTimeout(() => engine.controls?.lock?.(), 50);
   };
 
   const handleQuit = () => {
@@ -220,7 +228,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           position: "absolute", inset: 0,
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
-          background: "rgba(5,6,14,0.92)", padding: 24,
+          background: "rgba(5,6,14,0.92)", padding: 24, overflowY: "auto",
         }}>
           <div style={{
             fontFamily: '"JetBrains Mono", monospace',
@@ -229,34 +237,78 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           }}>◈ NEON STRIKE ARENA</div>
           <div style={{
             fontFamily: '"Inter", sans-serif',
-            fontSize: 28, fontWeight: 800,
+            fontSize: 26, fontWeight: 800,
             background: "linear-gradient(135deg, #a78bfa, #f472b6, #22d3ee)",
             WebkitBackgroundClip: "text", color: "transparent",
-            marginBottom: 14, textAlign: "center",
-          }}>90-Second Cyber Arena</div>
+            marginBottom: 4, textAlign: "center",
+          }}>{MODES[selectedMode]?.name || "ARENA"}</div>
           <div style={{
-            color: "rgba(255,255,255,0.6)", fontSize: 13,
-            maxWidth: 460, textAlign: "center", marginBottom: 18, lineHeight: 1.6,
+            color: "rgba(255,255,255,0.6)", fontSize: 12,
+            maxWidth: 460, textAlign: "center", marginBottom: 18, lineHeight: 1.55,
+          }}>{MODES[selectedMode]?.tagline}</div>
+
+          {/* Mode picker */}
+          <div style={{
+            display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap",
+            justifyContent: "center",
           }}>
-            Three AI opponents. One arena. Phase between dimensions, dash
-            through walls, and evolve your weapon by stacking kills.
+            {Object.values(MODES).map((m) => {
+              const active = m.id === selectedMode;
+              return (
+                <button key={m.id} onClick={() => setSelectedMode(m.id)} style={{
+                  padding: "8px 18px", borderRadius: 6,
+                  background: active
+                    ? "linear-gradient(135deg, rgba(167,139,250,0.35), rgba(244,114,182,0.35))"
+                    : "rgba(255,255,255,0.04)",
+                  border: active ? "1px solid #a78bfa" : "1px solid rgba(255,255,255,0.12)",
+                  color: active ? "#fff" : "rgba(255,255,255,0.7)",
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 11, fontWeight: 700, letterSpacing: 3,
+                  cursor: "pointer",
+                  boxShadow: active ? "0 0 12px rgba(167,139,250,0.45)" : "none",
+                }}>{m.name}</button>
+              );
+            })}
           </div>
+
+          {/* Difficulty selector */}
+          <div style={{
+            display: "flex", gap: 6, marginBottom: 20, alignItems: "center",
+          }}>
+            <span style={{
+              fontSize: 10, letterSpacing: 3, color: "rgba(255,255,255,0.45)",
+              fontFamily: '"JetBrains Mono", monospace',
+              marginRight: 4,
+            }}>DIFFICULTY</span>
+            {["easy", "normal", "hard"].map((d) => {
+              const active = d === selectedDiff;
+              const accent = d === "easy" ? "#34d399" : d === "hard" ? "#fda4af" : "#a78bfa";
+              return (
+                <button key={d} onClick={() => setSelectedDiff(d)} style={{
+                  padding: "5px 12px", borderRadius: 4,
+                  background: active ? `${accent}25` : "rgba(255,255,255,0.04)",
+                  border: active ? `1px solid ${accent}` : "1px solid rgba(255,255,255,0.1)",
+                  color: active ? accent : "rgba(255,255,255,0.6)",
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: 10, fontWeight: 700, letterSpacing: 2,
+                  textTransform: "uppercase", cursor: "pointer",
+                }}>{d}</button>
+              );
+            })}
+          </div>
+
           <div style={{
             display: "grid", gridTemplateColumns: "auto 1fr",
-            gap: "4px 14px",
-            fontSize: 11, color: "rgba(255,255,255,0.7)",
+            gap: "3px 14px",
+            fontSize: 10, color: "rgba(255,255,255,0.65)",
             fontFamily: '"JetBrains Mono", monospace',
-            marginBottom: 22,
+            marginBottom: 18,
           }}>
             <span style={{ color: "#a78bfa" }}>WASD</span><span>move</span>
-            <span style={{ color: "#a78bfa" }}>MOUSE</span><span>look + click fire</span>
-            <span style={{ color: "#a78bfa" }}>SHIFT</span><span>sprint</span>
-            <span style={{ color: "#a78bfa" }}>SPACE</span><span>jump (×2)</span>
-            <span style={{ color: "#a78bfa" }}>E</span><span>air dash</span>
-            <span style={{ color: "#a78bfa" }}>F</span><span>slide</span>
-            <span style={{ color: "#a78bfa" }}>R</span><span>reload</span>
-            <span style={{ color: "#a78bfa" }}>TAB</span><span>scoreboard (hold)</span>
-            <span style={{ color: "#a78bfa" }}>ESC</span><span>pause + settings</span>
+            <span style={{ color: "#a78bfa" }}>MOUSE L/R</span><span>fire / alt-fire</span>
+            <span style={{ color: "#a78bfa" }}>1-7 · SCROLL</span><span>weapon swap</span>
+            <span style={{ color: "#a78bfa" }}>SHIFT · SPACE · E · F</span><span>sprint / jump / dash / slide</span>
+            <span style={{ color: "#a78bfa" }}>R · TAB · ESC</span><span>reload / scoreboard / pause</span>
             <span style={{ color: "#f472b6" }}>Q</span>
             <span style={{ color: "#f472b6" }}>ENERGY SHIFT — phase through walls</span>
           </div>
@@ -380,10 +432,11 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             </div>
           </div>
 
-          {/* Bottom-right: ammo + weapon Mk */}
+          {/* Bottom-right: ammo + weapon name + alt-fire label */}
           <div style={{ position: "absolute", right: 16, bottom: 16, textAlign: "right" }}>
             <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.6)" }}>
-              PLASMA · MK {hud.weaponLevel}
+              <span style={{ color: "#a78bfa", marginRight: 4 }}>{hud.weaponIcon || "✦"}</span>
+              {hud.weaponName || "PLASMA"} · MK {hud.weaponLevel}
             </div>
             <div style={{
               fontSize: 32, fontWeight: 800,
@@ -392,8 +445,33 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             }}>{ammoStr}</div>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>
               {hud.weaponKills}/3 to evolve
+              {hud.altLabel ? (
+                <span style={{ color: "#22d3ee", marginLeft: 8 }}>
+                  ▸ R-CLICK · {hud.altLabel}
+                </span>
+              ) : null}
             </div>
           </div>
+
+          {/* Wave-mode banner — top-left under timer. */}
+          {hud.wave > 0 && (
+            <div style={{
+              position: "absolute", top: 64, left: "50%",
+              transform: "translateX(-50%)",
+              padding: "5px 14px",
+              background: hud.intermission
+                ? "linear-gradient(135deg, rgba(52,211,153,0.25), rgba(34,211,238,0.25))"
+                : "rgba(10,15,30,0.7)",
+              border: hud.intermission
+                ? "1px solid rgba(52,211,153,0.5)"
+                : "1px solid rgba(244,114,182,0.4)",
+              borderRadius: 6,
+              fontSize: 11, letterSpacing: 4, fontWeight: 800,
+              color: hud.intermission ? "#34d399" : "#f472b6",
+            }}>
+              {hud.intermission ? "WAVE COMPLETE" : `WAVE ${hud.wave}`}
+            </div>
+          )}
 
           {/* Top-right: kill feed */}
           <div style={{

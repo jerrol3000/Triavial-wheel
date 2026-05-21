@@ -250,7 +250,21 @@
 // throw) the player now sees a clear "ENGINE FAILED TO LOAD" message
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
-const CACHE = "trivia-wheel-v37";
+//
+// v38: Neon Strike — Phases 2 + 3 land. Three game modes (Arena,
+// Aim training, Survive waves) live behind a pre-match picker, with
+// a difficulty selector (Easy / Normal / Hard). Wave mode escalates
+// each round and drops an OVERLORD boss every 5th wave (shield phase
+// + AOE telegraph). Seven distinct weapons live behind an abstract
+// Weapon base class + registry — PlasmaRifle, Pulse-SMG, Pulse-12
+// Shotgun, Quantum Sniper, Railgun, Gravity Launcher, Smart Pistol —
+// each with primary + alt-fire + 5-tier evolution. Weapon pickups
+// spawn around the arena (visible bobbing capsules) and equipping
+// resets evolution to the new weapon's own level. HUD now shows
+// the current weapon name + icon + alt-fire label and surfaces wave
+// progress / "WAVE COMPLETE" banners during Survive mode. Bot AOE
+// + damage scale with difficulty (×0.7 easy, ×1.3 hard).
+const CACHE = "trivia-wheel-v38";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

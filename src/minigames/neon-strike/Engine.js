@@ -32,11 +32,12 @@ import { PointerLockControls } from "three/examples/jsm/controls/PointerLockCont
 
 import { Arena } from "./Arena.js";
 import { PlayerController } from "./PlayerController.js";
-import { Weapon } from "./Weapon.js";
-import { Bot } from "./Bot.js";
 import { EnergyShift } from "./EnergyShift.js";
 import { Announcer } from "./Announcer.js";
 import { ParticlePool } from "./ParticlePool.js";
+import { PickupManager } from "./Pickup.js";
+import { buildWeapon, WEAPONS, WEAPON_ORDER } from "./weapons/index.js";
+import { buildMode } from "./modes/index.js";
 
 export class Engine {
   constructor(container, opts = {}) {
@@ -50,6 +51,9 @@ export class Engine {
     this.onHitConfirmed = opts.onHitConfirmed || (() => {}); // { headshot, kill }
     this.onDamageNumber = opts.onDamageNumber || (() => {}); // { worldPos, amount, headshot, kill }
     this.duration = opts.durationMs || 90000;
+    // P2-1 + P2-6: difficulty + mode are configurable per-match.
+    this.difficulty = opts.difficulty || "normal";
+    this.modeId = opts.modeId || "arena";
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x05060e);
@@ -85,24 +89,31 @@ export class Engine {
     this.particles = new ParticlePool(this.scene, 200);
     this.controls = new PointerLockControls(this.camera, this.renderer.domElement);
     this.player = new PlayerController(this.camera, this.controls, this.arena);
-    this.weapon = new Weapon(this.scene, this.camera, this.arena, this.particles, this.controls);
+    // P3-1: Loadout system. Player starts with PlasmaRifle equipped
+    // and a Map of "owned" weapons. Pickups add to the inventory;
+    // 1-7 keys + scroll wheel swap between owned weapons.
+    this.weaponInventory = new Map(); // id → Weapon instance
+    this._equipWeapon("plasma");
     this.energyShift = new EnergyShift(this.player, this.arena, this.scene);
     this.announcer = new Announcer();
 
-    // ── Bots ─────────────────────────────────────────────────────
-    // Three bots with distinct personalities.
-    this.bots = [
-      new Bot(this.scene, this.arena, "AGGRO",   { pos: new THREE.Vector3(-14, 1, -10), color: 0xf472b6 }),
-      new Bot(this.scene, this.arena, "SNIPER",  { pos: new THREE.Vector3(14, 1, -12),  color: 0x22d3ee }),
-      new Bot(this.scene, this.arena, "FLANKER", { pos: new THREE.Vector3(0, 1, -18),   color: 0xfbbf24 }),
-    ];
+    // ── Mode + bots ──────────────────────────────────────────────
+    // Bots are populated by the active mode in mode.start().
+    this.bots = [];
+    this.mode = buildMode(this.modeId, this, { difficulty: this.difficulty });
+
+    // ── Pickups (P3-10) ──────────────────────────────────────────
+    // Only spawn in arena mode + wave mode; aim mode doesn't need them.
+    this.pickups = (this.modeId === "arena" || this.modeId === "wave")
+      ? new PickupManager(this.scene, this.arena)
+      : null;
 
     // ── Player state ─────────────────────────────────────────────
     this.state = {
       health: 100,
       maxHealth: 100,
-      ammo: 24,
-      maxAmmo: 24,
+      ammo: this.weapon ? this.weapon.maxAmmo : 24,
+      maxAmmo: this.weapon ? this.weapon.maxAmmo : 24,
       reloading: false,
       score: 0,
       kills: 0,
@@ -111,10 +122,18 @@ export class Engine {
       best_streak: 0,
       weaponLevel: 1, // for Weapon Evolution
       weaponKills: 0,
+      // P3-1: current weapon descriptor mirrored to HUD.
+      weaponId: this.weapon ? this.weapon.id : "plasma",
+      weaponName: this.weapon ? this.weapon.name : "PLASMA",
+      weaponIcon: this.weapon ? this.weapon.icon : "✦",
+      altLabel: this.weapon ? this.weapon.altLabel : "—",
       energy: 100, // 0-100, used by Energy Shift + Dash
       shifting: false,
       time_remaining_ms: this.duration,
       ended: false,
+      // P2-x: mode-aware HUD state
+      modeId: this.modeId,
+      wave: 0,
       // First-person camera bob state.
       bobT: 0,
     };
@@ -130,6 +149,65 @@ export class Engine {
     this.running = false;
   }
 
+  // P3-1 + P3-8: equip a weapon by id. If already owned, just swap
+  // the current pointer. If new, instantiate + add to inventory.
+  // Used by initial setup, weapon pickups, and the 1-7 / wheel
+  // switching keys.
+  _equipWeapon(id) {
+    if (!WEAPONS[id]) id = "plasma";
+    // Hide the currently-equipped viewmodel.
+    if (this.weapon && this.weapon.viewmodel) {
+      this.weapon.viewmodel.visible = false;
+    }
+    let w = this.weaponInventory.get(id);
+    if (!w) {
+      w = buildWeapon(id, this.scene, this.camera, this.arena, this.particles, this.controls);
+      this.weaponInventory.set(id, w);
+      // Gravity launcher needs the bots ref for AOE — set it whenever
+      // it's instantiated (the engine's bots array updates by ref
+      // from the mode).
+      if (w.setBots) w.setBots(this.bots);
+    }
+    if (w.viewmodel) w.viewmodel.visible = true;
+    this.weapon = w;
+    // Sync state.maxAmmo + reset state.ammo to the new weapon's mag
+    // (each weapon has its own ammo pool — simpler than tracking
+    // per-weapon ammo state, and matches the casual feel).
+    if (this.state) {
+      this.state.maxAmmo = w.maxAmmo;
+      this.state.ammo = w.maxAmmo;
+      this.state.reloading = false;
+      this.state.weaponId = w.id;
+      this.state.weaponName = w.name;
+      this.state.weaponIcon = w.icon;
+      this.state.altLabel = w.altLabel;
+      // Evolution is per-weapon — reset the engine's mirror to the
+      // weapon's own level when swapping, so picking up a fresh
+      // weapon mid-match doesn't insta-evolve it to whatever Mk
+      // the previous weapon had reached.
+      this.state.weaponLevel = w.level || 1;
+      this.state.weaponKills = 0;
+    }
+  }
+
+  // P3-8: swap to weapon by slot number (1-7).
+  _equipBySlot(slot) {
+    const entry = WEAPON_ORDER[slot - 1];
+    if (!entry) return;
+    this._equipWeapon(entry.id);
+  }
+
+  // P3-8: scroll-wheel cycle through OWNED weapons.
+  _cycleWeapon(direction) {
+    const owned = [...this.weaponInventory.keys()];
+    if (owned.length <= 1) return;
+    // Sort by slot order for predictable cycling.
+    owned.sort((a, b) => WEAPONS[a].slot - WEAPONS[b].slot);
+    const curIdx = owned.indexOf(this.weapon.id);
+    const next = (curIdx + direction + owned.length) % owned.length;
+    this._equipWeapon(owned[next]);
+  }
+
   _onResize = () => {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -139,13 +217,27 @@ export class Engine {
   };
 
   _bindInput() {
-    // Pointer-lock UX: click the canvas to lock cursor. We expose
-    // requestPointerLock() so the React HUD's start button can call it.
+    // Pointer-lock UX: click the canvas to lock cursor.
     this.renderer.domElement.addEventListener("click", () => {
       if (!this.running) return;
       if (!this.controls.isLocked) this.controls.lock();
-      else this.weapon.fire(this.player, this.bots, this._onShotResolved);
+      else this.weapon.fire(this.player, this.bots, this._onShotResolved, this.state);
     });
+    // P3-9: right-click = alt fire. Browser context menu suppressed
+    // on the canvas so the right-click doesn't pop a menu.
+    this.renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.renderer.domElement.addEventListener("mousedown", (e) => {
+      if (!this.running || !this.controls.isLocked) return;
+      if (e.button === 2) {
+        this.weapon.altFire(this.player, this.bots, this._onShotResolved, this.state);
+      }
+    });
+    // P3-8: scroll wheel cycles owned weapons.
+    this.renderer.domElement.addEventListener("wheel", (e) => {
+      if (!this.running) return;
+      e.preventDefault();
+      this._cycleWeapon(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
     // KEYBOARD
     this._keys = { w: false, a: false, s: false, d: false, shift: false, space: false, ctrl: false };
     window.addEventListener("keydown", this._onKeyDown);
@@ -168,6 +260,14 @@ export class Engine {
     if (e.code === "KeyQ") this.energyShift.toggle(this.state);
     if (e.code === "KeyE") this.player.requestDash(this.state);
     if (e.code === "KeyF") this.player.requestSlide(this._keys);
+    // P3-8: 1-7 number keys equip by slot.
+    if (e.code === "Digit1") this._equipBySlot(1);
+    if (e.code === "Digit2") this._equipBySlot(2);
+    if (e.code === "Digit3") this._equipBySlot(3);
+    if (e.code === "Digit4") this._equipBySlot(4);
+    if (e.code === "Digit5") this._equipBySlot(5);
+    if (e.code === "Digit6") this._equipBySlot(6);
+    if (e.code === "Digit7") this._equipBySlot(7);
   };
   _onKeyUp = (e) => {
     if (e.code === "KeyW") this._keys.w = false;
@@ -183,7 +283,10 @@ export class Engine {
   _onShotResolved = (result) => {
     if (result.hit && result.target?.type === "bot") {
       const bot = result.target.bot;
-      const dmg = result.headshot ? 60 : 25;
+      // P3-1: weapons supply their own damage values + headshot mul.
+      const baseDmg = result.damageOverride ?? this.weapon?.damage ?? 25;
+      const hsMul = result.headshotMul ?? this.weapon?.headshotMul ?? 2.4;
+      const dmg = result.headshot ? baseDmg * hsMul : baseDmg;
       bot.applyDamage(dmg);
       this.particles.burst(result.point, 0xf472b6, 12);
       // P1-1: HUD signals — center-screen hit marker + floating
@@ -244,8 +347,15 @@ export class Engine {
   start() {
     this.running = true;
     this.startedAt = Date.now();
-    this.state.time_remaining_ms = this.duration;
-    this.announcer.say("ARENA ONLINE");
+    // Mode owns bot spawn + duration setup.
+    if (this.mode && !this._modeStarted) {
+      this.mode.start();
+      this._modeStarted = true;
+      // Refresh weapon's bot reference (GravityLauncher uses it).
+      for (const w of this.weaponInventory.values()) {
+        if (w.setBots) w.setBots(this.bots);
+      }
+    }
     this._tick();
   }
 
@@ -279,6 +389,16 @@ export class Engine {
       this.particles.update(dt);
       // P1-8: drive the phase-wall shader animation.
       this.arena.tickShaders(dt);
+      // P2-x: let the mode tick (handles wave transitions, etc).
+      if (this.mode) this.mode.update(dt);
+      // P3-10: check pickups for collection.
+      if (this.pickups) {
+        const picked = this.pickups.update(dt, this.player.position);
+        if (picked) {
+          this._equipWeapon(picked);
+          this.announcer.say(`${WEAPONS[picked].name} EQUIPPED`);
+        }
+      }
     }
 
     // Energy regen.
@@ -286,24 +406,32 @@ export class Engine {
       this.state.energy = Math.min(100, this.state.energy + 12 * dt);
     }
 
-    // Fire input via touch HUD.
-    if (this.input.fire && !this._lastFireT || (this.input.fire && now - (this._lastFireT || 0) > this.weapon.fireRateMs)) {
-      this._lastFireT = now;
-      this.weapon.fire(this.player, this.bots, this._onShotResolved);
+    // Fire input via touch HUD or held mouse — full-auto weapons
+    // (SMG, plasma) call fire() per frame; weapon throttles by
+    // fireRateMs internally.
+    if (this.input.fire) {
+      this.weapon.fire(this.player, this.bots, this._onShotResolved, this.state);
     }
 
+    // Mirror mode-specific state to HUD.
+    if (this.mode && this.mode.id === "wave") {
+      this.state.wave = this.mode.currentWave;
+      this.state.intermission = this.mode.inIntermission;
+    }
     // ── HUD callback ─────────────────────────────────────────────
     this.onHudUpdate({ ...this.state });
 
     // ── Render ───────────────────────────────────────────────────
     this.renderer.render(this.scene, this.camera);
 
-    // ── Match end ────────────────────────────────────────────────
-    if (this.state.time_remaining_ms <= 0 && !this.state.ended) {
+    // ── Match end — defer to mode for the win condition ─────────
+    const over = this.mode ? this.mode.isOver() : (this.state.time_remaining_ms <= 0);
+    if (over && !this.state.ended) {
       this.state.ended = true;
       this.running = false;
       this.announcer.say("MATCH COMPLETE");
-      this.onMatchEnd({ ...this.state });
+      const finalScore = this.mode ? this.mode.computeFinalScore(this.state) : this.state.score;
+      this.onMatchEnd({ ...this.state, finalScore });
       return;
     }
     requestAnimationFrame(this._tick);
@@ -316,6 +444,12 @@ export class Engine {
     window.removeEventListener("keyup", this._onKeyUp);
     try { this.controls.unlock(); } catch (e) {}
     try { this.controls.dispose(); } catch (e) {}
+    try { if (this.pickups) this.pickups.destroy(); } catch (e) {}
+    try { if (this.mode && this.mode.destroy) this.mode.destroy(); } catch (e) {}
+    for (const w of this.weaponInventory.values()) {
+      try { w.destroy(); } catch (e) {}
+    }
+    this.weaponInventory.clear();
     try { this.renderer.dispose(); } catch (e) {}
     try { this.renderer.domElement.remove(); } catch (e) {}
     // Dispose scene materials/geometries.

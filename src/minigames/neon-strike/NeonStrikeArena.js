@@ -19,6 +19,7 @@ import { Engine } from "./Engine.js";
 import MobileControls from "./MobileControls.js";
 import PauseMenu from "./PauseMenu.js";
 import Minimap from "./Minimap.js";
+import WeaponOverlay from "./WeaponOverlay.js";
 import { loadSettings, applySettingsToEngine } from "./settings.js";
 import { MODES } from "./modes/index.js";
 import { WEAPON_ORDER } from "./weapons/index.js";
@@ -437,10 +438,11 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             </div>
           </div>
 
-          {/* Bottom-center: PROMINENT weapon panel — large icon + name +
-              ammo. Guaranteed visible regardless of WebGL/viewmodel
-              state. This is the primary "what am I holding" indicator;
-              the 3D viewmodel is supplemental. */}
+          {/* Bottom-center: 2D weapon overlay (SVG sprite). DOM-only,
+              not WebGL — guaranteed to render regardless of any GL
+              pipeline issue. Plus the smaller WeaponPanel below it
+              with name/ammo bar. */}
+          <WeaponOverlay hud={hud} />
           <WeaponPanel hud={hud} ammoStr={ammoStr} />
 
           {/* Wave-mode banner — top-left under timer. */}
@@ -611,10 +613,12 @@ function WeaponPanel({ hud, ammoStr }) {
   return (
     <div style={{
       position: "absolute",
-      left: "50%", bottom: 18,
+      // Sits above the 2D WeaponOverlay (which occupies the bottom
+      // 200px of the screen).
+      left: "50%", bottom: 210,
       transform: "translateX(-50%)",
       display: "flex", alignItems: "center", gap: 14,
-      padding: "10px 18px",
+      padding: "8px 16px",
       background: "rgba(5,6,14,0.78)",
       border: `1px solid ${accent}`,
       borderRadius: 10,

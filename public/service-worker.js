@@ -251,6 +251,31 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v44: SWITCHED WEAPON TO 2D SVG OVERLAY (away from WebGL viewmodel).
+//
+// After multiple iterations failed to reliably make the three.js
+// camera-child viewmodel render on every browser / device (mobile
+// FIRE button covering it, FOV clipping, bundler resolution issues,
+// production-only WebGL quirks), we punted to a DOM-only solution:
+//
+//   • The weapon is now a stylized SVG sprite rendered as a React
+//     component (`WeaponOverlay`) at the bottom-center of the HUD.
+//     DOM-only — no WebGL rendering pipeline involved.
+//   • Each of the 7 weapons has its own SVG silhouette: rifle,
+//     SMG, shotgun, sniper-with-scope, railgun-with-coils,
+//     launcher-with-muzzle, pistol. Per-weapon color palette +
+//     accent gradient.
+//   • Animations: subtle idle bob, recoil kick on each shot,
+//     muzzle-flash circle that pulses at the barrel tip on fire,
+//     reload spin (full 360°).
+//   • The 3D viewmodel still exists in the WebGL scene but is now
+//     supplemental — the SVG is the primary visibility guarantee.
+//
+// This is what "casual web FPS" games actually do for the same
+// reason: getting a three.js camera-child to render reliably
+// across every device + browser + bundler config is fragile, but
+// DOM/SVG just works.
+//
 // v43: PRODUCTION BUNDLE FIX — buildViewmodel module extraction.
 //
 // Player kept reporting "still no weapon on live version" despite
@@ -380,7 +405,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v43";
+const CACHE = "trivia-wheel-v44";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

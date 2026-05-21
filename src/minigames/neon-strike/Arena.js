@@ -117,22 +117,40 @@ export class Arena {
       neonD:     0xfbbf24, // amber
     };
 
-    // ── Floor: dark base + grid lines ──────────────────────────
+    // ── Floor: visibly-toned base + bright grid lines ──────────
+    // Floor was previously near-black (0x070a18) which blended with
+    // the scene background and made the world feel like infinite
+    // void. Lifted to a clearly-readable mid-tone navy.
     const floorGeom = new THREE.PlaneGeometry(GRID * 2, GRID * 2, 1, 1);
-    const floorMat = new THREE.MeshBasicMaterial({ color: 0x070a18 });
+    const floorMat = new THREE.MeshBasicMaterial({ color: 0x1a2050 });
     const floor = new THREE.Mesh(floorGeom, floorMat);
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
-    // Grid lines via a single GridHelper — light, no shader cost.
-    const grid = new THREE.GridHelper(GRID * 2, 60, colors.grid, colors.gridDark);
-    grid.position.y = 0.001;
+    // Bright grid lines so the floor reads as a grid pattern, giving
+    // the player clear ground reference + sense of motion.
+    const grid = new THREE.GridHelper(GRID * 2, 40, 0x5a7adf, 0x2030a0);
+    grid.position.y = 0.01;
     this.scene.add(grid);
+
+    // ── Ceiling: bright accent plane above so the arena reads as
+    // an enclosed space instead of "infinite night". Also helps with
+    // spatial orientation.
+    const ceilingGeom = new THREE.PlaneGeometry(GRID * 2, GRID * 2, 1, 1);
+    const ceilingMat = new THREE.MeshBasicMaterial({ color: 0x0a0e2a });
+    const ceiling = new THREE.Mesh(ceilingGeom, ceilingMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 6;
+    this.scene.add(ceiling);
+    // Bright accent grid on the ceiling for visual depth.
+    const ceilingGrid = new THREE.GridHelper(GRID * 2, 20, 0xa78bfa, 0x4030a0);
+    ceilingGrid.position.y = 5.99;
+    this.scene.add(ceilingGrid);
 
     // ── Outer walls (4 of them) ────────────────────────────────
     const wallH = 6;
     const wallT = 1;
-    const wallMat = new THREE.MeshBasicMaterial({ color: 0x0b1024 });
+    const wallMat = new THREE.MeshBasicMaterial({ color: 0x202a5a });
     const addWall = (x, z, w, d) => {
       const g = new THREE.BoxGeometry(w, wallH, d);
       const m = new THREE.Mesh(g, wallMat);
@@ -164,7 +182,7 @@ export class Arena {
     // crouch behind them; bullets blocked.
     const cover = (x, z, w, h, d, neonHex) => {
       const g = new THREE.BoxGeometry(w, h, d);
-      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x111833 }));
+      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x2a3060 }));
       m.position.set(x, h / 2, z);
       this.scene.add(m);
       const cap = new THREE.Mesh(

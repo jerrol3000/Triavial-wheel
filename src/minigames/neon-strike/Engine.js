@@ -56,8 +56,12 @@ export class Engine {
     this.modeId = opts.modeId || "arena";
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05060e);
-    this.scene.fog = new THREE.FogExp2(0x05060e, 0.022);
+    // Lifted background from near-black to a clearly visible deep
+    // navy so the arena reads as "inside a place" not "void".
+    this.scene.background = new THREE.Color(0x0c1030);
+    // Halved fog density — was making the arena melt into the
+    // background past ~20m. Now you can actually see the back walls.
+    this.scene.fog = new THREE.FogExp2(0x0c1030, 0.010);
 
     this.camera = new THREE.PerspectiveCamera(78, 1, 0.1, 200);
     this.camera.position.set(0, 1.7, 8);

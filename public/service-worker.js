@@ -251,6 +251,33 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v42: ARENA VISIBILITY + WEAPON HAND + LARGER VIEWMODEL.
+//
+// Player feedback after v41: "still no weapon and the environment is
+// not very eye friendly. there is no floor or ceiling i can see the
+// weapon cross air but no weapon or who holding the weapon".
+//
+// Confirmed via local pixel-sampling that the weapon WAS rendering
+// (verified body color + trim color present at expected pixels) but
+// (a) was too small to dominate the player's attention, (b) had no
+// visible hand/forearm so it didn't read as "held", and (c) the
+// arena was painted so dark (floor 0x070a18, walls 0x0b1024) that
+// the world felt like infinite void with no floor or ceiling.
+//
+// Fixes:
+//   • Floor lifted from 0x070a18 → 0x1a2050 (visible mid-tone navy)
+//     with bright grid lines (0x5a7adf primary, 0x2030a0 secondary)
+//   • Ceiling added — a plane at y=6 + bright accent grid so the
+//     arena reads as an enclosed space
+//   • Walls + cover blocks brightened ~3x (0x0b1024 → 0x202a5a)
+//   • Fog density halved (0.022 → 0.010) so back walls are visible
+//   • Scene background lifted to 0x0c1030 (deep navy not pure black)
+//   • All 7 viewmodels now include a HAND GRIP (cyber-glove) +
+//     FOREARM with accent stripe so the gun reads as held by a
+//     first-person character, not floating in space
+//   • Viewmodels right-sized — small enough to leave the arena
+//     visible above + around the gun
+//
 // v41: VIEWMODEL VISIBILITY — ROOT CAUSE FIXED.
 //
 // Player kept reporting "I don't see the weapon" through v37–v40
@@ -331,7 +358,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v41";
+const CACHE = "trivia-wheel-v42";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

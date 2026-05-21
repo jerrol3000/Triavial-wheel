@@ -93,11 +93,11 @@ export class EnergyShotgun extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.30, 0.24, 0.65],
+      bodySize: [0.18, 0.14, 0.40],
       bodyColor: 0x6a1a4a,
       accentColor: 0xf472b6,
       tipColor: 0xf472b6,
-      anchor: [0.0, -0.20, -0.60],
+      anchor: [0.0, -0.28, -0.85],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }

@@ -78,15 +78,14 @@ export class PlasmaRifle extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.26, 0.22, 0.70],
+      bodySize: [0.14, 0.12, 0.42],
       bodyColor: 0x3a2a78,
       accentColor: 0xa78bfa,
       tipColor: 0xa78bfa,
-      // Center horizontally so the mobile FIRE button (bottom-right)
-      // and joystick (bottom-left) don't cover the viewmodel. This
-      // was THE root cause of "I don't see the weapon" — on mobile
-      // the gun sat exactly behind the 92px FIRE button.
-      anchor: [0.0, -0.20, -0.60],
+      // Center horizontally + push back so it sits low + small,
+      // looking like a held weapon not a HUD widget. Far enough
+      // that the player can SEE THE ARENA past the gun.
+      anchor: [0.0, -0.28, -0.85],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }
@@ -171,6 +170,43 @@ function buildViewmodel({ bodySize, bodyColor, accentColor, tipColor, anchor }) 
   tip.rotation.x = Math.PI / 2;
   tip.position.set(ax, ay, az - bd * 0.5 - barrelLen - bw * 0.25);
   grp.add(tip);
+
+  // ── HAND GRIP + forearm — without these the gun floats in mid-
+  // air, which reads as "abstract HUD widget" not "weapon being
+  // held". A cyber-glove + forearm strongly suggests first-person.
+  const gripW = bw * 0.5;
+  const gripH = bh * 1.3;
+  const gripD = bd * 0.20;
+  const grip = new THREE.Mesh(
+    new THREE.BoxGeometry(gripW, gripH, gripD),
+    new THREE.MeshBasicMaterial({ color: 0x3a2818 }),
+  );
+  grip.position.set(ax + bw * 0.08, ay - bh * 0.55 - gripH * 0.35, az + bd * 0.05);
+  grp.add(grip);
+  const gloveBand = new THREE.Mesh(
+    new THREE.BoxGeometry(gripW * 1.15, gripH * 0.18, gripD * 1.15),
+    new THREE.MeshBasicMaterial({ color: accentColor }),
+  );
+  gloveBand.position.set(ax + bw * 0.08, ay - bh * 0.48 - gripH * 0.12, az + bd * 0.05);
+  grp.add(gloveBand);
+  // Forearm — extends down + back from the grip toward the player.
+  const armLen = gripH * 1.5;
+  const arm = new THREE.Mesh(
+    new THREE.BoxGeometry(gripW * 0.95, armLen, gripD * 1.2),
+    new THREE.MeshBasicMaterial({ color: 0x241810 }),
+  );
+  arm.position.set(ax + bw * 0.12, ay - bh * 0.55 - gripH - armLen * 0.45, az + bd * 0.25);
+  arm.rotation.x = -0.30;
+  grp.add(arm);
+  // Forearm accent stripe
+  const armStripe = new THREE.Mesh(
+    new THREE.BoxGeometry(gripW * 1.0, armLen * 0.12, gripD * 1.25),
+    new THREE.MeshBasicMaterial({ color: accentColor }),
+  );
+  armStripe.position.copy(arm.position);
+  armStripe.rotation.x = -0.30;
+  armStripe.position.y += armLen * 0.30;
+  grp.add(armStripe);
 
   return { group: grp, tip };
 }

@@ -437,26 +437,11 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             </div>
           </div>
 
-          {/* Bottom-right: ammo + weapon name + alt-fire label */}
-          <div style={{ position: "absolute", right: 16, bottom: 16, textAlign: "right" }}>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.6)" }}>
-              <span style={{ color: "#a78bfa", marginRight: 4 }}>{hud.weaponIcon || "✦"}</span>
-              {hud.weaponName || "PLASMA"} · MK {hud.weaponLevel}
-            </div>
-            <div style={{
-              fontSize: 32, fontWeight: 800,
-              color: hud.reloading ? "#fda4af" : "#fff",
-              textShadow: "0 0 14px rgba(167,139,250,0.5)",
-            }}>{ammoStr}</div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>
-              {hud.weaponKills}/3 to evolve
-              {hud.altLabel ? (
-                <span style={{ color: "#22d3ee", marginLeft: 8 }}>
-                  ▸ R-CLICK · {hud.altLabel}
-                </span>
-              ) : null}
-            </div>
-          </div>
+          {/* Bottom-center: PROMINENT weapon panel — large icon + name +
+              ammo. Guaranteed visible regardless of WebGL/viewmodel
+              state. This is the primary "what am I holding" indicator;
+              the 3D viewmodel is supplemental. */}
+          <WeaponPanel hud={hud} ammoStr={ammoStr} />
 
           {/* Wave-mode banner — top-left under timer. */}
           {hud.wave > 0 && (
@@ -606,6 +591,102 @@ function HitMarker({ headshot, kill }) {
           100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ── Prominent weapon panel ────────────────────────────────────────
+// Bottom-center HUD element showing the player's currently-equipped
+// weapon as a big icon + name + ammo bar. This is the GUARANTEED
+// visibility path — even if the 3D viewmodel fails to render for any
+// reason (FOV clip, GL context loss, browser quirk), the player can
+// always look down at this panel and see what they're holding.
+const WEAPON_COLOR = {
+  plasma:  "#a78bfa", smg:    "#34d399", shotgun: "#f472b6", sniper:  "#c084fc",
+  railgun: "#22d3ee", gravity: "#60a5fa", pistol:  "#fbbf24",
+};
+function WeaponPanel({ hud, ammoStr }) {
+  const accent = WEAPON_COLOR[hud.weaponId] || "#a78bfa";
+  const ammoPct = hud.maxAmmo > 0 ? Math.max(0, Math.min(100, (hud.ammo / hud.maxAmmo) * 100)) : 100;
+  return (
+    <div style={{
+      position: "absolute",
+      left: "50%", bottom: 18,
+      transform: "translateX(-50%)",
+      display: "flex", alignItems: "center", gap: 14,
+      padding: "10px 18px",
+      background: "rgba(5,6,14,0.78)",
+      border: `1px solid ${accent}`,
+      borderRadius: 10,
+      boxShadow: `0 0 24px ${accent}40, inset 0 0 20px rgba(0,0,0,0.4)`,
+      pointerEvents: "none",
+      fontFamily: '"JetBrains Mono", monospace',
+    }}>
+      {/* Big weapon icon */}
+      <div style={{
+        width: 52, height: 52,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: `radial-gradient(circle, ${accent}40 0%, transparent 70%)`,
+        border: `1.5px solid ${accent}`,
+        borderRadius: 8,
+        fontSize: 28,
+        color: accent,
+        textShadow: `0 0 12px ${accent}`,
+        fontWeight: 800,
+      }}>
+        {hud.weaponIcon || "✦"}
+      </div>
+      {/* Name + ammo */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 130 }}>
+        <div style={{
+          fontSize: 13, fontWeight: 800, color: "#fff",
+          letterSpacing: 3,
+          textShadow: `0 0 8px ${accent}`,
+        }}>
+          {hud.weaponName || "PLASMA"} <span style={{
+            fontSize: 9, color: accent, letterSpacing: 2,
+          }}>MK {hud.weaponLevel}</span>
+        </div>
+        {/* Ammo bar */}
+        <div style={{
+          width: "100%", height: 6,
+          background: "rgba(255,255,255,0.08)",
+          borderRadius: 3, overflow: "hidden",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}>
+          <div style={{
+            width: hud.reloading ? "100%" : `${ammoPct}%`,
+            height: "100%",
+            background: hud.reloading
+              ? "linear-gradient(90deg, #fda4af, #fbbf24)"
+              : `linear-gradient(90deg, ${accent}, #fff)`,
+            transition: "width 80ms",
+            animation: hud.reloading ? "tw-combo-pulse 1s ease-in-out infinite" : "none",
+          }} />
+        </div>
+        <div style={{
+          fontSize: 11, fontWeight: 800,
+          color: hud.reloading ? "#fda4af" : "#fff",
+          letterSpacing: 2,
+        }}>
+          {ammoStr}
+        </div>
+      </div>
+      {/* Alt-fire hint */}
+      {hud.altLabel && hud.altLabel !== "—" && (
+        <div style={{
+          display: "flex", flexDirection: "column", gap: 2,
+          alignItems: "flex-start",
+          paddingLeft: 12,
+          borderLeft: `1px solid ${accent}50`,
+        }}>
+          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", letterSpacing: 2 }}>R-CLICK</div>
+          <div style={{ fontSize: 11, color: accent, fontWeight: 700, letterSpacing: 1.5 }}>{hud.altLabel}</div>
+          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+            {hud.weaponKills}/3 EVOLVE
+          </div>
+        </div>
+      )}
     </div>
   );
 }

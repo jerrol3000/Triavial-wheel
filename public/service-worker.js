@@ -251,6 +251,31 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v41: VIEWMODEL VISIBILITY — ROOT CAUSE FIXED.
+//
+// Player kept reporting "I don't see the weapon" through v37–v40
+// despite multiple position / size / color tweaks. Deep dive via
+// pixel-sampling the WebGLRenderer drawing buffer revealed the gun
+// WAS rendering all along — but at NDC x≈0.60 (lower-right), which
+// is EXACTLY where the mobile FIRE button (92px, right=24 bottom=100)
+// sits on touchscreen devices. The button completely covered the
+// viewmodel.
+//
+// Diagnostic methodology: read pixel colors directly out of the
+// renderer's drawing buffer at the projected body coords. Trim color
+// (193,167,229) and body color (44,29,134) were present at the
+// expected pixels — visible to the GL framebuffer but obscured by
+// DOM overlays in the rendered page.
+//
+// Fix: all 7 viewmodels now anchor at x=0.0 (dead center horizontally)
+// instead of x=0.16-0.34. The gun renders BETWEEN the joystick
+// (bottom-left) and the FIRE button (bottom-right). The 2D HUD
+// weapon panel sits below the gun for redundant visibility.
+//
+// Also: the 2D weapon panel landed in v41 as a primary visibility
+// guarantee — large icon + weapon name + ammo bar + alt-fire label
+// rendered as DOM (always visible regardless of GL state).
+//
 // v38: Neon Strike — Phases 2 + 3 land. Three game modes (Arena,
 // Aim training, Survive waves) live behind a pre-match picker, with
 // a difficulty selector (Easy / Normal / Hard). Wave mode escalates
@@ -306,7 +331,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v40";
+const CACHE = "trivia-wheel-v41";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

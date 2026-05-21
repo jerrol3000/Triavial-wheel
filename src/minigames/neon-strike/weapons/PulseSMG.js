@@ -88,18 +88,18 @@ export class PulseSMG extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.22, 0.20, 0.58],
+      bodySize: [0.24, 0.20, 0.58],
       bodyColor: 0x115a3a,
       accentColor: 0x34d399,
       tipColor: 0x34d399,
-      anchor: [0.16, -0.22, -0.46],
+      anchor: [0.0, -0.20, -0.58],
     });
     // Extended magazine bulge below — SMG silhouette.
     const mag = new THREE.Mesh(
       new THREE.BoxGeometry(0.12, 0.20, 0.16),
       new THREE.MeshBasicMaterial({ color: 0x0c3a26 }),
     );
-    mag.position.set(0.16, -0.42, -0.44);
+    mag.position.set(0.0, -0.40, -0.56);
     grp.group.add(mag);
     this._attachViewmodel(grp.group, grp.tip);
   }

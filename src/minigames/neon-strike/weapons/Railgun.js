@@ -76,11 +76,11 @@ export class Railgun extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.26, 0.22, 1.00],
+      bodySize: [0.28, 0.22, 0.90],
       bodyColor: 0x114a6a,
       accentColor: 0x22d3ee,
       tipColor: 0x22d3ee,
-      anchor: [0.16, -0.22, -0.58],
+      anchor: [0.0, -0.20, -0.62],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }

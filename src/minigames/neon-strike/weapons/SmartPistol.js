@@ -78,11 +78,11 @@ export class SmartPistol extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.18, 0.20, 0.48],
+      bodySize: [0.22, 0.22, 0.52],
       bodyColor: 0x5a3a0a,
       accentColor: 0xfbbf24,
       tipColor: 0xfbbf24,
-      anchor: [0.16, -0.22, -0.42],
+      anchor: [0.0, -0.22, -0.56],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }

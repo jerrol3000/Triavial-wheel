@@ -44,6 +44,7 @@ export default function App() {
   const modal = useSelector((s) => s.ui.modal);
   const user = useSelector((s) => s.auth.user);
 
+
   useEffect(() => {
     // Handle Stripe success-redirect: if the URL has ?paid=1&session=..., verify on the server.
     try {

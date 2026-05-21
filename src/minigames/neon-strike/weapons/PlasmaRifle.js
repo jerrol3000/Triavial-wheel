@@ -78,11 +78,15 @@ export class PlasmaRifle extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.26, 0.24, 0.80],
+      bodySize: [0.26, 0.22, 0.70],
       bodyColor: 0x3a2a78,
       accentColor: 0xa78bfa,
       tipColor: 0xa78bfa,
-      anchor: [0.16, -0.22, -0.48],
+      // Center horizontally so the mobile FIRE button (bottom-right)
+      // and joystick (bottom-left) don't cover the viewmodel. This
+      // was THE root cause of "I don't see the weapon" — on mobile
+      // the gun sat exactly behind the 92px FIRE button.
+      anchor: [0.0, -0.20, -0.60],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }

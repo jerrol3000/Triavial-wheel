@@ -42,18 +42,20 @@ const MINI_GAMES = {
     higher_wins: true,
     max_score: 50, // raised — mega + chain reactions push the ceiling
   },
-  // Neon Strike Arena — full 3D first-person shooter. Single match =
-  // 90 seconds vs 3 AI bots. Score = kills × 10 + survival bonus.
-  // The featured game, designed as the centerpiece of the Arena pivot.
-  neon_strike: {
-    id: "neon_strike",
-    name: "Neon Strike",
-    icon: "◈",
-    tagline: "Phase. Dash. Strike. 90-second cyber arena.",
-    duration_ms: 90000,
-    higher_wins: true,
-    max_score: 200,
-  },
+  // Neon Strike Arena — DISABLED. Full 3D FPS implementation needs
+  // proper 3D assets (in-progress via Meshy.ai) + multiplayer netcode
+  // before it's player-facing again. Re-enable by uncommenting the
+  // entry below.
+  //
+  // neon_strike: {
+  //   id: "neon_strike",
+  //   name: "Neon Strike",
+  //   icon: "◈",
+  //   tagline: "Phase. Dash. Strike. 90-second cyber arena.",
+  //   duration_ms: 90000,
+  //   higher_wins: true,
+  //   max_score: 200,
+  // },
 };
 
 const GAME_IDS = Object.keys(MINI_GAMES);

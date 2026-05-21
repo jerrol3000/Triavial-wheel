@@ -1,8 +1,11 @@
-// Arena game registry — slimmed to 3 after the Neon Strike pivot.
+// Arena game registry.
 //
 //   ✦ Anomaly       — Pixi/WebGL energy-field containment + plasma shader
 //   ◇ Cascade       — Matter.js physics orb catcher + MEGA + chain orbs
-//   ◈ Neon Strike   — full 3D first-person shooter (90-sec vs AI bots)
+//   ◈ Neon Strike   — full 3D first-person shooter (DISABLED — needs
+//                     proper 3D assets + multiplayer netcode work
+//                     before it's player-facing again. Source kept in
+//                     place at ./neon-strike/ for the eventual revisit.)
 //
 // The 9 retired mini-games (Surge / Trigger / Spectrum / Recall /
 // Vector / Intercept / Outlier / Sequence / Cipher / Tide) have been
@@ -11,12 +14,15 @@
 
 import BubblePop from "./BubblePop";
 import CatchBug from "./CatchBug";
-import NeonStrikeArena from "./neon-strike/NeonStrikeArena";
+// Neon Strike intentionally NOT imported — keeps it out of the
+// production bundle entirely. Re-enable by uncommenting the import
+// and the GAMES entry below.
+// import NeonStrikeArena from "./neon-strike/NeonStrikeArena";
 
 export const GAMES = {
   catch_bug:   { component: CatchBug,         name: "Anomaly",     icon: "✦" },
   bubble_pop:  { component: BubblePop,        name: "Cascade",     icon: "◇" },
-  neon_strike: { component: NeonStrikeArena,  name: "Neon Strike", icon: "◈" },
+  // neon_strike: { component: NeonStrikeArena,  name: "Neon Strike", icon: "◈" },
 };
 
 // Pretty name/icon lookup helpers for share cards + result rows.

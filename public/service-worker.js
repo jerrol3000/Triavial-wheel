@@ -251,6 +251,21 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v49: NEON STRIKE DISABLED + HIDDEN. The FPS mini-game is on hold
+// pending proper 3D asset generation (Meshy.ai) and a multiplayer
+// netcode pass before it's ready for players. The source code is
+// preserved under src/minigames/neon-strike/ for the eventual
+// revisit — only the registry entries are commented out:
+//
+//   • Client: src/minigames/index.js — NeonStrikeArena import and
+//     GAMES entry commented out (so webpack tree-shakes the entire
+//     neon-strike folder + three.js out of production).
+//   • Server: server/minigames.js — MINI_GAMES.neon_strike commented
+//     out so /api/solo/play can't return it.
+//
+// Production bundle dropped from 2.06 MiB → 1.51 MiB (-540 KB) as a
+// nice side-effect. Solo Arena now shows Anomaly + Cascade only.
+//
 // v48: PROPER FIRST-PERSON VIEW. User shared a reference photo of an
 // actual FPS viewmodel and asked for that layout. Changes:
 //
@@ -507,7 +522,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v48";
+const CACHE = "trivia-wheel-v49";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

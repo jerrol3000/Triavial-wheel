@@ -251,6 +251,32 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v45: REALISTIC GUN SVGs. Replaced the stylized cyber-shapes with
+// proper firearm silhouettes — each weapon is now drawn with real
+// gun anatomy:
+//
+//   PLASMA   — assault rifle: receiver, STANAG-style curved mag,
+//              pistol grip with ribs, trigger guard + trigger,
+//              folding-style stock, picatinny rail with serrations,
+//              holographic sight (purple dot), handguard with vents,
+//              charging handle, flash-suppressor with slots.
+//   PULSE-SMG — compact SMG with folding stock, vertical mag,
+//              short barrel, iron sights, green accents.
+//   PULSE-12 — pump shotgun: thick receiver, ribbed pump grip,
+//              wide 12-gauge barrel, magazine tube below, ejection
+//              port + brass-port detail, pink accents.
+//   Q-SNIPER — long bolt-action: massive scope with front + rear
+//              bells, turrets, bipod, cheek riser, lilac accents.
+//   RAILGUN  — sci-fi with energy core display + power gauge dial
+//              + six electromagnetic coils along the barrel, cyan.
+//   G-LAUNCH — grenade launcher: chunky body, ammo counter, ribbed
+//              pump grip, MASSIVE bore aperture with depth shading.
+//   SIDEKICK — pistol with slide serrations, ejection port, front
+//              + rear sights, stippled grip, magazine base.
+//
+// Each rendered via realistic gunmetal/polymer/barrel-steel linear
+// gradients so they read as metallic 3D objects, not flat icons.
+//
 // v44: SWITCHED WEAPON TO 2D SVG OVERLAY (away from WebGL viewmodel).
 //
 // After multiple iterations failed to reliably make the three.js
@@ -405,7 +431,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v44";
+const CACHE = "trivia-wheel-v45";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

@@ -9,6 +9,7 @@
 // particles + AOE pull/push + small splash damage.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./PlasmaRifle.js";
 
 const PROJECTILE_SPEED = 28;
 const PROJECTILE_LIFE = 1.4; // seconds
@@ -127,21 +128,14 @@ export class GravityLauncher extends Weapon {
   setBots(bots) { this._engineBots = bots; }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.16, 0.48),
-      new THREE.MeshBasicMaterial({ color: 0x0a1c30 }),
-    );
-    body.position.set(0.3, -0.3, -0.45);
-    grp.add(body);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.05, 0.12, 12),
-      new THREE.MeshBasicMaterial({ color: 0x60a5fa }),
-    );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.3, -0.3, -0.72);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    const grp = buildViewmodel({
+      bodySize: [0.22, 0.22, 0.58],
+      bodyColor: 0x0a2050,
+      accentColor: 0x60a5fa,
+      tipColor: 0x60a5fa,
+      anchor: [0.32, -0.30, -0.55],
+    });
+    this._attachViewmodel(grp.group, grp.tip);
   }
 
   destroy() {

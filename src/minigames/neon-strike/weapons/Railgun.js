@@ -75,20 +75,15 @@ export class Railgun extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.14, 0.85),
-      new THREE.MeshBasicMaterial({ color: 0x0a1224 }),
-    );
-    body.position.set(0.32, -0.32, -0.68);
-    grp.add(body);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8),
-      new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.4 }),
-    );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.32, -0.32, -1.15);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    const grp = buildViewmodel({
+      bodySize: [0.20, 0.20, 0.95],
+      bodyColor: 0x0d2244,
+      accentColor: 0x22d3ee,
+      tipColor: 0x22d3ee,
+      anchor: [0.32, -0.32, -0.78],
+    });
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+import { buildViewmodel } from "./PlasmaRifle.js";

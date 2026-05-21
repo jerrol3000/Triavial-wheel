@@ -55,6 +55,9 @@ export default function NeonStrikeArena({ onComplete, seed }) {
   const [damageNumbers, setDamageNumbers] = useState([]); // [{id, x, y, amount, headshot, kill, born}]
   const dmgIdRef = useRef(1);
   const submittedRef = useRef(false);
+  // Onboarding tooltip — shown for the first ~5s after match start
+  // so the player knows what they're doing.
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // HUD rerender throttle
   useEffect(() => {
@@ -149,6 +152,8 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     engineRef.current = engine;
     try { applySettingsToEngine(engine, loadSettings()); } catch (e) {}
     setStarted(true);
+    setShowOnboarding(true);
+    setTimeout(() => setShowOnboarding(false), 5500);
     engine.start();
     setTimeout(() => engine.controls?.lock?.(), 50);
   };
@@ -504,6 +509,49 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             }} />
           )}
 
+          {/* Directional damage indicator — red arc pointing at the
+              source of incoming fire. Without this the player has no
+              way to find their attacker. */}
+          <DamageDirection angle={hud.damageAngle} at={hud.damageAt} />
+
+          {/* Onboarding tooltip — shown for the first ~5s of the
+              match so a brand-new player knows what to do. */}
+          {showOnboarding && (
+            <div style={{
+              position: "absolute", left: "50%", top: "62%",
+              transform: "translate(-50%, -50%)",
+              maxWidth: 480, padding: "12px 22px",
+              background: "rgba(5,6,14,0.78)",
+              border: "1px solid rgba(167,139,250,0.45)",
+              borderRadius: 8,
+              boxShadow: "0 0 24px rgba(167,139,250,0.25)",
+              color: "#fff",
+              textAlign: "center",
+              animation: "nsa-fade-in 0.4s ease-out",
+            }}>
+              <div style={{
+                fontSize: 10, letterSpacing: 4, color: "#a78bfa",
+                fontWeight: 700, marginBottom: 6,
+              }}>◈ READY</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                Click to lock cursor · LEFT-CLICK to fire
+              </div>
+              <div style={{
+                fontSize: 11, color: "rgba(255,255,255,0.7)", lineHeight: 1.5,
+              }}>
+                RIGHT-CLICK = alt-fire · R = reload · Q = phase-shift
+                <br />
+                Look for colored capsules on the floor — pick up new weapons
+              </div>
+              <style>{`
+                @keyframes nsa-fade-in {
+                  from { opacity: 0; transform: translate(-50%, -45%); }
+                  to   { opacity: 1; transform: translate(-50%, -50%); }
+                }
+              `}</style>
+            </div>
+          )}
+
           {/* Minimap (P1-6) */}
           <Minimap engine={engineRef.current} />
 
@@ -558,6 +606,55 @@ function HitMarker({ headshot, kill }) {
           100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
         }
       `}</style>
+    </div>
+  );
+}
+
+// ── Directional damage indicator ──────────────────────────────────
+// Renders a red arc on the screen edge at the angle of the most
+// recent attacker, relative to the camera forward. Fades over 1200ms.
+function DamageDirection({ angle, at }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 60);
+    return () => clearInterval(id);
+  }, []);
+  if (!at) return null;
+  const age = (Date.now() - at) / 1200;
+  if (age >= 1) return null;
+  const opacity = 1 - age;
+  // Rotate so 0 = top of screen (attacker dead-ahead). Angle is in
+  // radians where positive = attacker to your right. We rotate the
+  // wrapper so the arc sits at that compass bearing.
+  const deg = (angle * 180) / Math.PI;
+  return (
+    <div style={{
+      position: "absolute", left: "50%", top: "50%",
+      width: 1, height: 1,
+      transform: `translate(-50%, -50%) rotate(${deg}deg)`,
+      pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "absolute",
+        left: "50%", top: -160,
+        transform: "translateX(-50%)",
+        width: 140, height: 40,
+        background: "radial-gradient(ellipse at center, rgba(239,68,68,0.85) 0%, rgba(239,68,68,0.25) 60%, transparent 100%)",
+        filter: "blur(2px)",
+        opacity,
+        borderRadius: "50%",
+      }} />
+      <div style={{
+        position: "absolute",
+        left: "50%", top: -115,
+        transform: "translateX(-50%)",
+        width: 0, height: 0,
+        borderLeft: "10px solid transparent",
+        borderRight: "10px solid transparent",
+        borderBottom: "16px solid #ef4444",
+        opacity,
+        filter: "drop-shadow(0 0 6px rgba(239,68,68,0.9))",
+      }} />
     </div>
   );
 }

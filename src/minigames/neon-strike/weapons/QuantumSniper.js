@@ -121,27 +121,29 @@ export class QuantumSniper extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.14, 1.0),
+    const grp = buildViewmodel({
+      bodySize: [0.16, 0.18, 1.05],
+      bodyColor: 0x2a0e4a,
+      accentColor: 0xc084fc,
+      tipColor: 0xc084fc,
+      anchor: [0.34, -0.32, -0.80],
+    });
+    // Add a scope on top — distinguishing silhouette.
+    const scope = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 0.26, 12),
       new THREE.MeshBasicMaterial({ color: 0x14081f }),
     );
-    body.position.set(0.34, -0.32, -0.75);
-    grp.add(body);
-    const scope = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04, 0.04, 0.18, 12),
-      new THREE.MeshBasicMaterial({ color: 0x1f1030 }),
-    );
     scope.rotation.x = Math.PI / 2;
-    scope.position.set(0.34, -0.18, -0.6);
-    grp.add(scope);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.025, 0.025, 0.1, 8),
+    scope.position.set(0.34, -0.17, -0.68);
+    grp.group.add(scope);
+    const scopeRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.07, 0.012, 6, 14),
       new THREE.MeshBasicMaterial({ color: 0xc084fc }),
     );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.34, -0.32, -1.3);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    scopeRing.position.set(0.34, -0.17, -0.55);
+    grp.group.add(scopeRing);
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+import { buildViewmodel } from "./PlasmaRifle.js";

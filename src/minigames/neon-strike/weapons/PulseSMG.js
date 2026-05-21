@@ -87,26 +87,22 @@ export class PulseSMG extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.10, 0.10, 0.42),
-      new THREE.MeshBasicMaterial({ color: 0x06241a }),
-    );
-    body.position.set(0.28, -0.32, -0.45);
-    grp.add(body);
+    const grp = buildViewmodel({
+      bodySize: [0.16, 0.16, 0.55],
+      bodyColor: 0x07321f,
+      accentColor: 0x34d399,
+      tipColor: 0x34d399,
+      anchor: [0.30, -0.32, -0.52],
+    });
+    // Add a small extended magazine bulge below to keep SMG silhouette.
     const mag = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.18, 0.10),
+      new THREE.BoxGeometry(0.10, 0.18, 0.14),
       new THREE.MeshBasicMaterial({ color: 0x0c3a26 }),
     );
-    mag.position.set(0.28, -0.48, -0.42);
-    grp.add(mag);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.025, 0.025, 0.08, 6),
-      new THREE.MeshBasicMaterial({ color: 0x34d399 }),
-    );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.28, -0.32, -0.68);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    mag.position.set(0.30, -0.50, -0.48);
+    grp.group.add(mag);
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+import { buildViewmodel } from "./PlasmaRifle.js";

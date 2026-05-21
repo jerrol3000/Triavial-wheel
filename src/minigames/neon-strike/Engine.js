@@ -134,6 +134,9 @@ export class Engine {
       // P2-x: mode-aware HUD state
       modeId: this.modeId,
       wave: 0,
+      // Directional damage indicator — HUD reads angle + age.
+      damageAngle: 0,
+      damageAt: 0,
       // First-person camera bob state.
       bobT: 0,
     };
@@ -328,6 +331,28 @@ export class Engine {
     this.state.health = Math.max(0, this.state.health - amount);
     this.state.streak = 0;
     this.particles.burst(this.camera.position.clone().add(new THREE.Vector3(0, -0.3, -0.8)), 0xef4444, 4);
+    // Directional damage indicator — compute the screen-space angle
+    // from the camera forward to the attacker, so the HUD can render
+    // a red arc pointing at the source. Without this the player gets
+    // shredded with no idea where the shots came from.
+    if (by && by.position) {
+      const toAttacker = by.position.clone().sub(this.camera.position);
+      // Camera forward in world XZ plane.
+      const fwd = new THREE.Vector3();
+      this.camera.getWorldDirection(fwd);
+      fwd.y = 0; fwd.normalize();
+      toAttacker.y = 0;
+      if (toAttacker.lengthSq() > 0.0001) {
+        toAttacker.normalize();
+        // angle from forward to attacker, signed via cross-product.
+        const dot = THREE.MathUtils.clamp(fwd.dot(toAttacker), -1, 1);
+        const cross = fwd.x * toAttacker.z - fwd.z * toAttacker.x;
+        // Positive cross = attacker is to the player's RIGHT.
+        const angle = Math.atan2(cross, dot); // -PI..PI
+        this.state.damageAngle = angle;
+        this.state.damageAt = Date.now();
+      }
+    }
     if (this.state.health <= 0) {
       // Death — respawn after 2s with full health.
       this.state.deaths += 1;

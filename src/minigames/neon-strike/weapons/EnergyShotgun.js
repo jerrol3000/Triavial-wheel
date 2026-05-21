@@ -92,20 +92,15 @@ export class EnergyShotgun extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.16, 0.14, 0.52),
-      new THREE.MeshBasicMaterial({ color: 0x1a0a1a }),
-    );
-    body.position.set(0.3, -0.3, -0.5);
-    grp.add(body);
-    const tip = new THREE.Mesh(
-      new THREE.RingGeometry(0.04, 0.07, 12),
-      new THREE.MeshBasicMaterial({ color: 0xf472b6, side: THREE.DoubleSide }),
-    );
-    tip.position.set(0.3, -0.3, -0.83);
-    tip.rotation.y = Math.PI / 2;
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    const grp = buildViewmodel({
+      bodySize: [0.22, 0.20, 0.62],
+      bodyColor: 0x3a1430,
+      accentColor: 0xf472b6,
+      tipColor: 0xf472b6,
+      anchor: [0.32, -0.32, -0.62],
+    });
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+import { buildViewmodel } from "./PlasmaRifle.js";

@@ -77,20 +77,72 @@ export class PlasmaRifle extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.12, 0.6),
-      new THREE.MeshBasicMaterial({ color: 0x101a3a }),
-    );
-    body.position.set(0.3, -0.3, -0.55);
-    grp.add(body);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.03, 0.05, 0.1, 8),
-      new THREE.MeshBasicMaterial({ color: 0xa78bfa }),
-    );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.3, -0.3, -0.92);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    const grp = buildViewmodel({
+      bodySize: [0.18, 0.18, 0.72],
+      bodyColor: 0x1a2050,
+      accentColor: 0xa78bfa,
+      tipColor: 0xa78bfa,
+      anchor: [0.32, -0.32, -0.65],
+    });
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+// ── Shared viewmodel builder ───────────────────────────────────────
+// All weapons use the same "body + glow trim + barrel tip" silhouette
+// with per-weapon colors. The original viewmodels were 12cm wide and
+// painted nearly the same color as the scene background — invisible.
+// This builder sizes them up + adds an emissive trim strip the player
+// can actually see.
+function buildViewmodel({ bodySize, bodyColor, accentColor, tipColor, anchor }) {
+  const grp = new THREE.Group();
+  const [bw, bh, bd] = bodySize;
+  const [ax, ay, az] = anchor;
+
+  // Main body
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(bw, bh, bd),
+    new THREE.MeshBasicMaterial({ color: bodyColor }),
+  );
+  body.position.set(ax, ay, az);
+  grp.add(body);
+
+  // Glow trim strip along the top of the body — gives the gun a
+  // visible silhouette against the dark scene.
+  const trim = new THREE.Mesh(
+    new THREE.BoxGeometry(bw * 0.55, bh * 0.18, bd * 0.85),
+    new THREE.MeshBasicMaterial({ color: accentColor }),
+  );
+  trim.position.set(ax, ay + bh * 0.45, az);
+  grp.add(trim);
+
+  // Side rail (small accent on the inboard side).
+  const rail = new THREE.Mesh(
+    new THREE.BoxGeometry(bw * 0.2, bh * 0.5, bd * 0.6),
+    new THREE.MeshBasicMaterial({ color: accentColor }),
+  );
+  rail.position.set(ax - bw * 0.45, ay, az);
+  grp.add(rail);
+
+  // Barrel
+  const barrelLen = bd * 0.55;
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(bw * 0.22, bw * 0.22, barrelLen, 10),
+    new THREE.MeshBasicMaterial({ color: bodyColor }),
+  );
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(ax, ay, az - bd * 0.5 - barrelLen * 0.5);
+  grp.add(barrel);
+
+  // Barrel tip — glowing accent. This is the anchor for muzzle flash.
+  const tip = new THREE.Mesh(
+    new THREE.CylinderGeometry(bw * 0.28, bw * 0.18, bw * 0.5, 10),
+    new THREE.MeshBasicMaterial({ color: tipColor }),
+  );
+  tip.rotation.x = Math.PI / 2;
+  tip.position.set(ax, ay, az - bd * 0.5 - barrelLen - bw * 0.2);
+  grp.add(tip);
+
+  return { group: grp, tip };
+}
+export { buildViewmodel };

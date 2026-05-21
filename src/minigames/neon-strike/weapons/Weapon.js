@@ -116,6 +116,7 @@ export class Weapon {
     this._lastFire = now;
     if (state) state.ammo -= 1;
     this._applyRecoil();
+    this._spawnMuzzleFlash();
     this._doShot(player, bots, onResolved, state);
   }
 
@@ -259,6 +260,38 @@ export class Weapon {
     this._baseYmodelY = grp.position.y;
     this.camera.add(grp);
     this.scene.add(this.camera);
+  }
+
+  // ── Muzzle flash sprite at barrel tip ─────────────────────────
+  // Called from fire() / altFire() in concrete weapons so the player
+  // can SEE that their weapon just fired. Cheap — single sphere with
+  // a 90ms fade.
+  _spawnMuzzleFlash(color) {
+    if (!this.barrelTip) return;
+    const c = color ?? this.tracerColor ?? 0xffffff;
+    const geom = new THREE.SphereGeometry(0.08, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: c, transparent: true, opacity: 1,
+    });
+    const flash = new THREE.Mesh(geom, mat);
+    // barrelTip is a child of the camera, so attach the flash there
+    // so it follows the gun. Reset to local-zero — barrelTip's world
+    // position is the flash's anchor.
+    this.barrelTip.add(flash);
+    const start = performance.now();
+    const life = 90;
+    const tick = () => {
+      const t = (performance.now() - start) / life;
+      if (t >= 1) {
+        try { this.barrelTip.remove(flash); } catch (e) {}
+        try { geom.dispose(); mat.dispose(); } catch (e) {}
+        return;
+      }
+      flash.scale.setScalar(1 + t * 1.4);
+      mat.opacity = 1 - t;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   destroy() {

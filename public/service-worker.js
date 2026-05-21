@@ -264,7 +264,29 @@
 // the current weapon name + icon + alt-fire label and surfaces wave
 // progress / "WAVE COMPLETE" banners during Survive mode. Bot AOE
 // + damage scale with difficulty (×0.7 easy, ×1.3 hard).
-const CACHE = "trivia-wheel-v38";
+//
+// v39: VISIBILITY OVERHAUL. Player feedback: "i dont see the weapon,
+// i dont see who is shooting, i dont know what is going on." Fixed:
+//   • Viewmodels are now ~60% bigger with bright neon trim strips
+//     and accent-colored barrel tips that pop against the dark
+//     scene (was: tiny dark-navy boxes barely visible).
+//   • Every weapon shot now spawns a muzzle flash at the barrel tip
+//     (auto-fired by Weapon.fire() so all 7 weapons inherit it).
+//   • Bots now fire VISIBLE TRACER LINES from their muzzle to the
+//     target (player) or stray point — was previously just a 3-px
+//     particle burst. You can now SEE who is shooting at you and
+//     from where.
+//   • Bots get a muzzle-flash sphere + body-band white-flash when
+//     they fire, so a bot mid-shot is unmistakable in the scene.
+//   • Directional damage indicator: a red arc-arrow on the HUD
+//     points toward the bot that last hit you, fading over 1.2s.
+//     No more "where did that shot come from."
+//   • Onboarding tooltip: brief overlay during the first 5 seconds
+//     of every match explains LEFT-CLICK / RIGHT-CLICK / R / Q
+//     and the pickup mechanic.
+//   • Mid-match weapon swap now resets the engine's Mk-level mirror
+//     to the new weapon's own level (no insta-Mk-4 from carry-over).
+const CACHE = "trivia-wheel-v39";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

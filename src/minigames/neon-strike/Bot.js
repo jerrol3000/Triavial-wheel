@@ -243,19 +243,86 @@ export class Bot {
     const accuracy = this.personalityName === "SNIPER" ? 0.7
                     : this.personalityName === "AGGRO" ? 0.45
                                                        : 0.55;
-    // Movement accuracy penalty: if player was moving fast last frame
-    // we'd ideally know that, but we use a constant for simplicity.
-    if (Math.random() > accuracy) {
-      // Miss — spawn small spark on a wall behind the player.
+    const hit = Math.random() <= accuracy;
+    // Bot muzzle origin — chest height, slightly forward.
+    const muzzle = this.position.clone().add(new THREE.Vector3(0, 1.3, 0));
+    // Bot muzzle flash — sphere that pulses bright then fades.
+    this._spawnMuzzleFlash(muzzle);
+    // Visible tracer from bot to target. Without this the player has
+    // no way to see incoming fire — major UX gap.
+    let endPoint;
+    if (hit) {
+      endPoint = playerPos.clone().add(new THREE.Vector3(0, -0.2, 0));
+    } else {
+      // Miss — stray near the player so the tracer still reads as
+      // "fire coming at you".
       const dir = playerPos.clone().sub(this.position).normalize();
-      const stray = playerPos.clone().add(dir.multiplyScalar(2)).add(new THREE.Vector3(
-        (Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3,
+      endPoint = playerPos.clone().add(dir.multiplyScalar(1.5)).add(new THREE.Vector3(
+        (Math.random() - 0.5) * 2.4, (Math.random() - 0.5) * 1.2, (Math.random() - 0.5) * 2.4,
       ));
-      particles.burst(stray, this.color, 3);
+    }
+    this._spawnBotTracer(muzzle, endPoint);
+    // Brief band-flash on the bot to visually telegraph "I am firing".
+    this.bandMesh.material.color.setHex(0xffffff);
+    setTimeout(() => {
+      if (!this.dead) this.bandMesh.material.color.setHex(this.color);
+    }, 60);
+    if (!hit) {
+      particles.burst(endPoint, this.color, 3);
       return;
     }
-    // Hit.
     damagePlayer(this.p.damage);
-    particles.burst(playerPos.clone().add(new THREE.Vector3(0, -0.4, 0)), this.color, 5);
+    particles.burst(playerPos.clone().add(new THREE.Vector3(0, -0.4, 0)), this.color, 6);
+  }
+
+  _spawnMuzzleFlash(pos) {
+    const geom = new THREE.SphereGeometry(0.18, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: this.color,
+      transparent: true,
+      opacity: 1,
+    });
+    const flash = new THREE.Mesh(geom, mat);
+    flash.position.copy(pos);
+    this.scene.add(flash);
+    const start = performance.now();
+    const life = 130;
+    const tick = () => {
+      const t = (performance.now() - start) / life;
+      if (t >= 1) {
+        this.scene.remove(flash);
+        try { geom.dispose(); mat.dispose(); } catch (e) {}
+        return;
+      }
+      const k = 1 - t;
+      flash.scale.setScalar(1 + t * 1.6);
+      mat.opacity = k;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  _spawnBotTracer(from, to) {
+    const geom = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
+    const mat = new THREE.LineBasicMaterial({
+      color: this.color,
+      transparent: true,
+      opacity: 0.95,
+    });
+    const line = new THREE.Line(geom, mat);
+    this.scene.add(line);
+    const start = performance.now();
+    const life = 110;
+    const tick = () => {
+      const t = (performance.now() - start) / life;
+      if (t >= 1) {
+        this.scene.remove(line);
+        try { geom.dispose(); mat.dispose(); } catch (e) {}
+        return;
+      }
+      mat.opacity = 0.95 * (1 - t);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 }

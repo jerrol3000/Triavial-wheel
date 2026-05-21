@@ -77,20 +77,15 @@ export class SmartPistol extends Weapon {
   }
 
   _buildViewmodel() {
-    const grp = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.10, 0.32),
-      new THREE.MeshBasicMaterial({ color: 0x121b30 }),
-    );
-    body.position.set(0.26, -0.32, -0.4);
-    grp.add(body);
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.02, 0.06, 6),
-      new THREE.MeshBasicMaterial({ color: 0xfbbf24 }),
-    );
-    tip.rotation.x = Math.PI / 2;
-    tip.position.set(0.26, -0.32, -0.58);
-    grp.add(tip);
-    this._attachViewmodel(grp, tip);
+    const grp = buildViewmodel({
+      bodySize: [0.13, 0.15, 0.42],
+      bodyColor: 0x2a1f0a,
+      accentColor: 0xfbbf24,
+      tipColor: 0xfbbf24,
+      anchor: [0.30, -0.32, -0.46],
+    });
+    this._attachViewmodel(grp.group, grp.tip);
   }
 }
+
+import { buildViewmodel } from "./PlasmaRifle.js";

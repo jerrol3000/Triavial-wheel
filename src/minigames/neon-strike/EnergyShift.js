@@ -31,10 +31,11 @@ export class EnergyShift {
     this.active = false;
     this.lastEndedAt = 0;
     this.phaseMeshes = arena.phaseMeshes();
-    this._originalOpacity = new Map();
-    for (const m of this.phaseMeshes) {
-      this._originalOpacity.set(m, m.material.opacity);
-    }
+    // P1-8: drive ShaderMaterial uniform uShifted (0 ↔ 1) with a smooth
+    // ease. We no longer touch opacity directly — the shader handles
+    // both opaque and translucent states.
+    this._uShiftedTarget = 0;
+    this._uShiftedValue = 0;
     // Override Arena.collidesAt to honor shifting state when called
     // from PlayerController. We patch by binding a property the
     // controller can read — simplest hook.
@@ -59,11 +60,7 @@ export class EnergyShift {
     state.energy -= ACTIVATION_COST;
     this.active = true;
     state.shifting = true;
-    // Fade phase walls.
-    for (const m of this.phaseMeshes) {
-      m.material.transparent = true;
-      m.material.opacity = 0.15;
-    }
+    this._uShiftedTarget = 1;
     // Shift the scene fog to a cyan tint.
     if (this.scene.fog) {
       this.scene.fog.color.set(0x06143a);
@@ -76,9 +73,7 @@ export class EnergyShift {
     this.active = false;
     state.shifting = false;
     this.lastEndedAt = Date.now();
-    for (const m of this.phaseMeshes) {
-      m.material.opacity = this._originalOpacity.get(m) ?? 0.8;
-    }
+    this._uShiftedTarget = 0;
     if (this.scene.fog) {
       this.scene.fog.color.set(0x05060e);
       this.scene.fog.density = this._normalFogDensity;
@@ -90,6 +85,15 @@ export class EnergyShift {
     if (this.active) {
       state.energy = Math.max(0, state.energy - DRAIN_PER_SEC * dt);
       if (state.energy <= 0) this._end(state);
+    }
+    // P1-8: ease the uShifted uniform toward target each frame for
+    // a smooth visual transition rather than a hard pop.
+    const ease = Math.min(1, 6 * dt);
+    this._uShiftedValue += (this._uShiftedTarget - this._uShiftedValue) * ease;
+    if (this.arena.phaseMaterials) {
+      for (const m of this.arena.phaseMaterials) {
+        if (m.uniforms?.uShifted) m.uniforms.uShifted.value = this._uShiftedValue;
+      }
     }
   }
 }

@@ -26,11 +26,15 @@ const BASE_DAMAGE = 25;
 const HEADSHOT_MUL = 2.4;
 
 export class Weapon {
-  constructor(scene, camera, arena, particles) {
+  constructor(scene, camera, arena, particles, controls) {
     this.scene = scene;
     this.camera = camera;
     this.arena = arena;
     this.particles = particles;
+    // P1-2: stored so the recoil ticker can apply yaw via the
+    // PointerLockControls' parent object (the camera's pitch lives
+    // on the camera itself; yaw lives on the parent).
+    this.controls = controls;
     this.level = 1;
     this.fireRateMs = 125; // 8 RPS base
     this.recoil = 0.03;
@@ -41,6 +45,23 @@ export class Weapon {
     this._lastFire = 0;
     this._tempVec = new THREE.Vector3();
     this._tempDir = new THREE.Vector3();
+    // P1-2: per-weapon recoil pattern.
+    // Recoil patterns are arrays of {pitch, yaw} deltas (in radians)
+    // applied in sequence per shot, cycling back to the start.
+    // Plasma rifle has a classic "rise + slight zigzag" pattern.
+    // When new weapons land in P3 each gets its own pattern.
+    this._recoilPattern = [
+      { pitch: 0.035, yaw: 0.000 },
+      { pitch: 0.030, yaw: 0.008 },
+      { pitch: 0.028, yaw: -0.006 },
+      { pitch: 0.026, yaw: 0.012 },
+      { pitch: 0.024, yaw: -0.010 },
+      { pitch: 0.022, yaw: 0.005 },
+    ];
+    this._recoilIdx = 0;
+    this._recoilCooldownAt = 0;
+    this._appliedPitch = 0;
+    this._appliedYaw = 0;
     this._buildViewmodel();
   }
 
@@ -70,13 +91,32 @@ export class Weapon {
   }
 
   update(dt) {
-    // Decay recoil offset on camera pitch back toward 0.
-    // We use camera.rotation.x for pitch (PointerLockControls sets this).
-    // Just reduce abs value each frame.
-    if (this._recoilOffset) {
-      const decay = Math.min(1, 8 * dt);
-      this._recoilOffset *= 1 - decay;
-      this.camera.rotation.x -= this._recoilOffset * decay * 0.1;
+    // P1-2: recoil settle. Each shot pushes the camera up + sideways
+    // via the pattern; we settle the APPLIED rotation back to zero
+    // over ~250ms when not firing. This gives the kick-and-recover
+    // feel real shooters have, without a separate "spray pattern"
+    // overlay we'd need for proper bullet-by-bullet trajectories.
+    const now = performance.now();
+    if (now > this._recoilCooldownAt) {
+      const settle = Math.min(1, 9 * dt);
+      const dp = this._appliedPitch * settle;
+      const dy = this._appliedYaw * settle;
+      this.camera.rotation.x -= dp;
+      // PointerLockControls handles yaw via parent object; tweak
+      // camera.parent if needed. For PointerLockControls v0.160 the
+      // controls object IS the camera holder.
+      try {
+        const obj = this.controls && this.controls.getObject && this.controls.getObject();
+        if (obj) obj.rotation.y -= dy;
+      } catch (e) {}
+      this._appliedPitch -= dp;
+      this._appliedYaw -= dy;
+      if (Math.abs(this._appliedPitch) < 0.0005 && Math.abs(this._appliedYaw) < 0.0005) {
+        this._appliedPitch = 0;
+        this._appliedYaw = 0;
+        // Reset pattern index when fully settled — back to first kick.
+        this._recoilIdx = 0;
+      }
     }
     // Subtle viewmodel sway.
     this.viewmodel.position.y = Math.sin(performance.now() * 0.003) * 0.005;
@@ -119,8 +159,27 @@ export class Weapon {
   }
 
   _doShot(player, bots, onResolved) {
-    // Apply recoil offset to next pitch reading; visual recoil kick.
-    this._recoilOffset = (this._recoilOffset || 0) + this.recoil;
+    // P1-2: apply the next entry in the recoil pattern. Pattern
+    // cycles back to the start when exhausted. Higher weapon Mk
+    // reduces recoil scalar (recoilMul).
+    const recoilMul = this.level === 1 ? 1.0
+                    : this.level === 2 ? 0.55
+                    : this.level === 3 ? 0.7  // burst spreads it out
+                    : this.level === 4 ? 0.45
+                                       : 0.35;
+    const kick = this._recoilPattern[this._recoilIdx % this._recoilPattern.length];
+    this._recoilIdx += 1;
+    const pitchDelta = kick.pitch * recoilMul;
+    const yawDelta = kick.yaw * recoilMul;
+    this.camera.rotation.x += pitchDelta;
+    try {
+      const obj = this.controls && this.controls.getObject && this.controls.getObject();
+      if (obj) obj.rotation.y += yawDelta;
+    } catch (e) {}
+    this._appliedPitch += pitchDelta;
+    this._appliedYaw += yawDelta;
+    // Hold off settle for 80ms so consecutive shots stack.
+    this._recoilCooldownAt = performance.now() + 80;
 
     // Build raycaster from camera with optional homing aim assist.
     const origin = new THREE.Vector3();

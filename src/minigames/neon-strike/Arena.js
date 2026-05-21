@@ -25,6 +25,79 @@
 
 import * as THREE from "three";
 
+// P1-8 — Phase wall shader factory.
+// Animated scanlines + data-stream noise + edge-Fresnel rim glow.
+// Two states selected by uShifted (0 = solid, 1 = phased through).
+// In the solid state it pulses subtly; in the phased state it
+// becomes a translucent flowing pattern showing the player can pass.
+function makePhaseWallMaterial(colorHex) {
+  const color = new THREE.Color(colorHex);
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime:     { value: 0 },
+      uShifted:  { value: 0 },
+      uColor:    { value: new THREE.Vector3(color.r, color.g, color.b) },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vViewDir = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      precision mediump float;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      uniform float uTime;
+      uniform float uShifted;
+      uniform vec3 uColor;
+
+      // Simple hash + value noise.
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+
+      void main() {
+        // Vertical scanlines moving upward.
+        float scan = sin((vUv.y * 60.0) - uTime * 6.0) * 0.5 + 0.5;
+        // Data-stream noise — two layered noises drifting at different speeds.
+        float n1 = noise(vUv * vec2(20.0, 6.0) + vec2(uTime * 0.4, uTime * 0.9));
+        float n2 = noise(vUv * vec2(40.0, 12.0) - vec2(0.0, uTime * 1.4));
+        float dataStream = clamp(n1 * 0.6 + n2 * 0.5, 0.0, 1.0);
+
+        // Fresnel rim — bright at edges, dark at center face.
+        float fres = pow(1.0 - max(0.0, dot(vNormal, vViewDir)), 2.0);
+
+        // Solid-state look: emit base color + subtle data shimmer.
+        vec3 solidCol = uColor * (0.6 + scan * 0.4) + uColor * dataStream * 0.25;
+        float solidAlpha = 0.85 + fres * 0.1;
+
+        // Phased-state look: translucent data weave, edges glow strong.
+        vec3 phaseCol = uColor * (0.4 + dataStream * 0.9) + vec3(0.2, 0.7, 0.95) * fres * 0.4;
+        float phaseAlpha = 0.15 + dataStream * 0.25 + fres * 0.18;
+
+        // Blend by uShifted (0 → 1)
+        vec3 col = mix(solidCol, phaseCol, uShifted);
+        float alpha = mix(solidAlpha, phaseAlpha, uShifted);
+        gl_FragColor = vec4(col, alpha);
+      }
+    `,
+  });
+}
+
 export class Arena {
   constructor(scene) {
     this.scene = scene;
@@ -122,20 +195,24 @@ export class Arena {
     // normal dimension. Solid + opaque normally, translucent + non-
     // colliding when EnergyShift is active. The defining unique
     // mechanic visualized.
+    //
+    // P1-8: custom ShaderMaterial draws an animated data-noise
+    // pattern flowing across the wall. The material exposes uniforms
+    // (uTime, uShifted, uColor) that EnergyShift writes to so the
+    // visual flips between "solid neon" and "phased data stream"
+    // smoothly. Cheap fragment program — runs everywhere.
     {
       const w = 12, h = 4, d = 1;
       const g = new THREE.BoxGeometry(w, h, d);
-      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-        color: colors.neonC,
-        transparent: true,
-        opacity: 0.8,
-      }));
+      const m = new THREE.Mesh(g, makePhaseWallMaterial(colors.neonC));
       m.position.set(0, h / 2, -2);
       m.rotation.y = Math.PI / 4;
       m.userData.phasable = true;
       this.scene.add(m);
-      // Compute the axis-aligned bounding box AFTER rotation — easier
-      // to just bake a slightly larger box for collision.
+      // Track the material so EnergyShift can poke its uniforms
+      // (we expose this via this.phaseMaterials for that purpose).
+      this.phaseMaterials = this.phaseMaterials || [];
+      this.phaseMaterials.push(m.material);
       const box = new THREE.Box3().setFromObject(m);
       this.colliders.push({ aabb: box, phasable: true, mesh: m });
     }
@@ -211,5 +288,15 @@ export class Arena {
   // to fade them in/out as the player shifts.
   phaseMeshes() {
     return this.colliders.filter((c) => c.phasable).map((c) => c.mesh);
+  }
+
+  // P1-8: per-frame uniform tick for the phase-wall shader. Engine
+  // calls this from its main loop. uShifted is set externally by
+  // EnergyShift; here we just animate uTime.
+  tickShaders(dt) {
+    if (!this.phaseMaterials) return;
+    for (const m of this.phaseMaterials) {
+      if (m.uniforms?.uTime) m.uniforms.uTime.value += dt;
+    }
   }
 }

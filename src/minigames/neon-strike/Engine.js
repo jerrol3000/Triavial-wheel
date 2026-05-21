@@ -45,6 +45,10 @@ export class Engine {
     this.onHudUpdate = opts.onHudUpdate || (() => {});
     this.onKillFeed = opts.onKillFeed || (() => {});
     this.onMatchEnd = opts.onMatchEnd || (() => {});
+    // P1-1: HUD callback for hit confirmations + floating damage numbers.
+    // The HUD owns rendering both — these are pure events from the engine.
+    this.onHitConfirmed = opts.onHitConfirmed || (() => {}); // { headshot, kill }
+    this.onDamageNumber = opts.onDamageNumber || (() => {}); // { worldPos, amount, headshot, kill }
     this.duration = opts.durationMs || 90000;
 
     this.scene = new THREE.Scene();
@@ -81,7 +85,7 @@ export class Engine {
     this.particles = new ParticlePool(this.scene, 200);
     this.controls = new PointerLockControls(this.camera, this.renderer.domElement);
     this.player = new PlayerController(this.camera, this.controls, this.arena);
-    this.weapon = new Weapon(this.scene, this.camera, this.arena, this.particles);
+    this.weapon = new Weapon(this.scene, this.camera, this.arena, this.particles, this.controls);
     this.energyShift = new EnergyShift(this.player, this.arena, this.scene);
     this.announcer = new Announcer();
 
@@ -182,6 +186,16 @@ export class Engine {
       const dmg = result.headshot ? 60 : 25;
       bot.applyDamage(dmg);
       this.particles.burst(result.point, 0xf472b6, 12);
+      // P1-1: HUD signals — center-screen hit marker + floating
+      // damage number at the world-space impact point. We pre-project
+      // the world point to screen space in the HUD layer.
+      this.onHitConfirmed({ headshot: result.headshot, kill: bot.dead });
+      this.onDamageNumber({
+        worldPos: result.point.clone(),
+        amount: dmg,
+        headshot: result.headshot,
+        kill: bot.dead,
+      });
       if (bot.dead) {
         this.state.kills += 1;
         this.state.streak += 1;
@@ -214,6 +228,8 @@ export class Engine {
     if (this.state.health <= 0) {
       // Death — respawn after 2s with full health.
       this.state.deaths += 1;
+      // P1-7: credit the killing bot for the scoreboard tally.
+      if (by) by.killsSinceMatch = (by.killsSinceMatch || 0) + 1;
       this.announcer.say("RESPAWNING");
       this.onKillFeed({ killer: by?.name || "BOT", victim: "you", headshot: false });
       setTimeout(() => {
@@ -233,6 +249,19 @@ export class Engine {
     this._tick();
   }
 
+  // P1-1: project a world-space THREE.Vector3 to screen-space pixel
+  // coordinates, given the current canvas size. Returns null when the
+  // point is behind the camera (so the HUD can drop the label).
+  worldToScreen(worldPos) {
+    const v = worldPos.clone().project(this.camera);
+    if (v.z > 1) return null; // behind camera or outside frustum
+    const canvas = this.renderer.domElement;
+    return {
+      x: (v.x * 0.5 + 0.5) * canvas.clientWidth,
+      y: (1 - (v.y * 0.5 + 0.5)) * canvas.clientHeight,
+    };
+  }
+
   _tick = () => {
     if (!this.running) return;
     const dt = Math.min(0.05, this.clock.getDelta()); // cap dt to avoid huge jumps
@@ -248,6 +277,8 @@ export class Engine {
         bot.update(dt, this.camera.position, (dmg) => this.damagePlayer(dmg, bot), this.state, this.particles);
       }
       this.particles.update(dt);
+      // P1-8: drive the phase-wall shader animation.
+      this.arena.tickShaders(dt);
     }
 
     // Energy regen.

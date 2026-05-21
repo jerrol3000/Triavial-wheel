@@ -207,7 +207,30 @@
 //
 // Bundle: 1.5MB → 2.0MB (three.js core ~600kb). Still within PWA
 // norms; lazy code-split available if needed later.
-const CACHE = "trivia-wheel-v35";
+// v36: Neon Strike — Phase 1 polish complete.
+//   P1-1  Hit markers (animated X reticle) + floating damage numbers
+//         (project world point to screen, drift up + fade, gold on
+//         kill, pink on headshot).
+//   P1-2  Per-weapon recoil pattern (6-step plasma curve, settles
+//         over ~250ms when not firing, scaled by Mk level).
+//   P1-3  Mobile virtual joystick + look-pad + FIRE/JUMP/DASH/Q
+//         action buttons (auto-hidden on desktop).
+//   P1-4  ESC pause menu — resume/settings/quit. Timer freezes,
+//         pointer unlocks, speech synth pauses + resumes.
+//   P1-5  Settings panel (mouse sensitivity, FOV 60-110, master
+//         volume, announcer toggle, perf preset). Persists via
+//         localStorage. Applies live to engine on change.
+//   P1-6  Minimap (top-left, 140px square) — static arena plan
+//         drawn once, dynamic player triangle + bot dots at ~10Hz.
+//         Phase walls drawn pink, spawn rings circled.
+//   P1-7  TAB-hold scoreboard with K/D/score/best-streak per
+//         player + bot, color-coded by personality.
+//   P1-8  Custom ShaderMaterial on phase walls — animated scanlines
+//         + value-noise data stream + Fresnel rim glow. uShifted
+//         uniform smoothly eases between solid (0.85 alpha) and
+//         phased (translucent data weave) states during Energy
+//         Shift activation.
+const CACHE = "trivia-wheel-v36";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

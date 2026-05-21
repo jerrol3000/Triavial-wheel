@@ -45,6 +45,10 @@ export class Bot {
     this.state = "WANDER";
     this.lastShot = 0;
     this.dead = false;
+    // P1-7: per-match tallies surfaced to the scoreboard. Engine
+    // increments killsSinceMatch when this bot kills the player.
+    this.killsSinceMatch = 0;
+    this.deathsSinceMatch = 0;
     this.lastSidestep = 0;
     this.sidestepDir = 1;
     this._raycaster = new THREE.Raycaster();
@@ -95,6 +99,7 @@ export class Bot {
 
   _die() {
     this.dead = true;
+    this.deathsSinceMatch += 1;
     this.mesh.visible = false;
   }
 

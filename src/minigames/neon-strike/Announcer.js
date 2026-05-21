@@ -32,6 +32,10 @@ export class Announcer {
     this.firstKillFired = false;
     this.lastLine = "";
     this.lastAt = 0;
+    // P1-5: settings-controlled mute + volume. Settings panel writes
+    // these via applySettingsToEngine().
+    this.muted = false;
+    this.volume = 0.8;
     this._pickVoice();
   }
 
@@ -57,6 +61,7 @@ export class Announcer {
   }
 
   say(line, opts = {}) {
+    if (this.muted) return;
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const now = Date.now();
     if (line === this.lastLine && now - this.lastAt < 1200) return;
@@ -69,7 +74,7 @@ export class Announcer {
       if (this.voice) u.voice = this.voice;
       u.rate = opts.rate ?? 1.1;
       u.pitch = opts.pitch ?? 0.9;
-      u.volume = opts.volume ?? 0.8;
+      u.volume = (opts.volume ?? 0.8) * this.volume;
       window.speechSynthesis.speak(u);
     } catch (e) {}
   }

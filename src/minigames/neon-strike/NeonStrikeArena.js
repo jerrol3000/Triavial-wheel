@@ -1,21 +1,25 @@
-// NeonStrikeArena — React wrapper that mounts the Engine into a DOM
-// container, owns the HUD overlay, and adapts the engine's lifecycle
-// to the rest of the app's MiniGameRunner contract (calls
-// onComplete({score}) on match end).
+// NeonStrikeArena — React wrapper + HUD.
 //
-// HUD architecture:
-//   • The Engine emits onHudUpdate(state) every frame. We mirror
-//     that state into a React useState ref via requestAnimationFrame
-//     batching so we don't re-render React on every frame — only on
-//     every ~50ms tick. (Setting React state at 60Hz would tank
-//     perf via reconciliation overhead.)
-//   • Crosshair, health bar, ammo, score, weapon Mk, energy bar,
-//     timer, kill feed all live as DOM/CSS overlays on top of the
-//     WebGL canvas. Pointer events on the HUD pass through to the
-//     canvas via pointer-events: none on the wrapper.
+// Owns:
+//   • The DOM container for the WebGL canvas
+//   • The HUD overlay (crosshair / health / ammo / score / timer /
+//     kill feed)
+//   • Hit markers + floating damage numbers (P1-1)
+//   • Mobile touch controls (P1-3, hidden on desktop)
+//   • Pause menu + settings (P1-4 + P1-5)
+//   • Minimap (P1-6)
+//   • Scoreboard (P1-7, TAB-toggle)
+//
+// HUD throttle: state samples engine.hudRef every 50ms instead of
+// re-rendering on every Engine tick — avoids React reconciliation
+// overhead.
 
 import React, { useEffect, useRef, useState } from "react";
 import { Engine } from "./Engine.js";
+import MobileControls from "./MobileControls.js";
+import PauseMenu from "./PauseMenu.js";
+import Minimap from "./Minimap.js";
+import { loadSettings, applySettingsToEngine } from "./settings.js";
 
 export default function NeonStrikeArena({ onComplete, seed }) {
   const containerRef = useRef(null);
@@ -27,20 +31,32 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     reloading: false,
   });
   const [hud, setHud] = useState(hudRef.current);
-  const [feed, setFeed] = useState([]); // [{killer,victim,headshot,at}]
+  const [feed, setFeed] = useState([]);
   const [started, setStarted] = useState(false);
-  const [pointerHelpVisible, setPointerHelpVisible] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  // P1-1: hit marker flash + active damage numbers.
+  const [hitFlash, setHitFlash] = useState(null); // { at, headshot, kill }
+  const [damageNumbers, setDamageNumbers] = useState([]); // [{id, x, y, amount, headshot, kill, born}]
+  const dmgIdRef = useRef(1);
   const submittedRef = useRef(false);
 
-  // Throttle HUD rerenders to ~20Hz. Engine writes to hudRef every
-  // frame; we sample it on an interval. Drastically reduces React
-  // reconciliation cost compared to a per-frame setHud().
+  // HUD rerender throttle
   useEffect(() => {
-    const id = setInterval(() => {
-      // Snapshot — shallow clone so React sees a new reference.
-      setHud({ ...hudRef.current });
-    }, 50);
+    const id = setInterval(() => setHud({ ...hudRef.current }), 50);
     return () => clearInterval(id);
+  }, []);
+
+  // P1-7: TAB-hold scoreboard.
+  useEffect(() => {
+    const down = (e) => { if (e.code === "Tab") { e.preventDefault(); setScoreboardOpen(true); } };
+    const up = (e) => { if (e.code === "Tab") setScoreboardOpen(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
   }, []);
 
   // Mount Engine.
@@ -52,42 +68,70 @@ export default function NeonStrikeArena({ onComplete, seed }) {
       onKillFeed: (item) => {
         setFeed((prev) => {
           const next = [...prev, { ...item, at: Date.now() }];
-          // Keep only the last 6 entries.
           return next.slice(-6);
         });
+      },
+      onHitConfirmed: (info) => {
+        // P1-1: brief center-screen X reticle flash.
+        setHitFlash({ ...info, at: Date.now() });
+      },
+      onDamageNumber: ({ worldPos, amount, headshot, kill }) => {
+        // Project to screen coords and queue a floating-text entry.
+        const screen = engine.worldToScreen(worldPos);
+        if (!screen) return;
+        const id = dmgIdRef.current++;
+        setDamageNumbers((prev) => [
+          ...prev,
+          { id, x: screen.x, y: screen.y, amount, headshot, kill, born: Date.now() },
+        ].slice(-12)); // cap at 12 simultaneous
       },
       onMatchEnd: (final) => {
         if (submittedRef.current) return;
         submittedRef.current = true;
-        // Score formula for the Spinlore Arena economy: kills × 10 +
-        // best streak × 5, capped at the registry's max_score (200).
         const score = Math.min(200, final.kills * 10 + final.best_streak * 5);
-        // Defer slightly so the announcer "MATCH COMPLETE" plays.
         setTimeout(() => onComplete({ score }), 1500);
       },
     });
     engineRef.current = engine;
-    // Auto-clean kill feed entries after 4s.
+    // Apply persisted settings on mount.
+    applySettingsToEngine(engine, loadSettings());
+
+    // Cleanup of stale kill-feed + damage-number entries.
     const cleanup = setInterval(() => {
       const now = Date.now();
       setFeed((prev) => prev.filter((f) => now - f.at < 4000));
-    }, 600);
+      setDamageNumbers((prev) => prev.filter((d) => now - d.born < 900));
+    }, 250);
     return () => {
       clearInterval(cleanup);
       try { engine.destroy(); } catch (e) {}
     };
   }, [onComplete]);
 
+  // P1-1: clear the hit-flash after ~140ms.
+  useEffect(() => {
+    if (!hitFlash) return;
+    const t = setTimeout(() => setHitFlash(null), 160);
+    return () => clearTimeout(t);
+  }, [hitFlash]);
+
   const beginMatch = () => {
     if (!engineRef.current) return;
     setStarted(true);
-    setPointerHelpVisible(false);
     engineRef.current.start();
-    // Request pointer lock on the canvas immediately so player can move + look.
     setTimeout(() => engineRef.current.controls.lock(), 50);
   };
 
-  // ── HUD bits ─────────────────────────────────────────────────
+  const handleQuit = () => {
+    setPaused(false);
+    if (engineRef.current && !submittedRef.current) {
+      submittedRef.current = true;
+      const s = engineRef.current.state;
+      const score = Math.min(200, s.kills * 10 + s.best_streak * 5);
+      onComplete({ score });
+    }
+  };
+
   const timeSec = Math.ceil(hud.time_remaining_ms / 1000);
   const healthPct = (hud.health / hud.maxHealth) * 100;
   const energyPct = hud.energy;
@@ -103,7 +147,6 @@ export default function NeonStrikeArena({ onComplete, seed }) {
       overflow: "hidden",
       border: "1px solid rgba(167,139,250,0.4)",
     }}>
-      {/* WebGL canvas mount */}
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
       {/* Pre-match start panel */}
@@ -112,25 +155,20 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           position: "absolute", inset: 0,
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
-          background: "rgba(5,6,14,0.92)",
-          padding: 24,
+          background: "rgba(5,6,14,0.92)", padding: 24,
         }}>
           <div style={{
             fontFamily: '"JetBrains Mono", monospace',
             fontSize: 12, letterSpacing: 6, color: "#a78bfa",
             fontWeight: 700, marginBottom: 6,
-          }}>
-            ◈ NEON STRIKE ARENA
-          </div>
+          }}>◈ NEON STRIKE ARENA</div>
           <div style={{
             fontFamily: '"Inter", sans-serif',
             fontSize: 28, fontWeight: 800,
             background: "linear-gradient(135deg, #a78bfa, #f472b6, #22d3ee)",
             WebkitBackgroundClip: "text", color: "transparent",
             marginBottom: 14, textAlign: "center",
-          }}>
-            90-Second Cyber Arena
-          </div>
+          }}>90-Second Cyber Arena</div>
           <div style={{
             color: "rgba(255,255,255,0.6)", fontSize: 13,
             maxWidth: 460, textAlign: "center", marginBottom: 18, lineHeight: 1.6,
@@ -146,29 +184,26 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             marginBottom: 22,
           }}>
             <span style={{ color: "#a78bfa" }}>WASD</span><span>move</span>
-            <span style={{ color: "#a78bfa" }}>MOUSE</span><span>look + click to fire</span>
+            <span style={{ color: "#a78bfa" }}>MOUSE</span><span>look + click fire</span>
             <span style={{ color: "#a78bfa" }}>SHIFT</span><span>sprint</span>
             <span style={{ color: "#a78bfa" }}>SPACE</span><span>jump (×2)</span>
             <span style={{ color: "#a78bfa" }}>E</span><span>air dash</span>
             <span style={{ color: "#a78bfa" }}>F</span><span>slide</span>
             <span style={{ color: "#a78bfa" }}>R</span><span>reload</span>
-            <span style={{ color: "#f472b6", textShadow: "0 0 6px #f472b6" }}>Q</span>
+            <span style={{ color: "#a78bfa" }}>TAB</span><span>scoreboard (hold)</span>
+            <span style={{ color: "#a78bfa" }}>ESC</span><span>pause + settings</span>
+            <span style={{ color: "#f472b6" }}>Q</span>
             <span style={{ color: "#f472b6" }}>ENERGY SHIFT — phase through walls</span>
           </div>
-          <button
-            onClick={beginMatch}
-            style={{
-              padding: "14px 40px", borderRadius: 8,
-              background: "linear-gradient(135deg, #a78bfa, #f472b6)",
-              border: "none", color: "#fff",
-              fontFamily: '"Inter", sans-serif',
-              fontSize: 14, fontWeight: 800, letterSpacing: 4,
-              textTransform: "uppercase", cursor: "pointer",
-              boxShadow: "0 0 28px rgba(167,139,250,0.5)",
-            }}
-          >
-            ENTER ARENA
-          </button>
+          <button onClick={beginMatch} style={{
+            padding: "14px 40px", borderRadius: 8,
+            background: "linear-gradient(135deg, #a78bfa, #f472b6)",
+            border: "none", color: "#fff",
+            fontFamily: '"Inter", sans-serif',
+            fontSize: 14, fontWeight: 800, letterSpacing: 4,
+            textTransform: "uppercase", cursor: "pointer",
+            boxShadow: "0 0 28px rgba(167,139,250,0.5)",
+          }}>ENTER ARENA</button>
         </div>
       )}
 
@@ -180,7 +215,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           color: "#fff",
           fontFamily: '"JetBrains Mono", monospace',
         }}>
-          {/* Crosshair */}
+          {/* Crosshair + hit marker (P1-1) */}
           <div style={{
             position: "absolute", left: "50%", top: "50%",
             transform: "translate(-50%, -50%)",
@@ -195,8 +230,16 @@ export default function NeonStrikeArena({ onComplete, seed }) {
               background: "#a78bfa",
             }} />
           </div>
+          {hitFlash && (
+            <HitMarker headshot={hitFlash.headshot} kill={hitFlash.kill} />
+          )}
 
-          {/* Top HUD: timer + score + kills */}
+          {/* Damage numbers (P1-1) */}
+          {damageNumbers.map((d) => (
+            <DamageNumber key={d.id} d={d} />
+          ))}
+
+          {/* Top HUD: timer + score + streak */}
           <div style={{
             position: "absolute", top: 16, left: "50%",
             transform: "translateX(-50%)",
@@ -218,9 +261,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
               border: "1px solid rgba(167,139,250,0.3)",
               borderRadius: 6,
               fontSize: 18, fontWeight: 800, color: "#a78bfa",
-            }}>
-              {hud.score}
-            </div>
+            }}>{hud.score}</div>
             {hud.streak > 1 && (
               <div style={{
                 padding: "6px 14px",
@@ -229,23 +270,22 @@ export default function NeonStrikeArena({ onComplete, seed }) {
                 borderRadius: 6,
                 fontSize: 14, fontWeight: 800,
                 animation: "tw-combo-pulse 0.9s ease-in-out infinite",
-              }}>
-                ×{hud.streak} STREAK
-              </div>
+              }}>×{hud.streak} STREAK</div>
             )}
           </div>
 
-          {/* Bottom-left: health + energy bars */}
+          {/* Bottom-left: health + energy */}
           <div style={{
             position: "absolute", left: 16, bottom: 16,
-            display: "flex", flexDirection: "column", gap: 6,
-            width: 200,
+            display: "flex", flexDirection: "column", gap: 6, width: 200,
           }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.6)" }}>HEALTH · {hud.health}</div>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.6)" }}>
+                HEALTH · {hud.health}
+              </div>
               <div style={{
-                width: "100%", height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.1)",
+                width: "100%", height: 8, background: "rgba(255,255,255,0.06)",
+                borderRadius: 4, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)",
               }}>
                 <div style={{
                   width: `${healthPct}%`, height: "100%",
@@ -261,8 +301,8 @@ export default function NeonStrikeArena({ onComplete, seed }) {
                 ENERGY · {Math.round(hud.energy)}{hud.shifting ? " · ⫷ SHIFTED" : ""}
               </div>
               <div style={{
-                width: "100%", height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.1)",
+                width: "100%", height: 8, background: "rgba(255,255,255,0.06)",
+                borderRadius: 4, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)",
               }}>
                 <div style={{
                   width: `${energyPct}%`, height: "100%",
@@ -276,10 +316,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           </div>
 
           {/* Bottom-right: ammo + weapon Mk */}
-          <div style={{
-            position: "absolute", right: 16, bottom: 16,
-            textAlign: "right",
-          }}>
+          <div style={{ position: "absolute", right: 16, bottom: 16, textAlign: "right" }}>
             <div style={{ fontSize: 10, letterSpacing: 2, color: "rgba(255,255,255,0.6)" }}>
               PLASMA · MK {hud.weaponLevel}
             </div>
@@ -287,9 +324,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
               fontSize: 32, fontWeight: 800,
               color: hud.reloading ? "#fda4af" : "#fff",
               textShadow: "0 0 14px rgba(167,139,250,0.5)",
-            }}>
-              {ammoStr}
-            </div>
+            }}>{ammoStr}</div>
             <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>
               {hud.weaponKills}/3 to evolve
             </div>
@@ -298,8 +333,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
           {/* Top-right: kill feed */}
           <div style={{
             position: "absolute", right: 16, top: 16,
-            display: "flex", flexDirection: "column", gap: 4,
-            alignItems: "flex-end", maxWidth: 280,
+            display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", maxWidth: 280,
           }}>
             {feed.map((f, i) => (
               <div key={f.at + "-" + i} style={{
@@ -307,8 +341,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
                 background: "rgba(10,15,30,0.7)",
                 border: "1px solid rgba(255,255,255,0.08)",
                 borderRadius: 4,
-                fontSize: 11, fontWeight: 700,
-                color: "rgba(255,255,255,0.9)",
+                fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.9)",
                 display: "flex", gap: 6, alignItems: "center",
               }}>
                 <span style={{ color: f.killer === "you" ? "#a78bfa" : "#fda4af" }}>{f.killer}</span>
@@ -318,7 +351,7 @@ export default function NeonStrikeArena({ onComplete, seed }) {
             ))}
           </div>
 
-          {/* Damage vignette overlay — flashes red on low health */}
+          {/* Damage vignette overlay */}
           {hud.health < 30 && (
             <div style={{
               position: "absolute", inset: 0,
@@ -327,8 +360,160 @@ export default function NeonStrikeArena({ onComplete, seed }) {
               animation: "tw-shake 0.5s ease-in-out infinite",
             }} />
           )}
+
+          {/* Minimap (P1-6) */}
+          <Minimap engine={engineRef.current} />
+
+          {/* Mobile touch controls (P1-3) */}
+          <MobileControls engine={engineRef.current} visible={started && !paused} />
+
+          {/* Scoreboard (P1-7) */}
+          {scoreboardOpen && (
+            <Scoreboard hud={hud} engine={engineRef.current} />
+          )}
         </div>
       )}
+
+      {/* Pause menu (P1-4 + P1-5) */}
+      {started && (
+        <PauseMenu
+          engine={engineRef.current}
+          open={paused}
+          onClose={(arg) => setPaused(arg === "open" ? true : false)}
+          onQuit={handleQuit}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── P1-1: Hit marker — animated X reticle around the crosshair ────
+function HitMarker({ headshot, kill }) {
+  const color = kill ? "#fbbf24" : headshot ? "#f472b6" : "#ffffff";
+  return (
+    <div style={{
+      position: "absolute", left: "50%", top: "50%",
+      transform: "translate(-50%, -50%)",
+      width: 40, height: 40,
+      pointerEvents: "none",
+      animation: "nsa-hit-marker 160ms ease-out forwards",
+    }}>
+      {[0, 90, 180, 270].map((rot) => (
+        <div key={rot} style={{
+          position: "absolute", left: "50%", top: "50%",
+          width: 2, height: 10,
+          background: color,
+          boxShadow: `0 0 6px ${color}`,
+          transformOrigin: "50% 18px",
+          transform: `translate(-50%, -50%) rotate(${rot + 45}deg) translateY(-12px)`,
+        }} />
+      ))}
+      <style>{`
+        @keyframes nsa-hit-marker {
+          0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 1; }
+          50%  { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+          100% { transform: translate(-50%, -50%) scale(1.0); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── P1-1: floating damage number that drifts up + fades ───────────
+function DamageNumber({ d }) {
+  const age = Math.max(0, (Date.now() - d.born) / 900);
+  const y = d.y - age * 60;
+  const opacity = 1 - age;
+  const scale = d.kill ? 1.4 : d.headshot ? 1.25 : 1.0;
+  const color = d.kill ? "#fbbf24" : d.headshot ? "#f472b6" : "#fff";
+  return (
+    <div style={{
+      position: "absolute",
+      left: d.x, top: y,
+      transform: `translate(-50%, -50%) scale(${scale})`,
+      fontFamily: '"JetBrains Mono", monospace',
+      fontSize: 16, fontWeight: 800,
+      color, textShadow: `0 0 8px ${color}, 0 2px 4px rgba(0,0,0,0.6)`,
+      opacity, pointerEvents: "none",
+      transition: "top 50ms linear, opacity 50ms linear",
+    }}>
+      {d.headshot ? "‼" : ""}{d.amount}
+    </div>
+  );
+}
+
+// ── P1-7: Scoreboard ──────────────────────────────────────────────
+function Scoreboard({ hud, engine }) {
+  if (!engine) return null;
+  const bots = engine.bots || [];
+  const rows = [
+    { name: "YOU",
+      kills: hud.kills, deaths: hud.deaths, score: hud.score,
+      best_streak: hud.best_streak,
+      isMe: true,
+    },
+    ...bots.map((b) => ({
+      name: b.name,
+      kills: b.killsSinceMatch || 0,
+      deaths: b.deathsSinceMatch || 0,
+      score: 0,
+      best_streak: 0,
+      personality: b.personalityName,
+    })),
+  ];
+  rows.sort((a, b) => b.score - a.score || b.kills - a.kills);
+  return (
+    <div style={{
+      position: "absolute", left: "50%", top: "50%",
+      transform: "translate(-50%, -50%)",
+      minWidth: 360,
+      background: "rgba(5,6,14,0.92)",
+      border: "1px solid rgba(167,139,250,0.5)",
+      borderRadius: 8,
+      padding: 16,
+      fontFamily: '"JetBrains Mono", monospace',
+      color: "#fff",
+    }}>
+      <div style={{
+        fontSize: 11, letterSpacing: 4, color: "#a78bfa",
+        marginBottom: 12, fontWeight: 700, textAlign: "center",
+      }}>◈ SCOREBOARD</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <thead>
+          <tr style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, letterSpacing: 2 }}>
+            <th style={{ textAlign: "left", padding: "4px 8px" }}>PLAYER</th>
+            <th style={{ textAlign: "right", padding: "4px 8px" }}>K</th>
+            <th style={{ textAlign: "right", padding: "4px 8px" }}>D</th>
+            <th style={{ textAlign: "right", padding: "4px 8px" }}>SCORE</th>
+            <th style={{ textAlign: "right", padding: "4px 8px" }}>BEST</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.name + i} style={{
+              background: r.isMe ? "rgba(167,139,250,0.12)" : "transparent",
+              borderTop: "1px solid rgba(255,255,255,0.06)",
+            }}>
+              <td style={{
+                padding: "6px 8px",
+                color: r.isMe ? "#a78bfa" :
+                       r.personality === "AGGRO"  ? "#f472b6" :
+                       r.personality === "SNIPER" ? "#22d3ee" :
+                       r.personality === "FLANKER"? "#fbbf24" : "#fff",
+                fontWeight: 700,
+              }}>{r.name}</td>
+              <td style={{ padding: "6px 8px", textAlign: "right" }}>{r.kills}</td>
+              <td style={{ padding: "6px 8px", textAlign: "right", color: "rgba(255,255,255,0.6)" }}>{r.deaths}</td>
+              <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700 }}>{r.score}</td>
+              <td style={{ padding: "6px 8px", textAlign: "right", color: "rgba(255,255,255,0.7)" }}>×{r.best_streak}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{
+        marginTop: 10, fontSize: 9, color: "rgba(255,255,255,0.35)",
+        letterSpacing: 2, textAlign: "center",
+      }}>HOLD TAB</div>
     </div>
   );
 }

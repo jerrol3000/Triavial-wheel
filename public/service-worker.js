@@ -251,6 +251,28 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v48: PROPER FIRST-PERSON VIEW. User shared a reference photo of an
+// actual FPS viewmodel and asked for that layout. Changes:
+//
+//   • Gun mirrored (scaleX -1) so the GRIP is on the right side of
+//     the SVG, landing at the right side of the screen where the
+//     hand grasps it.
+//   • CSS 3D transform rotates the gun ~15° clockwise so the barrel
+//     angles UP-AND-LEFT (into the scene/where the player is aiming).
+//   • Side-profile gun anatomy preserved (real-firearm references
+//     from v47) so the AK-74/MP9/Remington/AWP/L85/launcher/Makarov
+//     silhouettes still read correctly.
+//   • Hand SVG REDRAWN: anatomical right hand wrapping the pistol
+//     grip with visible knuckle pads (black rubber strips across the
+//     back of the hand), thumb wrapping the front of the grip,
+//     index finger extending toward the trigger area.
+//   • Glove changed from busy leopard-pattern camo to a solid
+//     tactical-tan gradient with black rubber knuckle reinforcements
+//     — reads as a real tactical glove, not animal print.
+//   • Bare skin visible between glove cuff and forearm. Forearm
+//     extends off-screen to the bottom-right.
+//   • Recoil animation updated for the new mirror+rotate transform.
+//
 // v47: REAL-WORLD GUN DESIGNS. User showed a reference photo of six
 // actual firearms and asked: "i want the these guns design". Each
 // of the 7 weapons now mirrors a recognizable real-world firearm
@@ -485,7 +507,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v47";
+const CACHE = "trivia-wheel-v48";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

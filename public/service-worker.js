@@ -230,7 +230,27 @@
 //         uniform smoothly eases between solid (0.85 alpha) and
 //         phased (translucent data weave) states during Energy
 //         Shift activation.
-const CACHE = "trivia-wheel-v36";
+// v37: hotfix — Neon Strike "see nothing" bug.
+//
+// Root cause: the previous flyctl deploy reused a cached Docker layer
+// and never rebuilt server/minigames.js, so the live server's
+// MINI_GAMES registry was the OLD 12-game version without neon_strike.
+// When the client posted {game_type:"neon_strike"} to /api/solo/play,
+// the server's `MINI_GAMES[rawType] ? rawType : random` fallback
+// returned a random OTHER game type — quick_math / catch_bug / etc.
+// The client then tried to render the returned type via the new
+// 3-game GAMES registry, which doesn't have those IDs, and the
+// MiniGameRunner's fallback fired (auto-submit 0, blank screen).
+//
+// Fix: redeployed with `flyctl deploy --no-cache`. Live registry now
+// returns neon_strike on request.
+//
+// Also added: diagnostic engine-error overlay. If Engine construction
+// fails for any reason (WebGL unsupported, asset error, runtime
+// throw) the player now sees a clear "ENGINE FAILED TO LOAD" message
+// with the error text and a Skip button — instead of a silent blank
+// canvas.
+const CACHE = "trivia-wheel-v37";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

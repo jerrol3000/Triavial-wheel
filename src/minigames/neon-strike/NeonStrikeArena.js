@@ -35,6 +35,11 @@ export default function NeonStrikeArena({ onComplete, seed }) {
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const [scoreboardOpen, setScoreboardOpen] = useState(false);
+  // Surface engine-construction errors instead of silently failing —
+  // a blank canvas with no message is the worst possible UX. If
+  // WebGL is unsupported or the engine throws, the user gets a
+  // diagnostic + a "Skip" button that submits a 0 score.
+  const [engineError, setEngineError] = useState(null);
   // P1-1: hit marker flash + active damage numbers.
   const [hitFlash, setHitFlash] = useState(null); // { at, headshot, kill }
   const [damageNumbers, setDamageNumbers] = useState([]); // [{id, x, y, amount, headshot, kill, born}]
@@ -59,10 +64,23 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     };
   }, []);
 
-  // Mount Engine.
+  // Mount Engine. Wrapped in try/catch so we always surface errors
+  // to the player — better than a blank screen.
   useEffect(() => {
     if (!containerRef.current) return;
-    const engine = new Engine(containerRef.current, {
+    // Quick WebGL2 / WebGL feature check so an unsupported browser
+    // shows a clear message instead of a silent black canvas.
+    try {
+      const probe = document.createElement("canvas");
+      const gl = probe.getContext("webgl2") || probe.getContext("webgl");
+      if (!gl) throw new Error("WebGL not supported by this browser");
+    } catch (probeErr) {
+      setEngineError(probeErr.message || "WebGL probe failed");
+      return;
+    }
+    let engine;
+    try {
+      engine = new Engine(containerRef.current, {
       durationMs: 90000,
       onHudUpdate: (s) => { hudRef.current = s; },
       onKillFeed: (item) => {
@@ -92,9 +110,14 @@ export default function NeonStrikeArena({ onComplete, seed }) {
         setTimeout(() => onComplete({ score }), 1500);
       },
     });
+    } catch (err) {
+      console.error("[NSA] engine construction failed:", err);
+      setEngineError(String(err?.message || err));
+      return;
+    }
     engineRef.current = engine;
     // Apply persisted settings on mount.
-    applySettingsToEngine(engine, loadSettings());
+    try { applySettingsToEngine(engine, loadSettings()); } catch (e) {}
 
     // Cleanup of stale kill-feed + damage-number entries.
     const cleanup = setInterval(() => {
@@ -149,8 +172,50 @@ export default function NeonStrikeArena({ onComplete, seed }) {
     }}>
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
 
+      {/* Engine-construction error overlay — visible diagnostic so a
+          blank arena doesn't strand the player. */}
+      {engineError && (
+        <div style={{
+          position: "absolute", inset: 0,
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "rgba(5,6,14,0.95)", padding: 24, gap: 12,
+          fontFamily: '"JetBrains Mono", monospace',
+          textAlign: "center", color: "#fda4af",
+        }}>
+          <div style={{ fontSize: 38, lineHeight: 1 }}>⚠️</div>
+          <div style={{ fontSize: 14, letterSpacing: 4, fontWeight: 700 }}>
+            ENGINE FAILED TO LOAD
+          </div>
+          <div style={{ fontSize: 12, maxWidth: 420, color: "rgba(255,255,255,0.7)", lineHeight: 1.6 }}>
+            {engineError}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 6 }}>
+            Try a different browser, disable browser extensions, or
+            reload the page. If you're on Safari, ensure WebGL2 is
+            enabled (Settings → Develop → Experimental Features).
+          </div>
+          <button
+            onClick={() => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
+              onComplete({ score: 0 });
+            }}
+            style={{
+              marginTop: 14, padding: "10px 28px", borderRadius: 6,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#fff", cursor: "pointer",
+              fontFamily: '"Inter", sans-serif',
+              fontSize: 12, fontWeight: 800, letterSpacing: 3,
+              textTransform: "uppercase",
+            }}
+          >Skip game</button>
+        </div>
+      )}
+
       {/* Pre-match start panel */}
-      {!started && (
+      {!started && !engineError && (
         <div style={{
           position: "absolute", inset: 0,
           display: "flex", flexDirection: "column",

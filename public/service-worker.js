@@ -251,6 +251,26 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v46: FIRST-PERSON VIEW for the weapon. Up to v45 the gun was a
+// side-profile illustration centered at the bottom of the screen.
+// v46 transforms it into proper FPS pose:
+//
+//   • CSS 3D perspective on a wrapper div (perspective: 900px) so
+//     transforms read as actual depth, not affine skew.
+//   • Gun anchored bottom-RIGHT (right-handed shooter position)
+//     instead of centered.
+//   • Combined rotation: rotateY(-32deg) tilts the muzzle into the
+//     vanishing point, rotateX(20deg) angles the top toward the
+//     camera so we see the receiver, rotateZ(-6deg) adds natural
+//     cant.
+//   • A separate `FirstPersonHand` SVG layer (not rotated with the
+//     gun) renders the player's hand wrapping the grip — knuckles,
+//     fingers, thumb on the front of the grip, cyber-glove cuff
+//     with accent glow band, forearm extending to the corner.
+//   • Recoil/bob animations updated to compose with the FPS pose
+//     transforms (rotateY/X/Z stay constant, translateY + Z pulse
+//     on shot).
+//
 // v45: REALISTIC GUN SVGs. Replaced the stylized cyber-shapes with
 // proper firearm silhouettes — each weapon is now drawn with real
 // gun anatomy:
@@ -431,7 +451,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v45";
+const CACHE = "trivia-wheel-v46";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

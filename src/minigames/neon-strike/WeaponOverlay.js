@@ -35,46 +35,70 @@ export default function WeaponOverlay({ hud }) {
 
   const WeaponSVG = WEAPON_RENDERERS[weaponId] || WEAPON_RENDERERS.plasma;
 
+  // FIRST-PERSON VIEW: the gun is anchored to the bottom-right
+  // (right-handed shooter), the SVG itself is rotated and skewed
+  // via CSS 3D perspective so the BACK of the gun (grip/stock)
+  // appears closer to the camera and the muzzle vanishes into the
+  // distance. The wrapper applies the FPS pose, and an inner layer
+  // handles the idle bob + recoil so they compose cleanly.
   return (
     <div style={{
       position: "absolute",
-      left: 0, right: 0,
-      bottom: 0,
-      height: 220,
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "flex-end",
+      left: 0, right: 0, top: 0, bottom: 0,
       pointerEvents: "none",
       zIndex: 5,
+      // CSS 3D context needed so the inner perspective transform reads
+      // as actual depth, not just an affine skew.
+      perspective: "900px",
+      perspectiveOrigin: "50% 100%",
+      overflow: "hidden",
     }}>
+      {/* FPS anchor: bottom-right of the screen, rotated so the
+          gun appears held in the player's right hand. */}
       <div style={{
-        position: "relative",
-        width: 380, height: 220,
-        animation: reloading ? "wo-reload 1s linear infinite" : "wo-bob 3.4s ease-in-out infinite",
+        position: "absolute",
+        right: "-3%", bottom: "-8%",
+        width: 560, height: 360,
+        // The FPS pose: yaw rotates the gun so the muzzle points
+        // away from the camera (into the upper-left vanishing point),
+        // pitch tilts the top toward us so we see the receiver
+        // surface, roll adds a slight natural cant.
+        transform: "rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px)",
+        transformOrigin: "85% 85%",
+        animation: reloading
+          ? "wo-reload 1s linear infinite"
+          : "wo-bob 3.4s ease-in-out infinite",
       }}>
         <div key={recoilKey} style={{
           position: "absolute", inset: 0,
           animation: "wo-recoil 220ms cubic-bezier(.2,.7,.3,1)",
+          transformStyle: "preserve-3d",
         }}>
           <WeaponSVG />
         </div>
         <MuzzleFlash key={muzzleKey} flashColor={MUZZLE_COLORS[weaponId] || "#fff7d6"} />
       </div>
+
+      {/* First-person HAND wrapping around the grip — a separate
+          DOM layer so it's not rotated with the gun and always
+          reads as "your hand" from the camera POV. */}
+      <FirstPersonHand reloading={reloading} />
+
       <style>{`
         @keyframes wo-bob {
-          0%, 100% { transform: translateY(0) rotate(-0.4deg); }
-          50%      { transform: translateY(-5px) rotate(0.4deg); }
+          0%, 100% { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) translateY(0); }
+          50%      { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) translateY(-5px); }
         }
         @keyframes wo-recoil {
-          0%   { transform: translateY(0)    rotate(0); }
-          18%  { transform: translateY(10px) rotate(-2.5deg); }
-          60%  { transform: translateY(-3px) rotate(1deg); }
-          100% { transform: translateY(0)    rotate(0); }
+          0%   { transform: translateY(0)    translateZ(0) rotateZ(0); }
+          18%  { transform: translateY(12px) translateZ(-30px) rotateZ(-3deg); }
+          60%  { transform: translateY(-3px) translateZ(10px) rotateZ(1deg); }
+          100% { transform: translateY(0)    translateZ(0) rotateZ(0); }
         }
         @keyframes wo-reload {
-          0%   { transform: rotate(0)    translateY(0); }
-          50%  { transform: rotate(180deg) translateY(20px); }
-          100% { transform: rotate(360deg) translateY(0); }
+          0%   { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(0); }
+          50%  { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(180deg); }
+          100% { transform: rotateY(-32deg) rotateX(20deg) rotateZ(-6deg) translateZ(-40px) rotate(360deg); }
         }
         @keyframes wo-muzzle {
           0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
@@ -83,6 +107,66 @@ export default function WeaponOverlay({ hud }) {
           100% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); }
         }
       `}</style>
+    </div>
+  );
+}
+
+// First-person hand — drawn as a separate SVG layer in the bottom-
+// right, NOT rotated with the gun. Represents the player's right hand
+// wrapping around the pistol grip, fingers visible on the side.
+function FirstPersonHand({ reloading }) {
+  if (reloading) return null;
+  return (
+    <div style={{
+      position: "absolute",
+      right: 30, bottom: -10,
+      width: 200, height: 240,
+      pointerEvents: "none",
+      filter: "drop-shadow(0 10px 14px rgba(0,0,0,0.7))",
+    }}>
+      <svg viewBox="0 0 200 240" width="100%" height="100%">
+        <defs>
+          <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#7d5c42" />
+            <stop offset="0.5" stopColor="#5a4030" />
+            <stop offset="1" stopColor="#2e1f18" />
+          </linearGradient>
+          <linearGradient id="glove" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#3a322a" />
+            <stop offset="1" stopColor="#15110d" />
+          </linearGradient>
+        </defs>
+        {/* Forearm — angled in from the lower-right corner */}
+        <polygon points="120,240 200,240 200,140 140,120"
+          fill="url(#glove)" stroke="#000" strokeWidth="1.5" />
+        {/* Sleeve / cyber-glove cuff */}
+        <polygon points="120,160 200,140 200,168 130,186"
+          fill="#1a1410" stroke="#a78bfa" strokeWidth="1.5" opacity="0.95" />
+        {/* Glow band on the cuff */}
+        <polygon points="120,170 200,150 200,156 122,176"
+          fill="#a78bfa" opacity="0.85" />
+
+        {/* The HAND wrapping around the grip — knuckles toward viewer */}
+        <ellipse cx="105" cy="125" rx="38" ry="28"
+          fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
+        {/* Thumb wrapping around the front of the grip */}
+        <path d="M 75 110 Q 60 112 58 130 Q 60 146 78 144"
+          fill="url(#skin)" stroke="#000" strokeWidth="1.2" />
+        {/* Fingers — knuckle bumps visible on the back of hand */}
+        {[
+          [88, 100, 95, 96],
+          [98, 96, 105, 92],
+          [108, 96, 115, 92],
+          [118, 98, 125, 94],
+        ].map(([x1, y1, x2, y2], i) => (
+          <g key={i}>
+            <ellipse cx={x1 + 3} cy={y1 + 4} rx="8" ry="10"
+              fill="url(#skin)" stroke="#000" strokeWidth="1" />
+          </g>
+        ))}
+        {/* Thumbnail / detail */}
+        <ellipse cx="64" cy="124" rx="3" ry="5" fill="#3a2818" />
+      </svg>
     </div>
   );
 }

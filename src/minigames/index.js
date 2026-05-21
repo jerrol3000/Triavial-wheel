@@ -1,36 +1,22 @@
-// Central registry of mini-game components by type. Adding a new
-// game = drop a file in this folder + register it here. The runner
-// below + the rest of the app stay generic. Keys MUST match the IDs
-// in server/minigames.js — that's the contract the server uses to
-// describe a round to the client.
-import TapRace from "./TapRace";
-import Reaction from "./Reaction";
-import ColorMatch from "./ColorMatch";
-import Memory from "./Memory";
-import QuickMath from "./QuickMath";
-import BubblePop from "./BubblePop";
-import Whack from "./Whack";
-import OddOneOut from "./OddOneOut";
-import NumberRush from "./NumberRush";
-import CatchBug from "./CatchBug";
-import Memorize from "./Memorize";
-import HiLoSprint from "./HiLoSprint";
+// Arena game registry — slimmed to 3 after the Neon Strike pivot.
+//
+//   ✦ Anomaly       — Pixi/WebGL energy-field containment + plasma shader
+//   ◇ Cascade       — Matter.js physics orb catcher + MEGA + chain orbs
+//   ◈ Neon Strike   — full 3D first-person shooter (90-sec vs AI bots)
+//
+// The 9 retired mini-games (Surge / Trigger / Spectrum / Recall /
+// Vector / Intercept / Outlier / Sequence / Cipher / Tide) have been
+// removed from the registry. Their source files remain in this
+// folder for future reactivation but are no longer reachable.
 
-// Display names + icons match the redesigned premium-casual aesthetic
-// (no emoji-heavy "child app" feel). Server IDs unchanged for back-compat.
+import BubblePop from "./BubblePop";
+import CatchBug from "./CatchBug";
+import NeonStrikeArena from "./neon-strike/NeonStrikeArena";
+
 export const GAMES = {
-  tap_race:     { component: TapRace,    name: "Surge",     icon: "◉" },
-  reaction:     { component: Reaction,   name: "Trigger",   icon: "⚡" },
-  color_match:  { component: ColorMatch, name: "Spectrum",  icon: "◐" },
-  memory:       { component: Memory,     name: "Recall",    icon: "⬡" },
-  quick_math:   { component: QuickMath,  name: "Vector",    icon: "∑" },
-  bubble_pop:   { component: BubblePop,  name: "Cascade",   icon: "◇" },
-  whack:        { component: Whack,      name: "Intercept", icon: "▲" },
-  odd_one_out:  { component: OddOneOut,  name: "Outlier",   icon: "◆" },
-  sequence_tap: { component: NumberRush, name: "Sequence",  icon: "⊕" },
-  catch_bug:    { component: CatchBug,   name: "Anomaly",   icon: "✦" },
-  memorize:     { component: Memorize,   name: "Cipher",    icon: "⊡" },
-  hilo_sprint:  { component: HiLoSprint, name: "Tide",      icon: "△" },
+  catch_bug:   { component: CatchBug,         name: "Anomaly",     icon: "✦" },
+  bubble_pop:  { component: BubblePop,        name: "Cascade",     icon: "◇" },
+  neon_strike: { component: NeonStrikeArena,  name: "Neon Strike", icon: "◈" },
 };
 
 // Pretty name/icon lookup helpers for share cards + result rows.
@@ -48,8 +34,7 @@ export function MiniGameRunner({ game, onComplete }) {
   const entry = GAMES[game.type];
   if (!entry) {
     // Forward-compat: server picked a game type this bundle doesn't
-    // know yet. Auto-submit a 0 score so the match doesn't deadlock,
-    // surface a friendly note.
+    // know yet. Auto-submit a 0 score so the match doesn't deadlock.
     React.useEffect(() => {
       const t = setTimeout(() => onComplete({ score: 0 }), 50);
       return () => clearTimeout(t);

@@ -178,7 +178,36 @@
 //   • Scrolling scan-line during STANDBY makes the wait feel mechanical.
 //   • Core flare on FIRE — bursts radially the instant the signal hits.
 //   • Haptic FIRE pulse + bass_kick SFX.
-const CACHE = "trivia-wheel-v34";
+// v35: ARENA PIVOT — STRIPPED TO 3 + NEON STRIKE ARENA FPS LAUNCHED.
+//
+// What's gone (removed from the registry; source files retained for
+// future reactivation):
+//   Surge · Trigger · Spectrum · Recall · Vector · Intercept ·
+//   Outlier · Sequence · Cipher · Tide
+//
+// What's in:
+//   ✦ Anomaly       — Pixi WebGL energy-field containment + plasma shader
+//   ◇ Cascade       — Matter.js physics orb catcher + MEGA + chain orbs
+//   ◈ Neon Strike   — NEW. Full 3D first-person shooter (90s vs 3 AI bots)
+//
+// Neon Strike Arena (src/minigames/neon-strike/):
+//   • Engine.js          three.js scene + camera + renderer + main loop
+//   • Arena.js           procedural neon arena, AABB colliders, phase wall
+//   • PlayerController   kinematic FPS controller (WASD + jump + slide
+//                        + air-dash + wall-run + combo movement)
+//   • Weapon.js          hit-scan plasma rifle + recoil + Mk evolution
+//   • Bot.js             3 personalities (AGGRO/SNIPER/FLANKER), state
+//                        machine, line-of-sight, accuracy modeling
+//   • EnergyShift.js     dimensional phase mechanic — pass through walls,
+//                        immune to bullets, drains energy 35/sec
+//   • Announcer.js       Web Speech API contextual commentator (FIRST
+//                        BLOOD, DOUBLE KILL, RAMPAGE, etc.)
+//   • ParticlePool.js    200-particle pre-allocated pool for impacts
+//   • NeonStrikeArena    React wrapper + HUD overlay
+//
+// Bundle: 1.5MB → 2.0MB (three.js core ~600kb). Still within PWA
+// norms; lazy code-split available if needed later.
+const CACHE = "trivia-wheel-v35";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

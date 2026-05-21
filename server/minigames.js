@@ -20,143 +20,39 @@
 // picker, score clamp, and round resolver are all generic.
 
 const MINI_GAMES = {
-  tap_race: {
-    id: "tap_race",
-    name: "Surge",
-    icon: "◉",
-    tagline: "Tap in rhythm. Pocket hits build combo.",
-    // 5-second tap window. Humans cap around 8-10 taps/sec; we cap
-    // generously at 15/sec = 75 to leave space for fast-but-real,
-    // reject single-fingered macro spam.
-    duration_ms: 5000,
-    higher_wins: true,
-    max_score: 75,
-  },
-  reaction: {
-    id: "reaction",
-    name: "Trigger",
-    icon: "⚡",
-    tagline: "Wait for FIRE. Fastest reaction wins.",
-    // Score = max(0, 1000 - reaction_ms). 1000 is theoretical max,
-    // sub-150ms human reaction is essentially impossible (Olympic
-    // sprinters average 150ms+). Capping the score at 900 enforces
-    // that floor server-side.
-    duration_ms: 8000,
-    higher_wins: true,
-    max_score: 900,
-  },
-  color_match: {
-    id: "color_match",
-    name: "Spectrum",
-    icon: "◐",
-    tagline: "Tap the hue. Ignore the word.",
-    // 12 seconds, ~10 questions possible at 1.2s each. Cap at 12.
-    duration_ms: 12000,
-    higher_wins: true,
-    max_score: 12,
-  },
-  memory: {
-    id: "memory",
-    name: "Recall",
-    icon: "⬡",
-    tagline: "Watch the pattern. Replay it exactly.",
-    // Level reached. Beating 20 is effectively impossible on a small
-    // screen. Duration capped at 25s so a silent opponent can't hold
-    // the match for 60s on this round alone (5-round match would
-    // otherwise stretch to 5+ minutes if both players go AFK).
-    // Serious players naturally lose the streak well before 25s.
-    duration_ms: 25000,
-    higher_wins: true,
-    max_score: 20,
-  },
-  quick_math: {
-    id: "quick_math",
-    name: "Vector",
-    icon: "∑",
-    tagline: "Resolve expressions. Order matters.",
-    // 15-second window. ~1.5s/question with 4-choice multiple choice
-    // is realistic, cap at 15.
-    duration_ms: 15000,
-    higher_wins: true,
-    max_score: 15,
-  },
-  bubble_pop: {
-    id: "bubble_pop",
-    name: "Cascade",
-    icon: "◇",
-    tagline: "Hit at the peak. Chain perfect timing.",
-    // 10s window. Bubbles spawn every ~350ms, live ~1200ms. Realistic
-    // ceiling is ~25 pops on a phone; cap at 35 for headroom.
-    duration_ms: 10000,
-    higher_wins: true,
-    max_score: 35,
-  },
-  whack: {
-    id: "whack",
-    name: "Intercept",
-    icon: "▲",
-    tagline: "Neutralize threats. Spare friendlies.",
-    // 12s. 3×3 grid, 1-3 moles up at any moment. Cap at 30 — a
-    // perfect player on a small screen would top out around 25.
-    duration_ms: 12000,
-    higher_wins: true,
-    max_score: 30,
-  },
-  odd_one_out: {
-    id: "odd_one_out",
-    name: "Outlier",
-    icon: "◆",
-    tagline: "One tile breaks the pattern.",
-    // 12s. Each round shows a 3×3 grid with one cell shaded slightly
-    // off — the difficulty ramps as you score (smaller color delta).
-    duration_ms: 12000,
-    higher_wins: true,
-    max_score: 18,
-  },
-  sequence_tap: {
-    id: "sequence_tap",
-    name: "Sequence",
-    icon: "⊕",
-    tagline: "Tap ascending. Clear the grid.",
-    // 15s. Numbers 1-12 scrambled, tap in order; new scramble on
-    // completion. Score = total correct taps. Cap 60 (5 full rounds).
-    duration_ms: 15000,
-    higher_wins: true,
-    max_score: 60,
-  },
+  // Anomaly — the WebGL Pixi flagship with custom plasma shader +
+  // multi-anomaly scaling + containment cinematic at score cap.
   catch_bug: {
     id: "catch_bug",
     name: "Anomaly",
     icon: "✦",
-    tagline: "Contain the anomaly. Core grants ×3.",
-    // 10s. Bug emoji teleports to a new random spot every time it's
-    // tapped (and every ~900ms if not). Cap 25.
+    tagline: "Contain the field. Core stacks for ×N.",
     duration_ms: 10000,
     higher_wins: true,
     max_score: 25,
   },
-  memorize: {
-    id: "memorize",
-    name: "Cipher",
-    icon: "⊡",
-    tagline: "Memorize the glyph set. Confirm or deny.",
-    // 15s. Flash 5-7 emoji for ~1.5s, then ask yes/no on a probe
-    // emoji. Multiple rounds. Cap 12.
-    duration_ms: 15000,
+  // Cascade — matter.js physics + 4 orb types + perfect tier + MEGA
+  // ORB once per round.
+  bubble_pop: {
+    id: "bubble_pop",
+    name: "Cascade",
+    icon: "◇",
+    tagline: "Hit at the peak. Mega orb spawns at 18.",
+    duration_ms: 10000,
     higher_wins: true,
-    max_score: 12,
+    max_score: 50, // raised — mega + chain reactions push the ceiling
   },
-  hilo_sprint: {
-    id: "hilo_sprint",
-    name: "Tide",
-    icon: "△",
-    tagline: "Direction call. New reading vs prior.",
-    // 12s. Show a number, then a new one — higher or lower? 2 buttons.
-    // Each correct, new number takes the place of the previous.
-    // Cap 20.
-    duration_ms: 12000,
+  // Neon Strike Arena — full 3D first-person shooter. Single match =
+  // 90 seconds vs 3 AI bots. Score = kills × 10 + survival bonus.
+  // The featured game, designed as the centerpiece of the Arena pivot.
+  neon_strike: {
+    id: "neon_strike",
+    name: "Neon Strike",
+    icon: "◈",
+    tagline: "Phase. Dash. Strike. 90-second cyber arena.",
+    duration_ms: 90000,
     higher_wins: true,
-    max_score: 20,
+    max_score: 200,
   },
 };
 

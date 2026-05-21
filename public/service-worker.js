@@ -251,6 +251,28 @@
 // with the error text and a Skip button — instead of a silent blank
 // canvas.
 //
+// v43: PRODUCTION BUNDLE FIX — buildViewmodel module extraction.
+//
+// Player kept reporting "still no weapon on live version" despite
+// the local dev preview showing the gun rendering correctly. Root
+// cause was a bundler-resolution issue specific to the production
+// build:
+//
+//   6 of 7 weapons had `import { buildViewmodel } from "./PlasmaRifle.js"`
+//   at the BOTTOM of the file. While ES module imports are technically
+//   hoisted, the combination of:
+//     • PlasmaRifle.js exporting `buildViewmodel` AFTER its default
+//       class export
+//     • Webpack production mode with tree-shaking + terser
+//     • Module evaluation order with 6 cross-references
+//   resulted in `buildViewmodel` being `undefined` at viewmodel
+//   construction time in the minified bundle. Dev mode resolved it
+//   fine; production stripped or reordered the export.
+//
+// Fix: extracted `buildViewmodel` to its own module
+// `viewmodelBuilder.js`. Each weapon imports it cleanly at the top.
+// No circular-looking reference patterns, no late exports.
+//
 // v42: ARENA VISIBILITY + WEAPON HAND + LARGER VIEWMODEL.
 //
 // Player feedback after v41: "still no weapon and the environment is
@@ -358,7 +380,7 @@
 // has a neon wireframe (EdgesGeometry) outline so the silhouette
 // pops against the dark scene even when the body fill blends, and a
 // new bright muzzle ring sits at the barrel tip.
-const CACHE = "trivia-wheel-v42";
+const CACHE = "trivia-wheel-v43";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

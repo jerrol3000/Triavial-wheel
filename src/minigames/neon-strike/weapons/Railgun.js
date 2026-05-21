@@ -4,6 +4,7 @@
 // 1s cooldown — emergency self-defense.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 const CHARGE_MS = 600;
 
@@ -86,4 +87,3 @@ export class Railgun extends Weapon {
   }
 }
 
-import { buildViewmodel } from "./PlasmaRifle.js";

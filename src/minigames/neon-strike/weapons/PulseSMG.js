@@ -6,6 +6,7 @@
 // long-range bursts.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 export class PulseSMG extends Weapon {
   constructor(scene, camera, arena, particles, controls) {
@@ -105,4 +106,3 @@ export class PulseSMG extends Weapon {
   }
 }
 
-import { buildViewmodel } from "./PlasmaRifle.js";

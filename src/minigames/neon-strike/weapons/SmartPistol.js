@@ -6,6 +6,7 @@
 // SAME target if a bot is locked.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 const LOCK_CONE_DEG = 4;
 
@@ -88,4 +89,3 @@ export class SmartPistol extends Weapon {
   }
 }
 
-import { buildViewmodel } from "./PlasmaRifle.js";

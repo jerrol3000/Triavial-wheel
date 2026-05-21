@@ -3,6 +3,7 @@
 // Alt-fire: tight slug (all pellets converge into one high-damage line).
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 const PELLET_COUNT = 7;
 const SPREAD_DEG = 7;
@@ -103,4 +104,3 @@ export class EnergyShotgun extends Weapon {
   }
 }
 
-import { buildViewmodel } from "./PlasmaRifle.js";

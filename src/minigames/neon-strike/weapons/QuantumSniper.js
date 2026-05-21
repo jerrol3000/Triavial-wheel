@@ -6,6 +6,7 @@
 //   slug that hits through walls AND through phase-shifted targets.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 const SCOPE_FOV = 28;
 const CHARGE_MS = 700;
@@ -146,4 +147,3 @@ export class QuantumSniper extends Weapon {
   }
 }
 
-import { buildViewmodel } from "./PlasmaRifle.js";

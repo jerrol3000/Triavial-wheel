@@ -9,7 +9,7 @@
 // particles + AOE pull/push + small splash damage.
 import * as THREE from "three";
 import { Weapon } from "./Weapon.js";
-import { buildViewmodel } from "./PlasmaRifle.js";
+import { buildViewmodel } from "./viewmodelBuilder.js";
 
 const PROJECTILE_SPEED = 28;
 const PROJECTILE_LIFE = 1.4; // seconds

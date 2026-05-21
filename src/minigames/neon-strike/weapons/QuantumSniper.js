@@ -122,25 +122,25 @@ export class QuantumSniper extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.16, 0.18, 1.05],
-      bodyColor: 0x2a0e4a,
+      bodySize: [0.22, 0.22, 1.10],
+      bodyColor: 0x4a1080,
       accentColor: 0xc084fc,
       tipColor: 0xc084fc,
-      anchor: [0.34, -0.32, -0.80],
+      anchor: [0.16, -0.22, -0.62],
     });
-    // Add a scope on top — distinguishing silhouette.
+    // Scope on top — distinguishing sniper silhouette.
     const scope = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, 0.26, 12),
+      new THREE.CylinderGeometry(0.07, 0.07, 0.32, 12),
       new THREE.MeshBasicMaterial({ color: 0x14081f }),
     );
     scope.rotation.x = Math.PI / 2;
-    scope.position.set(0.34, -0.17, -0.68);
+    scope.position.set(0.16, -0.07, -0.50);
     grp.group.add(scope);
     const scopeRing = new THREE.Mesh(
-      new THREE.TorusGeometry(0.07, 0.012, 6, 14),
+      new THREE.TorusGeometry(0.09, 0.015, 6, 16),
       new THREE.MeshBasicMaterial({ color: 0xc084fc }),
     );
-    scopeRing.position.set(0.34, -0.17, -0.55);
+    scopeRing.position.set(0.16, -0.07, -0.34);
     grp.group.add(scopeRing);
     this._attachViewmodel(grp.group, grp.tip);
   }

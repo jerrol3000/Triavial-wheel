@@ -89,6 +89,10 @@ export class Engine {
     this.particles = new ParticlePool(this.scene, 200);
     this.controls = new PointerLockControls(this.camera, this.renderer.domElement);
     this.player = new PlayerController(this.camera, this.controls, this.arena);
+    // Camera MUST be in the scene tree for its children (weapon
+    // viewmodel) to render. PointerLockControls doesn't add it, so
+    // we do it here explicitly — before any weapon attaches a child.
+    this.scene.add(this.camera);
     // P3-1: Loadout system. Player starts with PlasmaRifle equipped
     // and a Map of "owned" weapons. Pickups add to the inventory;
     // 1-7 keys + scroll wheel swap between owned weapons.

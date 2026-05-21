@@ -286,7 +286,27 @@
 //     and the pickup mechanic.
 //   • Mid-match weapon swap now resets the engine's Mk-level mirror
 //     to the new weapon's own level (no insta-Mk-4 from carry-over).
-const CACHE = "trivia-wheel-v39";
+//
+// v40: VIEWMODEL VISIBILITY hotfix. Player still couldn't see the
+// weapon in v39. Three causes identified + fixed:
+//
+//   • Anchor offset was x=0.32 — at any FOV below ~70° the gun fell
+//     OUTSIDE the right edge of the frustum. Pulled all 7 viewmodels
+//     in to x=0.16 (more central) and z=-0.42 to -0.62 (closer +
+//     larger apparent size). Guaranteed in-frustum at FOV ≥ 60°.
+//   • A persisted FOV setting could be set below 60°, clipping the
+//     weapon regardless. applySettingsToEngine() now clamps FOV to
+//     [60, 110] before applying.
+//   • Camera-to-scene attachment was happening implicitly inside the
+//     first weapon's _attachViewmodel(). Moved that to the Engine
+//     constructor explicitly, BEFORE any weapon is built, so the
+//     viewmodel is guaranteed to be inside the scene tree.
+//
+// Additional polish: body colors are now 2-3× brighter, every weapon
+// has a neon wireframe (EdgesGeometry) outline so the silhouette
+// pops against the dark scene even when the body fill blends, and a
+// new bright muzzle ring sits at the barrel tip.
+const CACHE = "trivia-wheel-v40";
 const SHELL = ["/", "/manifest.json", "/logo-no-background.png"];
 
 self.addEventListener("install", (e) => {

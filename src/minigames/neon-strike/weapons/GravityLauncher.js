@@ -129,11 +129,11 @@ export class GravityLauncher extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.22, 0.22, 0.58],
-      bodyColor: 0x0a2050,
+      bodySize: [0.30, 0.26, 0.64],
+      bodyColor: 0x123a78,
       accentColor: 0x60a5fa,
       tipColor: 0x60a5fa,
-      anchor: [0.32, -0.30, -0.55],
+      anchor: [0.16, -0.22, -0.46],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }

@@ -39,9 +39,12 @@ export function saveSettings(s) {
 
 export function applySettingsToEngine(engine, s) {
   if (!engine) return;
-  // FOV
+  // FOV — clamp to a sane range. A previously-persisted very-low FOV
+  // (e.g., 40°) will literally clip the weapon viewmodel out of the
+  // frustum since the model sits at ~16cm right of camera-center.
   if (engine.camera) {
-    engine.camera.fov = s.fov;
+    const fov = Math.max(60, Math.min(110, s.fov || 78));
+    engine.camera.fov = fov;
     engine.camera.updateProjectionMatrix();
   }
   // Performance preset → pixel ratio cap.

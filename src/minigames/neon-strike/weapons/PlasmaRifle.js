@@ -78,11 +78,11 @@ export class PlasmaRifle extends Weapon {
 
   _buildViewmodel() {
     const grp = buildViewmodel({
-      bodySize: [0.18, 0.18, 0.72],
-      bodyColor: 0x1a2050,
+      bodySize: [0.26, 0.24, 0.80],
+      bodyColor: 0x3a2a78,
       accentColor: 0xa78bfa,
       tipColor: 0xa78bfa,
-      anchor: [0.32, -0.32, -0.65],
+      anchor: [0.16, -0.22, -0.48],
     });
     this._attachViewmodel(grp.group, grp.tip);
   }
@@ -92,55 +92,80 @@ export class PlasmaRifle extends Weapon {
 // All weapons use the same "body + glow trim + barrel tip" silhouette
 // with per-weapon colors. The original viewmodels were 12cm wide and
 // painted nearly the same color as the scene background — invisible.
-// This builder sizes them up + adds an emissive trim strip the player
-// can actually see.
+// This builder positions the model 16cm right + 22cm down + 48cm in
+// front of the camera so it stays in-frustum even at lower FOV
+// settings, and adds:
+//   • bright accent body color (not near-black)
+//   • bold glowing top trim strip
+//   • neon wireframe outline (EdgesGeometry) so the silhouette pops
+//     even when the body color blends with the scene
+//   • bright barrel + accent muzzle tip
 function buildViewmodel({ bodySize, bodyColor, accentColor, tipColor, anchor }) {
   const grp = new THREE.Group();
   const [bw, bh, bd] = bodySize;
   const [ax, ay, az] = anchor;
 
   // Main body
+  const bodyGeom = new THREE.BoxGeometry(bw, bh, bd);
   const body = new THREE.Mesh(
-    new THREE.BoxGeometry(bw, bh, bd),
+    bodyGeom,
     new THREE.MeshBasicMaterial({ color: bodyColor }),
   );
   body.position.set(ax, ay, az);
   grp.add(body);
 
-  // Glow trim strip along the top of the body — gives the gun a
-  // visible silhouette against the dark scene.
+  // Neon wireframe edges — guaranteed visible silhouette regardless
+  // of body fill color. This is the key trick: a thin glowing line
+  // outline pops against any background.
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(bodyGeom),
+    new THREE.LineBasicMaterial({ color: accentColor, transparent: true, opacity: 0.9 }),
+  );
+  edges.position.copy(body.position);
+  grp.add(edges);
+
+  // Glow trim strip along the top — solid accent so the top of the
+  // gun reads as a bright bar from the player's POV.
   const trim = new THREE.Mesh(
-    new THREE.BoxGeometry(bw * 0.55, bh * 0.18, bd * 0.85),
+    new THREE.BoxGeometry(bw * 0.7, bh * 0.22, bd * 0.92),
     new THREE.MeshBasicMaterial({ color: accentColor }),
   );
-  trim.position.set(ax, ay + bh * 0.45, az);
+  trim.position.set(ax, ay + bh * 0.48, az);
   grp.add(trim);
 
   // Side rail (small accent on the inboard side).
   const rail = new THREE.Mesh(
-    new THREE.BoxGeometry(bw * 0.2, bh * 0.5, bd * 0.6),
+    new THREE.BoxGeometry(bw * 0.22, bh * 0.55, bd * 0.65),
     new THREE.MeshBasicMaterial({ color: accentColor }),
   );
-  rail.position.set(ax - bw * 0.45, ay, az);
+  rail.position.set(ax - bw * 0.48, ay, az);
   grp.add(rail);
 
-  // Barrel
+  // Barrel (cylinder, body-tinted)
   const barrelLen = bd * 0.55;
   const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(bw * 0.22, bw * 0.22, barrelLen, 10),
+    new THREE.CylinderGeometry(bw * 0.26, bw * 0.26, barrelLen, 12),
     new THREE.MeshBasicMaterial({ color: bodyColor }),
   );
   barrel.rotation.x = Math.PI / 2;
   barrel.position.set(ax, ay, az - bd * 0.5 - barrelLen * 0.5);
   grp.add(barrel);
 
+  // Bright muzzle ring around the barrel tip — extra visible.
+  const muzzleRing = new THREE.Mesh(
+    new THREE.TorusGeometry(bw * 0.32, bw * 0.06, 6, 16),
+    new THREE.MeshBasicMaterial({ color: accentColor }),
+  );
+  muzzleRing.position.set(ax, ay, az - bd * 0.5 - barrelLen);
+  grp.add(muzzleRing);
+
   // Barrel tip — glowing accent. This is the anchor for muzzle flash.
   const tip = new THREE.Mesh(
-    new THREE.CylinderGeometry(bw * 0.28, bw * 0.18, bw * 0.5, 10),
+    new THREE.CylinderGeometry(bw * 0.34, bw * 0.22, bw * 0.6, 10),
     new THREE.MeshBasicMaterial({ color: tipColor }),
   );
   tip.rotation.x = Math.PI / 2;
-  tip.position.set(ax, ay, az - bd * 0.5 - barrelLen - bw * 0.2);
+  tip.position.set(ax, ay, az - bd * 0.5 - barrelLen - bw * 0.25);
   grp.add(tip);
 
   return { group: grp, tip };
